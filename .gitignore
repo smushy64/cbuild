@@ -1,3 +1,8 @@
 *
 !.gitignore
 !cbuild.h
+!README.md
+!LICENSE
+!example
+!startup.bat
+!startup.sh
