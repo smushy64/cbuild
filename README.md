@@ -27,6 +27,12 @@ CBUILD_IMPLEMENTATION with your prefered compiler and rebuild (run cbuild.exe ag
 When distributing, include either (or both) startup files and source code,
 please don't include the compiled binary.
 
+```
+Note: If running startup on windows, make sure to vcvarsall or use
+Developer Command Prompt for Visual Studio to get cl enviroment setup
+before running the script. The environment also needs to be set everytime cbuild is run.
+```
+
 This library provides cross-platform functions/structures for
 string manipulation, timing, path searching, checking for executables,
 a simple job system and atomics for

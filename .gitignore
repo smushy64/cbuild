@@ -1,8 +1,18 @@
-*
-!.gitignore
-!cbuild.h
-!README.md
-!LICENSE
-!example
-!startup.bat
-!startup.sh
+**/compile_flags.txt
+*.exe
+*.pdb
+*.rdbg
+main.c
+# *
+# !.gitignore
+# !cbuild.h
+# !README.md
+# !LICENSE
+# !example/
+# !example/src/
+# !example/cbuild.h
+# !example/cbuild.c
+# !example/startup.bat
+# !example/startup.sh
+# !startup.bat
+# !startup.sh
