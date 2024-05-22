@@ -6,10 +6,8 @@
  * @details
  * Single header library, include to get access to API,
  * include again (ONCE) with CBUILD_IMPLEMENTATION defined.
- * Define MAX_THREADS before implementation to set maximum
+ * Define THREAD_COUNT before implementation to set maximum
  * number of threads allowed.
- * Define MAX_JOBS before implementation to set maximum number of
- * multi-threaded jobs allowed.
  * Inspired by https://github.com/tsoding/nobuild
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   April 06, 2024
@@ -18,91 +16,216 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
+
+#if !defined(_WIN32)
+    #include <unistd.h>
+#endif /* POSIX includes */
 // IWYU pragma: end_exports
 
-#if defined(__STDC_NO_ATOMICS__) || defined(_MSC_VER) || defined(_WIN32)
-    typedef volatile unsigned long Atom;
-    typedef volatile uint64_t      Atom64;
-#else
-    #include <stdatomic.h> // IWYU pragma: export
-    typedef volatile atomic_uint   Atom;
-    typedef volatile atomic_ullong Atom64;
-#endif
+// NOTE(alicia): begin: Types
+
+/// @brief Enumerator describing logging level.
+/// @details Greater value is more exclusive.
+typedef enum {
+    /// @brief Logging level info.
+    /// @details Info, warning and error messages are allowed.
+    LOG_LEVEL_INFO    = 0,
+    /// @brief Logging level warning.
+    /// @details Warning and error messages are allowed.
+    LOG_LEVEL_WARNING = 1,
+    /// @brief Logging level error. Most restrictive logging level.
+    /// @details Only error messages are allowed.
+    LOG_LEVEL_ERROR   = 2,
+} LogLevel;
 
 #if defined(_WIN32)
-    typedef void* ProcessID;
-    typedef intptr_t ssize_t;
-#else
-    #include <unistd.h>
-    typedef pid_t ProcessID;
-#endif
+/// @brief Windows does not define ssize_t so this is here.
+typedef intptr_t ssize_t;
+#endif /* Windows types */
 
-typedef char dstring;
+/// @brief 8-bit Boolean.
+/// @details When returned from library, guaranteed to be true(1) or false(0) only.
+typedef uint8_t  bool8_t;
+/// @brief 16-bit Boolean.
+/// @details When returned from library, guaranteed to be true(1) or false(0) only.
+typedef uint16_t bool16_t;
+/// @brief 32-bit Boolean.
+/// @details When returned from library, guaranteed to be true(1) or false(0) only.
+typedef uint32_t bool32_t;
+/// @brief 64-bit Boolean.
+/// @details When returned from library, guaranteed to be true(1) or false(0) only.
+typedef uint64_t bool64_t;
+/// @brief Boolean (same as _Bool).
+/// @details When returned from library, guaranteed to be true(1) or false(0) only.
+typedef _Bool    bool_t;
 
-typedef struct substring {
-    size_t      len;
+/// @brief String that is dynamically allocated on the heap.
+typedef char DynamicString;
+/// @brief Slice of string.
+/// @details Not guaranteed to be null-terminated unless specified.
+typedef struct StringSlice {
+    /// @brief Length of string slice.
+    /// @details Does not include null-terminator when created from null-terminated string.
+    size_t len;
+    /// @brief Pointer to start of UTF-8 string buffer.
     const char* cc;
-} substring;
-
-typedef int FileType;
-#define FILE_TYPE_UNKNOWN_  0
-#define FILE_TYPE_FILE      1
-#define FILE_TYPE_DIRECTORY 2
-
+} StringSlice;
+/// @brief Volatile 32-bit unsigned integer. For use with atomic operations.
+typedef volatile uint32_t Atom;
+/// @brief Volatile 64-bit unsigned integer. For use with atomic operations.
+typedef volatile uint64_t Atom64;
+/// @brief Ways of seeking file. 0 can also be used to seek from current position.
+typedef enum {
+    /// @brief Seek file from current position.
+    FS_CURRENT = 0,
+    /// @brief Seek file from beginning.
+    FS_BEGIN   = 1,
+    /// @brief Seek file from end.
+    FS_END     = 2,
+} FileSeek;
+/// @brief Enumerator describing a type of file.
+typedef enum {
+    /// @brief File type is unknown.
+    FT_UNKNOWN   = 0,
+    /// @brief File type is regular file.
+    FT_FILE      = 1,
+    /// @brief File type is directory.
+    FT_DIRECTORY = 2,
+} FileType;
+/// @brief Bitfield for describing how to open a file.
+typedef enum {
+    /// @brief Open file for reading.
+    FF_READ     = (1 << 0),
+    /// @brief Open file for writing.
+    FF_WRITE    = (1 << 1),
+    /// @brief Create file if it does not already exist.
+    /// @details Valid if file is opened for reading and/or writing.
+    FF_CREATE   = (1 << 2),
+    /// @brief Truncate file if it already exists.
+    /// @details Valid if file is opened for writing exclusively and FF_APPEND is not set.
+    FF_TRUNCATE = (1 << 3),
+    /// @brief Move file pointer to end of file.
+    /// @details Valid if FF_TRUNCATE is not set.
+    FF_APPEND   = (1 << 4),
+} FileFlags;
+/// @brief File info struct.
 typedef struct File {
 #if defined(_WIN32)
+    /// @brief Platform handle to to file.
     void* handle;
-#else
-    int handle;
-#endif
-    FileType   type;
-    time_t     create;
-    time_t     modify;
-    size_t     size;
+#else /* Windows */
+    /// @brief Platform handle to to file.
+    int handle; // fd
+#endif /* POSIX */
+    /// @brief Type of file.
+    FileType type;
+    /// @brief Flags used to open the file.
+    FileFlags flags;
+    /// @brief POSIX time representing when file was created.
+    time_t create;
+    /// @brief POSIX time representing when file was last modified.
+    time_t modify;
+    /// @brief Size of file.
+    /// @details Updates when file is written to or truncated but it's better to use file_query_time.
+    size_t size;
 } File;
-#define file_null() (File){ .handle=0, .type=0, .create=0, .modify=0, .size=0 }
-
+typedef enum {
+    FIND_FLAG_INCLUDE_HIDDEN    = (1 << 0),
+    FIND_FLAG_INCLUDE_DIRECTORY = (1 << 1),
+    FIND_FLAG_APPEND            = (1 << 2),
+} FileFindFlags;
+/// @brief Result of functions related to finding files.
 typedef struct FindFiles {
-    size_t     count; // duplicate of darray_len( paths )
-    substring* paths;
-    dstring*   buffer;
+    size_t         count; // duplicate of darray_len( paths )
+    StringSlice*   paths;
+    DynamicString* buffer;
 } FindFiles;
-
+/// @brief ID of process.
+typedef struct ProcessID {
+#if defined(_WIN32)
+    /// @brief Platform handle to process.
+    void* handle;
+#else /* Windows */
+    /// @brief Platform handle to process.
+    pid_t handle;
+#endif /* POSIX */
+} ProcessID;
+/// @brief Pipe for interprocess communication.
 typedef struct Pipe {
 #if defined(_WIN32)
+    /// @brief Platform handle to a pipe.
     void* handle;
 #else
-    int   handle;
+    /// @brief Platform handle to a pipe.
+    int handle;
 #endif
 } Pipe;
-#define pipe_null() (Pipe){ .handle=0 }
-
+/// @brief Mutex for locking resources.
 typedef struct Mutex {
+    /// @brief Platform handle to a mutex.
     void* handle;
 } Mutex;
-#define mutex_null() (Mutex){ .handle=0 }
-
+/// @brief Semaphore for multi-threading.
 typedef struct Semaphore {
+    /// @brief Platform handle to a semaphore.
     void* handle;
 } Semaphore;
-#define semaphore_null() (Semaphore){ .handle=0 }
+/// @brief Enumerator describing a compiler.
+typedef enum {
+    /// @brief Compiler is unknown.
+    COMPILER_UNKNOWN = 0,
+    /// @brief Compiler is GCC.
+    COMPILER_GCC     = 1,
+    /// @brief Compiler is clang(LLVM).
+    COMPILER_CLANG   = 2,
+    /// @brief Compiler is Microsoft Visual C.
+    COMPILER_MSVC    = 3,
+} Compiler;
+/// @brief Enumerator describing a platform.
+typedef enum {
+    /// @brief Platform is unknown.
+    PLATFORM_UNKNOWN = 0,
+    /// @brief Platform is GNU/Linux.
+    PLATFORM_LINUX   = 1,
+    /// @brief Platform is MacOS.
+    PLATFORM_MACOS   = 2,
+    /// @brief Platform is Windows.
+    PLATFORM_WINDOWS = 3,
+} Platform;
+/// @brief Enumerator describing a CPU architecture.
+typedef enum {
+    /// @brief Architecture is unknown.
+    ARCH_UNKNOWN = 0,
+    /// @brief Architecture is ARM based.
+    ARCH_ARM     = 1,
+    /// @brief Architecture is x86 based.
+    ARCH_X86     = 2,
+} Architecture;
+/// @brief Function prototype for sorting functions.
+/// @param     stride Size of @c a and @c b.
+/// @param[in] a, b   Constant pointers to items to be compared.
+/// @return
+///     - @c True:  @c a will be placed before @c b.
+///     - @c False: @c b will be placed before @c a. 
+typedef bool_t SortCmpFN( size_t stride, const void* a, const void* b );
+/// @brief Function prototype for filtering items out of an array.
+/// @param     index  Index of the current item.
+/// @param     stride Size of the current item.
+/// @param[in] item   Constant pointer to item to be checked for filtering.
+/// @param[in] params (optional) Pointer to optional parameters.
+/// @return
+///     - @c True:  @c item passed filter test.
+///     - @c False: @c item did not pass filter test and will be filtered out.
+typedef bool_t FilterFN(
+    size_t index, size_t stride, const void* item, void* params );
+/// @brief Function prototype for multi-threading job.
+/// @param     thread_id ID of the current thread. Useful for TLS, other global data or logging.
+/// @param[in] params    (optional) Pointer to optional parameters.
+typedef void JobFN( uint32_t thread_id, void* params );
 
-#define static_array_len( array )\
-    (sizeof((array)) / sizeof((array)[0]))
-static inline void _0(int a,...) {(void)a;}
-#define unused( ... ) _0( 0, __VA_ARGS__ )
+// NOTE(alicia): end: Types
 
-#define kilobytes( kb ) (kb * 1000ULL)
-#define megabytes( mb ) (kilobytes(mb) * 1000ULL)
-#define gigabytes( gb ) (megabytes(gb) * 1000ULL)
-#define terabytes( tb ) (gigabytes(tb) * 1000ULL)
-
-#define kibibytes( kb ) (kb * 1024ULL)
-#define mebibytes( mb ) (kibibytes(mb) * 1024ULL)
-#define gibibytes( gb ) (mebibytes(gb) * 1024ULL)
-#define tebibytes( tb ) (gibibytes(tb) * 1024ULL)
-
-#define PATH_MAX_LEN (4096)
+// TODO(alicia): begin: get rid of these
 
 typedef int FileTimeCmp;
 #define FILE_TIME_CMP_EQUAL           0
@@ -114,144 +237,522 @@ typedef unsigned int FileTimeCmpWhich;
 #define FILE_TIME_CMP_MODIFY 0
 #define FILE_TIME_CMP_CREATE 1
 
-typedef unsigned int FileOpenFlags;
-#define FILE_OPEN_FLAG_READ     (1 << 0)
-#define FILE_OPEN_FLAG_WRITE    (1 << 1)
-#define FILE_OPEN_FLAG_CREATE   (1 << 2)
-#define FILE_OPEN_FLAG_TRUNCATE (1 << 3)
-#define FILE_OPEN_FLAG_APPEND   (1 << 4)
+// TODO(alicia): end
 
-typedef unsigned int FileSeekType;
-#define FILE_SEEK_TYPE_CURRENT 0
-#define FILE_SEEK_TYPE_START   1
-#define FILE_SEEK_TYPE_END     2
+// NOTE(alicia): begin: Miscellaneous Macros
 
-typedef int Compiler;
-#define COMPILER_UNKNOWN 0
-#define COMPILER_GCC     1
-#define COMPILER_CLANG   2
-#define COMPILER_MSVC    3
+/// @brief Calculate length of static array.
+/// @param[in] array (any[]) Constant compile-time array.
+/// @return (size_t) Number of items array is capable of holding.
+#define static_array_len( array )\
+    (sizeof((array)) / sizeof((array)[0]))
 
-typedef int Platform;
-#define PLATFORM_UNKNOWN 0
-#define PLATFORM_LINUX   1
-#define PLATFORM_WINDOWS 2
-#define PLATFORM_MACOS   3
+static inline void _0(int a,...) {(void)a;}
+/// @brief Mark variables/parameters as unused.
+/// @param ... (any) Items to mark as unused.
+#define unused( ... ) _0( 0, __VA_ARGS__ )
 
-typedef int Arch;
-#define ARCH_UNKNOWN 0
-#define ARCH_ARM     1
-#define ARCH_X86     2
+/// @brief Convert kilobytes to bytes.
+/// @param kb (size_t) Kilobytes.
+/// @return (size_t) @c kb as bytes.
+#define kilobytes( kb ) (kb * 1000ULL)
+/// @brief Convert megabytes to bytes.
+/// @param mb (size_t) Megabytes.
+/// @return (size_t) @c mb as bytes.
+#define megabytes( mb ) (kilobytes(mb) * 1000ULL)
+/// @brief Convert gigabytes to bytes.
+/// @param gb (size_t) Gigabytes.
+/// @return (size_t) @c gb as bytes.
+#define gigabytes( gb ) (megabytes(gb) * 1000ULL)
+/// @brief Convert Terabytes to bytes.
+/// @param tb (size_t) Terabytes.
+/// @return (size_t) @c tb as bytes.
+#define terabytes( tb ) (gigabytes(tb) * 1000ULL)
+/// @brief Convert kibibytes to bytes.
+/// @param kb (size_t) Kibibytes.
+/// @return (size_t) @c kb as bytes.
+#define kibibytes( kb ) (kb * 1024ULL)
+/// @brief Convert mebibytes to bytes.
+/// @param mb (size_t) Mebibytes.
+/// @return (size_t) @c mb as bytes.
+#define mebibytes( mb ) (kibibytes(mb) * 1024ULL)
+/// @brief Convert gibibytes to bytes.
+/// @param gb (size_t) Gibibytes.
+/// @return (size_t) @c gb as bytes.
+#define gibibytes( gb ) (mebibytes(gb) * 1024ULL)
+/// @brief Convert tebibytes to bytes.
+/// @param tb (size_t) Tebibytes.
+/// @return (size_t) @c tb as bytes.
+#define tebibytes( tb ) (gibibytes(tb) * 1024ULL)
 
-typedef _Bool SortCmpFN( size_t stride, const void* a, const void* b );
-typedef _Bool FilterFN(
-    size_t index, size_t stride, const void* item, void* params );
+// NOTE(alicia): end: Miscellaneous Macros
 
-typedef void JobFN( uint32_t thread_id, void* params );
+// NOTE(alicia): begin: Constants
 
-typedef uint32_t LogLevel;
-#define LOG_LEVEL_INFO  0
-#define LOG_LEVEL_WARN  1
-#define LOG_LEVEL_ERROR 2
+/// @brief Maximum number of threads allowed.
+/// @warning Do not redefine this.
+#define MAX_THREADS (16)
+#if !defined(THREAD_COUNT)
+    /// @brief Number of threads cbuild is allowed to create.
+    #define THREAD_COUNT (8)
+#else
+    #if THREAD_COUNT > MAX_THREADS
+        /// @brief Number of threads cbuild is allowed to create.
+        #define THREAD_COUNT MAX_THREADS
+    #elif THREAD_COUNT <= 0
+        /// @brief Number of threads cbuild is allowed to create.
+        #define THREAD_COUNT (1)
+    #endif
+#endif
 
-void     logger_level_set( LogLevel level );
-LogLevel logger_level_get(void);
-void     logger( LogLevel level, const char* format, ... );
+#if defined(__clang__)
+    /// @brief Compiler used to compile cbuild.
+    /// @details Current: clang (LLVM)
+    #define COMPILER_CURRENT (COMPILER_CLANG)
+#elif defined(__GNUC__) /* __clang__ is defined */
+    /// @brief Compiler used to compile cbuild.
+    /// @details Current: gcc
+    #define COMPILER_CURRENT (COMPILER_GCC)
+#elif defined(_MSC_VER) /* __GNUC__ is defined */
+    /// @brief Compiler used to compile cbuild.
+    /// @details Current: cl (MSVC)
+    #define COMPILER_CURRENT (COMPILER_MSVC)
+#else /* _MSC_VER is defined */
+    /// @brief Compiler used to compile cbuild.
+    /// @details Current: cc (Unknown)
+    #define COMPILER_CURRENT (COMPILER_UNKNOWN)
+#endif /* No compiler is defined */
+#if defined(_WIN32)
+    /// @brief Platform where cbuild was compiled.
+    /// @details Current: Windows.
+    #define PLATFORM_CURRENT  (PLATFORM_WINDOWS)
+    /// @brief Is platform POSIX-compliant? (bool_t)
+    /// @details Current: false
+    #define PLATFORM_IS_POSIX (false)
+#elif defined(__linux__) /* _WIN32 is defined */
+    /// @brief Platform where cbuild was compiled.
+    /// @details Current: GNU/Linux.
+    #define PLATFORM_CURRENT  (PLATFORM_LINUX)
+    /// @brief Is platform POSIX-compliant? (bool_t)
+    /// @details Current: true
+    #define PLATFORM_IS_POSIX (true)
+#elif defined(__APPLE__) /* __linux__ is defined */
+    /// @brief Platform where cbuild was compiled.
+    /// @details Current: MacOS.
+    #define PLATFORM_CURRENT  (PLATFORM_MACOS)
+    /// @brief Is platform POSIX-compliant? (bool_t)
+    /// @details Current: true
+    #define PLATFORM_IS_POSIX (true)
+#else /* __APPLE__ is defined */
+    /// @brief Platform where cbuild was compiled.
+    /// @details Current: Unknown.
+    #define PLATFORM_CURRENT  (PLATFORM_UNKNOWN)
+    /// @brief Is platform POSIX-compliant? (bool_t)
+    /// @details Current: true
+    #define PLATFORM_IS_POSIX (true)
+#endif /* No platform is defined */
+#if defined(__MINGW32__)
+    /// @brief Is platform MINGW? (bool_t)
+    /// @details Current: true
+    #define PLATFORM_IS_MINGW (true)
+#else /* __MINGW32__ defined */
+    /// @brief Is platform MINGW? (bool_t)
+    /// @details Current: false
+    #define PLATFORM_IS_MINGW (false)
+#endif /* __MINGW32__ not defined */
+#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__) || defined(_M_ARM64)
+    /// @brief Architecture were cbuild was compiled.
+    /// @details Current: ARM
+    #define ARCH_CURRENT (ARCH_ARM)
+#elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(__x86_64__) /* Arm is defined */
+    /// @brief Architecture were cbuild was compiled.
+    /// @details Current: x86
+    #define ARCH_CURRENT (ARCH_X86)
+#else /* x86 is defined */
+    /// @brief Architecture were cbuild was compiled.
+    /// @details Current: Unknown
+    #define ARCH_CURRENT (ARCH_UNKNOWN)
+#endif /* No architecture is defined */
+#if UINT64_MAX == UINTPTR_MAX
+    /// @brief Is architecture 64-bit? (bool_t)
+    /// @details Current: true
+    #define ARCH_IS_64BIT (true)
+#else /* UINT64_MAX == UINTPTR_MAX */
+    /// @brief Is architecture 64-bit? (bool_t)
+    /// @details Current: false
+    #define ARCH_IS_64BIT (false)
+#endif /* UINT64_MAX != UINTPTR_MAX */
+
+/// @brief Maximum allowed path length.
+#define PATH_MAX_LEN (4096)
+
+// NOTE(alicia): end: Constants
+
+// NOTE(alicia): begin: Functions
+
+/// @brief Query command line name of compiler used to compile cbuild.
+/// @return C String (never null) of compiler used to compile cbuild.
+const char* cbuild_compiler_string(void);
+/// @brief Query command line used to compile cbuild.
+/// @return C String (never null) of command line used to compile cbuild.
+const char* cbuild_command_line(void);
+/// @brief Query time that cbuild was compiled at.
+/// @return C String (never null) of time cbuild was compiled at.
+const char* cbuild_compile_time(void);
+
+void _init_( const char* argv0, const char* file, LogLevel log );
+/// @brief Initialize cbuild. Call this before using any library functions.
+/// @param log_level (LogLevel) Level to set logger to.
+#define init( log_level )\
+    _init_( argv[0], __FILE__, log_level )
+/// @brief Set logging level.
+/// @param level Logging level to set.
+void logger_level_set( LogLevel level );
+/// @brief Get current logging level.
+/// @return Current logging level.
+LogLevel logger_level_query(void);
+/// @brief Write logging message.
+/// @details
+/// @c level Determines whether message gets sent to stdout or stderr,
+/// color of logging message and whether it gets printed at all
+/// (that's also based on the current logging level).
+/// @param     level  Logging level of message.
+/// @param[in] format Constant null-terminated UTF-8 formatting string (C-style formatting).
+/// @param     va     Variadic list for formatting message.
+void logger_va( LogLevel level, const char* format, va_list va );
+/// @brief Write logging message.
+/// @details
+/// @c level Determines whether message gets sent to stdout or stderr,
+/// color of logging message and whether it gets printed at all
+/// (that's also based on the current logging level).
+/// @param     level  Logging level of message.
+/// @param[in] format Constant null-terminated UTF-8 formatting string (C-style formatting).
+/// @param     ...    Variadic arguments for formatting message.
+void logger( LogLevel level, const char* format, ... );
+/// @brief Write info message.
+/// @details
+/// Written to stdout without coloring.
+/// Only printed if logging level is set to LOG_LEVEL_INFO.
+/// @param ... (format, ...)
+///     @c format: Constant null-terminated UTF-8
+///         formatting string (C-style formatting).
+///     @c ...:    Variadic arguments for formatting message.
 #define cb_info( ... )  logger( LOG_LEVEL_INFO, __VA_ARGS__ )
-#define cb_warn( ... )  logger( LOG_LEVEL_WARN, __VA_ARGS__ )
+/// @brief Write warning message.
+/// @details
+/// Written to stdout with yellow color.
+/// Only printed if logging level is set to LOG_LEVEL_INFO or LOG_LEVEL_WARNING.
+/// @param ... (format, ...)
+///     @c format: Constant null-terminated UTF-8
+///         formatting string (C-style formatting).
+///     @c ...:    Variadic arguments for formatting message.
+#define cb_warn( ... )  logger( LOG_LEVEL_WARNING, __VA_ARGS__ )
+/// @brief Write error message.
+/// @details
+/// Written to stderr with red color.
+/// Always printed.
+/// @param ... (format, ...)
+///     @c format: Constant null-terminated UTF-8
+///         formatting string (C-style formatting).
+///     @c ...:    Variadic arguments for formatting message.
 #define cb_error( ... ) logger( LOG_LEVEL_ERROR, __VA_ARGS__ )
 
-void*  memory_alloc( size_t size );
-void*  memory_realloc( void* memory, size_t old_size, size_t new_size );
-void   memory_free( void* memory, size_t size );
+/// @brief Allocate memory on the heap. Memory returned is always zeroed.
+/// @details
+/// Never free or realloc using C standard library functions.
+/// @param size Size of allocation in bytes.
+/// @return
+///     - @c NULL: If allocation failed.
+///     - Pointer: Pointer to allocated buffer if allocation succeeded.
+void* memory_alloc( size_t size );
+/// @brief Reallocate memory on the heap. New memory returned is always zeroed.
+/// @details
+/// Only use memory returned from memory_realloc or memory_free.
+/// Never free or realloc using C standard library functions.
+/// @param[in] memory   Pointer to start of buffer allocated with memory_alloc.
+/// @param     old_size Size of buffer before reallocating. Must be less than @c new_size.
+/// @param     new_size Size of buffer after reallocating. Must be greater than @c old_size.
+/// @return
+///     - @c NULL: If reallocation failed.
+///     - Pointer: Pointer to buffer if reallocation succeeded.
+void* memory_realloc( void* memory, size_t old_size, size_t new_size );
+/// @brief Free memory allocated on the heap.
+/// @details
+/// Only use memory returned from memory_realloc or memory_free.
+/// @param[in] memory Pointer to start of buffer allocated with memory_alloc.
+/// @param     size   Size of allocated buffer.
+void memory_free( void* memory, size_t size );
+/// @brief Query bytes currently allocated on the heap.
+/// @return Bytes currently allocated.
 size_t memory_query_allocated(void);
+/// @brief Query bytes allocated on the heap over the entire run of the program.
+/// @return Bytes allocatd.
 size_t memory_query_total_allocated(void);
-void   memory_set( void* memory, char value, size_t size );
-void   memory_zero( void* memory, size_t size );
-void   memory_copy( void* restrict dst, const void* restrict src, size_t size );
-void   memory_move( void* dst, const void* src, size_t size );
-_Bool  memory_cmp( const void* a, const void* b, size_t size );
+/// @brief Set range of memory to given value.
+/// @param[in] memory Pointer to start of memory range.
+/// @param     value  Value to set bytes in memory range to.
+/// @param     size   Size of memory range to set.
+void memory_set( void* memory, int8_t value, size_t size );
+/// @brief Set range of memory to zero.
+/// @param[in] memory Pointer to start of memory range.
+/// @param     size   Size of memory range to set.
+void memory_zero( void* memory, size_t size );
+/// @brief Copy range of memory to equally sized range.
+///     Memory ranges must not overlap.
+/// @param[in] dst  Pointer to start of destination memory range.
+/// @param[in] src  Constant pointer to start of source memory range.
+/// @param     size Size of memory ranges.
+void memory_copy( void* restrict dst, const void* restrict src, size_t size );
+/// @brief Copy range of memory to equally sized range. Memory ranges can be overlapping each other.
+/// @param[in] dst  Pointer to start of destination memory range.
+/// @param[in] src  Constant pointer to start of source memory range.
+/// @param     size Size of memory ranges.
+void memory_move( void* dst, const void* src, size_t size );
+/// @brief Compare two memory ranges for equality.
+/// @param[in] a, b Constant pointers to equally sized memory ranges.
+/// @param     size Size of memory ranges to compare.
+/// @return
+///     - @c True:  If memory ranges are identical.
+///     - @c False: If memory ranges differ.
+bool_t memory_cmp( const void* a, const void* b, size_t size );
+/// @brief Calculate ascii length of null-terminated string.
+/// @param[in] string (optional) Pointer to start of null-terminated ascii string.
+/// @return Length of ascii null-terminated string.
+size_t cstr_len( const char* string );
+/// @brief Calculate UTF-8 length of null-terminated string.
+/// @details
+/// This function does NOT check that string is valid UTF-8.
+/// @param[in] string (optional) Constant pointer to start of null-terminated UTF-8 string.
+/// @return Length of UTF-8 null-terminated string.
+size_t cstr_len_utf8( const char* string );
+/// @brief Compare two null-terminated strings for equality.
+/// @param[in] a, b Constant pointers to strings to compare.
+/// @return
+///     - @c True:  If @c a and @c b are identical.
+///     - @c False: If @c a and @c b differ.
+bool_t cstr_cmp( const char* a, const char* b );
+/// @brief Find ascii character in null-terminated string.
+/// @param[in]  string      Constant pointer to null-terminated string to search in.
+/// @param      c           Ascii character to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write index of character to. (if it was found)
+/// @return
+///     - @c True: If @c c was found in @c string. If @c opt_out_pos is not NULL, index of @c c is written to it.
+///     - @c False: @c c was not found in @c string.
+bool_t cstr_find( const char* string, char c, size_t* opt_out_pos );
+/// @brief Find last matching ascii character in null-terminated string.
+/// @param[in]  string      Constant pointer to null-terminated string to search in.
+/// @param      c           Ascii character to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write index of character. (if it was found)
+/// @return
+///     - @c True: If @c c was found in @c string. If @c opt_out_pos is not NULL, index of @c c is written to it.
+///     - @c False: @c c was not found in @c string.
+bool_t cstr_find_last( const char* string, char c, size_t* opt_out_pos );
+/// @brief Find set of ascii characters in null-terminated string.
+/// @param[in]  string      Constant pointer to null-terminated string to search in.
+/// @param[in]  set         Constant pointer to null-terminated string containg unique ascii characters to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write index of first character in set found. (if any were found)
+/// @return
+///     - @c True:  If any characters in @c set were found in @c string.
+///     - @c False: If no characters in @c set were found in @c string.
+bool_t cstr_find_set( const char* string, const char* set, size_t* opt_out_pos );
+/// @brief Find substring in null-terminated string.
+/// @param[in]  string      Constant pointer to null-terminated string to search in.
+/// @param[in]  substr      Constant pointer to null-terminated string to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write index of first character in @c substr found in @c string. (if substring was found)
+/// @return
+///     - @c True:  If @c substr was found in @c string.
+///     - @c False: If @c substr was not found in @c string.
+bool_t cstr_find_cstr(
+    const char* string, const char* substr, size_t* opt_out_pos );
 
-#define substr_empty()\
-    (substring){ .cc=0, .len=0 }
-#define substr_text( literal )\
-    (substring){ .cc=literal, .len=sizeof(literal) - 1 }
-#define substr_new( opt_len, string )\
-    (substring){ .cc=string, .len=opt_len ? opt_len : string_len( string ) }
-#define substr_from_dstring( dstring )\
-    (substring){ .cc=dstring, .len=dstring_len( dstring ) }
-_Bool      substr_is_empty( substring substr );
-_Bool      substr_is_null_terminated( substring substr );
-_Bool      substr_cmp( substring a, substring b );
-_Bool      substr_cmp_max( substring a, substring b );
-_Bool      substr_find( substring substr, char c, size_t* opt_out_pos );
-_Bool      substr_find_last( substring substr, char c, size_t* opt_out_pos );
-_Bool      substr_find_set( substring substr, substring set, size_t* opt_out_pos );
-_Bool      substr_find_last_set(
-    substring substr, substring set, size_t* opt_out_pos );
-_Bool      substr_find_substr(
-    substring source, substring substr, size_t* opt_out_pos );
-char*      substr_first( substring substr );
-char*      substr_last( substring substr );
-substring  substr_advance( substring substr );
-substring  substr_advance_by( substring substr, size_t amount );
-substring  substr_truncate( substring substr, size_t max );
-substring  substr_trim( substring substr, size_t amount );
-substring  substr_trim_ws_lead( substring substr );
-substring  substr_trim_ws_trail( substring substr );
-substring  substr_trim_ws( substring substr );
-size_t     substr_len_utf8( substring substr );
-substring* substr_darray_from_arg( int argc, char** argv );
-substring* substr_darray_from_delim( substring source, substring delim );
-
-size_t string_len( const char* string );
-size_t string_len_utf8( const char* string );
-_Bool  string_cmp( const char* a, const char* b );
-_Bool  string_find( const char* string, char c, size_t* out_pos );
-_Bool  string_find_last( const char* string, char c, size_t* out_pos );
-_Bool  string_find_set( const char* string, const char* set, size_t* out_pos );
-_Bool  string_find_string(
-    const char* string, const char* substr, size_t* out_pos );
+/// @brief Create empty string slice.
+/// @return (StringSlice) Empty slice.
+#define string_slice_empty()\
+    (StringSlice){ .cc=0, .len=0 }
+/// @brief Create string slice from string literal.
+/// @param literal (string literal) String literal.
+/// @return (StringSlice) String slice.
+#define string_slice_text( literal )\
+    (StringSlice){ .cc=literal, .len=sizeof(literal) - 1 }
+/// @brief Create string slice from length and C string.
+/// @param opt_len (optional) Length of string. If zero, calculates length of string using cstr_len.
+/// @param string (const char*) Constant pointer to string.
+/// @return (StringSlice) String slice.
+#define string_slice_new( opt_len, string )\
+    (StringSlice){ .cc=string, .len=opt_len ? opt_len : cstr_len( string ) }
+/// @brief Create string slice from dynamic string.
+/// @param dstring (DynamicString*) Pointer to dynamic string array.
+/// @return (StringSlice) String slice.
+#define string_slice_from_dstring( dstring )\
+    (StringSlice){ .cc=dstring, .len=dstring_len( dstring ) }
+/// @brief Check if string slice is empty.
+/// @param string String slice to check.
+/// @return
+///     - @c True:  @c string's length is not zero.
+///     - @c False: @c string's length is zero.
+bool_t string_slice_is_empty( StringSlice string );
+/// @brief Check if string slice points to a null-terminated string.
+/// @param string String slice to check.
+/// @return
+///     - @c True:  @c string is null-terminated.
+///     - @c False: @c string is not null-terminated.
+bool_t string_slice_is_null_terminated( StringSlice string );
+/// @brief Compare two string slices for equality.
+/// @param a, b String slices to compare.
+/// @return
+///     - @c True:  Contents of @c a and @c b are equal and they have matching lengths.
+///     - @c False: Contents of @c a and @c b do not match or their lengths are different.
+bool_t string_slice_cmp( StringSlice a, StringSlice b );
+/// @brief Compare two string slice for equality. Compares up to shortest length.
+/// @details
+/// If either string is empty, returns false.
+/// @param a, b String slices to compare.
+/// @return
+///     - @c True:  Contents of @c a and @c b match up to shortest length.
+///     - @c False: Contents of @c a and @c b do not match.
+bool_t string_slice_cmp_clamped( StringSlice a, StringSlice b );
+/// @brief Find ascii character in string slice.
+/// @param      string      String slice to search in.
+/// @param      c           Character to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write position to if @c c is found.
+/// @return
+///     - @c True:  Character @c c was found in @c string.
+///     - @c False: Character @c c was not found in @c string.
+bool_t string_slice_find( StringSlice string, char c, size_t* opt_out_pos );
+/// @brief Find ascii character in string slice. Searches from end of slice.
+/// @param      string      String slice to search in.
+/// @param      c           Character to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write position to if @c c is found.
+/// @return
+///     - @c True:  Character @c c was found in @c string.
+///     - @c False: Character @c c was not found in @c string.
+bool_t string_slice_find_last( StringSlice string, char c, size_t* opt_out_pos );
+/// @brief Search for any ascii character in set in string slice.
+/// @param      string      String slice to search in.
+/// @param      set         Set of characters to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write position of first character in set if any are found.
+/// @return
+///     - @c True:  Any character in @c set was found in @c string.
+///     - @c False: No character in @c set was found in @c string.
+bool_t string_slice_find_set( StringSlice string, StringSlice set, size_t* opt_out_pos );
+/// @brief Search for any ascii character in set in string slice. Searches from end of slice.
+/// @param      string      String slice to search in.
+/// @param      set         Set of characters to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write position of first character in set if any are found.
+/// @return
+///     - @c True:  Any character in @c set was found in @c string.
+///     - @c False: No character in @c set was found in @c string.
+bool_t string_slice_find_last_set(
+    StringSlice string, StringSlice set, size_t* opt_out_pos );
+/// @brief Search for substring in string slice.
+/// @param      source      String slice to search in.
+/// @param      substring   Substring to search for.
+/// @param[out] opt_out_pos (optional) Pointer to write position of first character in substring found in source string.
+/// @return
+///     - @c True:  @c substring was found in @c source string.
+///     - @c False: @c substring was not found in @c source string.
+bool_t string_slice_find_string_slice(
+    StringSlice source, StringSlice substring, size_t* opt_out_pos );
+/// @brief Get pointer to first character in string slice.
+/// @param string String to get first character from.
+/// @return
+///     - @c NULL:    @c string is empty.
+///     - @c Pointer: Pointer to first character in @c string.
+char* string_slice_first( StringSlice string );
+/// @brief Get pointer to last character in string slice.
+/// @param string String to get last character from.
+/// @return
+///     - @c NULL:    @c string is empty.
+///     - @c Pointer: Pointer to last character in @c string.
+char* string_slice_last( StringSlice string );
+/// @brief Move string slice up by one character and shorten by one character.
+/// @param string String slice to advance.
+/// @return
+///     - @c Empty slice: Reached the end of @c string.
+///     - @c Slice: Shortened slice.
+StringSlice string_slice_advance( StringSlice string );
+/// @brief Move string slice up by n characters and shorten by n characters.
+/// @param string String slice to advance.
+/// @param amount Amount to advance by. If greater than @c string.len, returns empty string.
+/// @return
+///     - @c Empty slice: Reached the end of @c string.
+///     - @c Slice: Shortened slice.
+StringSlice string_slice_advance_by( StringSlice string, size_t amount );
+/// @brief Shorten length of string slice.
+/// @param string String slice to shorten.
+/// @param max    Maximum length.
+/// @return
+///     - @c Empty slice:     @c max was zero.
+///     - @c Same slice:      @c max was greater than @c string.len.
+///     - @c Shortened slice: @c string length is set to @c max.
+StringSlice string_slice_truncate( StringSlice string, size_t max );
+/// @brief Subtract from string slice's length.
+/// @param string String slice to shorten.
+/// @param amount Amount of characters to shorten slice by.
+/// @return
+///     - @c Empty slice:     @c amount is greater than or equals to @c string.len
+///     - @c Shortened slice: @c amount is less than @c string.len
+StringSlice string_slice_trim( StringSlice string, size_t amount );
+/// @brief Remove leading whitespace from string slice.
+/// @param string String to remove leading whitespace from.
+/// @return Trimmed string slice. Empty if entire string was whitespace.
+StringSlice string_slice_trim_ws_lead( StringSlice string );
+/// @brief Remove trailing whitespace from string slice.
+/// @param string String to remove trailing whitespace from.
+/// @return Trimmed string slice. Empty if entire string was whitespace.
+StringSlice string_slice_trim_ws_trail( StringSlice string );
+/// @brief Remove leading and trailing whitespace from string slice.
+/// @param string String to remove whitespace from.
+/// @return Trimmed string slice. Empty if entire string was whitespace.
+StringSlice string_slice_trim_ws( StringSlice string );
+/// @brief Calculate UTF-8 length of string slice.
+/// @details
+/// This function does NOT check that string is valid UTF-8.
+/// @param string String to calculate length of.
+/// @return UTF-8 length of string.
+size_t string_slice_len_utf8( StringSlice string );
+StringSlice* string_slice_darray_from_arg( int argc, char** argv );
+StringSlice* string_slice_darray_from_delim( StringSlice source, StringSlice delim );
 
 const char* local_fmt( const char* format, ... );
 const char* local_fmt_va( const char* format, va_list va );
 const char* local_fmt_bytesize( size_t bytes );
 
-dstring* dstring_empty( size_t size );
-dstring* dstring_new( size_t opt_len, const char* source );
+DynamicString* dstring_empty( size_t size );
+DynamicString* dstring_new( size_t opt_len, const char* source );
 #define  dstring_literal( literal ) dstring_new( sizeof(literal) - 1, literal )
-#define  dstring_from_substr( substr ) dstring_new( (substr)->len, (substr)->cc )
-dstring* dstring_concat_array_substr( size_t len, substring* strings, substring sep );
-dstring* dstring_concat_array( size_t len, const char** strings, const char* sep );
-dstring* dstring_fmt_va( const char* format, va_list va );
-dstring* dstring_fmt( const char* format, ... );
-dstring* dstring_clone( const dstring* source );
-void     dstring_free( dstring* string );
-void*    dstring_head( dstring* string );
-dstring* dstring_grow( dstring* string, size_t amount );
-void     dstring_clear( dstring* string );
-void     dstring_truncate( dstring* string, size_t max_len );
-size_t   dstring_len( const dstring* string );
-size_t   dstring_cap( const dstring* string );
-size_t   dstring_remaining( const dstring* string );
-_Bool    dstring_is_empty( const dstring* string );
-_Bool    dstring_is_full( const dstring* string );
-dstring* dstring_concat( const dstring* left, const dstring* right );
-dstring* dstring_concat_substr( substring left, substring right );
-dstring* dstring_concat_str( const char* left, const char* right );
-dstring* dstring_prepend( dstring* string, const dstring* prepend );
-dstring* dstring_prepend_substr( dstring* string, substring prepend );
-dstring* dstring_prepend_str( dstring* string, const char* prepend );
-dstring* dstring_append( dstring* string, const dstring* append );
-dstring* dstring_append_substr( dstring* string, substring append );
-dstring* dstring_append_str( dstring* string, const char* append );
-dstring* dstring_insert( dstring* string, const dstring* insert, size_t index );
-dstring* dstring_insert_substr( dstring* string, substring insert, size_t index );
-dstring* dstring_insert_str( dstring* string, const char* insert, size_t index );
-dstring* dstring_push( dstring* string, char c );
-_Bool    dstring_pop( dstring* string, char* opt_out_c );
-_Bool    dstring_remove( dstring* string, size_t index );
-dstring* dstring_emplace( dstring* string, char c, size_t index );
+#define  dstring_from_string_slice( substr ) dstring_new( (substr)->len, (substr)->cc )
+DynamicString* dstring_concat_array_string_slice( size_t len, StringSlice* strings, StringSlice sep );
+DynamicString* dstring_concat_array( size_t len, const char** strings, const char* sep );
+DynamicString* dstring_fmt_va( const char* format, va_list va );
+DynamicString* dstring_fmt( const char* format, ... );
+DynamicString* dstring_clone( const DynamicString* source );
+void     dstring_free( DynamicString* string );
+void*    dstring_head( DynamicString* string );
+DynamicString* dstring_grow( DynamicString* string, size_t amount );
+void     dstring_clear( DynamicString* string );
+void     dstring_truncate( DynamicString* string, size_t max_len );
+size_t   dstring_len( const DynamicString* string );
+size_t   dstring_cap( const DynamicString* string );
+size_t   dstring_remaining( const DynamicString* string );
+bool_t    dstring_is_empty( const DynamicString* string );
+bool_t    dstring_is_full( const DynamicString* string );
+DynamicString* dstring_concat( const DynamicString* left, const DynamicString* right );
+DynamicString* dstring_concat_string_slice( StringSlice left, StringSlice right );
+DynamicString* dstring_concat_str( const char* left, const char* right );
+DynamicString* dstring_prepend( DynamicString* string, const DynamicString* prepend );
+DynamicString* dstring_prepend_string_slice( DynamicString* string, StringSlice prepend );
+DynamicString* dstring_prepend_str( DynamicString* string, const char* prepend );
+DynamicString* dstring_append( DynamicString* string, const DynamicString* append );
+DynamicString* dstring_append_string_slice( DynamicString* string, StringSlice append );
+DynamicString* dstring_append_str( DynamicString* string, const char* append );
+DynamicString* dstring_insert( DynamicString* string, const DynamicString* insert, size_t index );
+DynamicString* dstring_insert_string_slice( DynamicString* string, StringSlice insert, size_t index );
+DynamicString* dstring_insert_str( DynamicString* string, const char* insert, size_t index );
+DynamicString* dstring_push( DynamicString* string, char c );
+bool_t    dstring_pop( DynamicString* string, char* opt_out_c );
+bool_t    dstring_remove( DynamicString* string, size_t index );
+DynamicString* dstring_emplace( DynamicString* string, char c, size_t index );
 
 void array_sort( SortCmpFN* cmp, size_t stride, size_t len, void* array );
 void swap_generic( size_t stride, void* a, void* b, void* swap );
@@ -267,8 +768,8 @@ size_t darray_len( const void* darray );
 size_t darray_cap( const void* darray );
 size_t darray_stride( const void* darray );
 size_t darray_remaining( const void* darray );
-_Bool  darray_is_empty( const void* darray );
-_Bool  darray_is_full( const void* darray );
+bool_t  darray_is_empty( const void* darray );
+bool_t  darray_is_full( const void* darray );
 void   darray_truncate( void* darray, size_t max );
 void   darray_clear( void* darray );
 void*  darray_filter( void* darray, FilterFN* filter, void* filter_params );
@@ -281,10 +782,10 @@ void*  darray_split( void* darray, size_t at );
 void*  darray_extend( void* darray, size_t count, const void* extend );
 void*  darray_get( void* darray, size_t index );
 void*  darray_push( void* darray, const void* item );
-_Bool  darray_push_try( void* darray, const void* item );
+bool_t  darray_push_try( void* darray, const void* item );
 void*  darray_pop( void* darray );
 void*  darray_insert( void* darray, size_t index, const void* item );
-_Bool  darray_remove( void* darray, size_t at, void* opt_out_item );
+bool_t  darray_remove( void* darray, size_t at, void* opt_out_item );
 #define darray_empty( type, cap )\
     (type*)darray_empty_generic( sizeof(type), cap )
 #define darray_new( type, ... )\
@@ -300,112 +801,107 @@ _Bool  darray_remove( void* darray, size_t at, void* opt_out_item );
         __sync_synchronize()        
 #endif
 
-#if defined(_WIN32)
-    unsigned long atomic_add( Atom* ptr, unsigned long val );
-    unsigned long atomic_sub( Atom* ptr, unsigned long val );
+uint32_t atomic_add( Atom* atom, uint32_t val );
+uint32_t atomic_sub( Atom* atom, uint32_t val );
+uint64_t atomic_add64( Atom64* atom, uint64_t val );
+uint64_t atomic_sub64( Atom64* atom, uint64_t val );
 
-    unsigned long long atomic_add64( Atom64* ptr, unsigned long long val );
-    unsigned long long atomic_sub64( Atom64* ptr, unsigned long long val );
-#else
-    unsigned int atomic_add( Atom* ptr, unsigned int val );
-    unsigned int atomic_sub( Atom* ptr, unsigned int val );
-
-    unsigned long atomic_add64( Atom64* ptr, unsigned long val );
-    unsigned long atomic_sub64( Atom64* ptr, unsigned long val );
-#endif
 void  thread_sleep( uint32_t ms );
 
-_Bool mutex_create( Mutex* out_mtx );
+#if COMPILER_CURRENT == COMPILER_MSVC
+    #define mutex_null() {0} 
+#else
+    #define mutex_null() (Mutex){ .handle=0 }
+#endif
+bool_t mutex_create( Mutex* out_mtx );
 void  mutex_destroy( Mutex* mtx );
-_Bool mutex_lock( Mutex* mtx, uint32_t ms );
+bool_t mutex_lock( Mutex* mtx, uint32_t ms );
 void  mutex_unlock( Mutex* mtx );
 
-_Bool semaphore_create( Semaphore* out_sem );
+#define semaphore_null()  (Semaphore){ .handle=0 }
+bool_t semaphore_create( Semaphore* out_sem );
 void  semaphore_destroy( Semaphore* sem );
-_Bool semaphore_wait( Semaphore* sem, uint32_t ms );
+bool_t semaphore_wait( Semaphore* sem, uint32_t ms );
 void  semaphore_signal( Semaphore* sem );
 
-_Bool job_enqueue( JobFN* job, void* params, uint32_t ms );
-_Bool job_wait( uint32_t ms );
-_Bool job_wait_all( uint32_t ms );
+bool_t job_enqueue( JobFN* job, void* params, uint32_t ms );
+bool_t job_wait( uint32_t ms );
+bool_t job_wait_all( uint32_t ms );
 
-_Bool    pipe_create( Pipe* out_read, Pipe* out_write );
+#define pipe_null()       (Pipe){ .handle=0 }
+bool_t    pipe_create( Pipe* out_read, Pipe* out_write );
 uint32_t pipe_peek( Pipe* rpipe );
-_Bool    pipe_read(
+bool_t    pipe_read(
     Pipe* rpipe, uint32_t buf_size, void* buf, uint32_t* out_read_size );
-_Bool    pipe_write(
+bool_t    pipe_write(
     Pipe* wpipe, uint32_t buf_size, const void* buf, uint32_t* out_write_size );
-_Bool    pipe_write_fmt_va( Pipe* wpipe, const char* format, va_list va );
-_Bool    pipe_write_fmt( Pipe* wpipe, const char* format, ... );
+bool_t    pipe_write_fmt_va( Pipe* wpipe, const char* format, va_list va );
+bool_t    pipe_write_fmt( Pipe* wpipe, const char* format, ... );
 void     pipe_close( Pipe* pipe );
-_Bool    pipe_check( Pipe* pipe );
+bool_t    pipe_check( Pipe* pipe );
 
-_Bool program_in_path( const char* prog );
-_Bool program_exec( const char* command_line, int* opt_out_res );
-_Bool program_exec_async(
+#define pid_null() (ProcessID){ .handle=0 }
+bool_t program_in_path( const char* prog );
+bool_t program_exec( const char* command_line, int* opt_out_res );
+bool_t program_exec_async(
     const char* command_line,
     Pipe* opt_stdin_r, Pipe* opt_stdout_w, Pipe* opt_stderr_w,
     ProcessID* out_pid );
-_Bool program_wait( ProcessID pid, uint32_t ms, int* opt_out_res );
+bool_t program_wait( ProcessID pid, uint32_t ms, int* opt_out_res );
 void  program_terminate( ProcessID pid );
 void  program_close( ProcessID pid );
 
 double time_seconds(void);
 double time_milliseconds(void);
 
-dstring* path_push_chunk( dstring* path, const char* chunk );
-dstring* path_push_chunk_substr( dstring* path, substring chunk );
-_Bool    path_peek_chunk(
+DynamicString*   path_push_chunk( DynamicString* path, const char* chunk );
+DynamicString*   path_push_chunk_string_slice( DynamicString* path, StringSlice chunk );
+bool_t      path_peek_chunk(
     const char* path, size_t* out_chunk_len, const char** out_chunk );
-_Bool    path_peek_chunk_substr( substring path, substring* out_chunk );
-_Bool    path_pop_chunk(
-    dstring* path, size_t opt_chunk_size, char* opt_out_chunk );
-_Bool    path_file_name( substring path, substring* out_chunk );
-substring* path_split_chunks_substr( substring path );
-substring* path_split_chunks( const char* path );
-_Bool    path_glob_match_substr( substring path, substring glob );
-_Bool    path_glob_match( const char* path, const char* glob );
+bool_t      path_peek_chunk_string_slice( StringSlice path, StringSlice* out_chunk );
+bool_t      path_pop_chunk(
+    DynamicString* path, size_t opt_chunk_size, char* opt_out_chunk );
+bool_t      path_file_name( StringSlice path, StringSlice* out_chunk );
+StringSlice* path_split_chunks_string_slice( StringSlice path );
+StringSlice* path_split_chunks( const char* path );
+bool_t      path_glob_match_string_slice( StringSlice path, StringSlice glob );
+bool_t      path_glob_match( const char* path, const char* glob );
 
-_Bool path_find_files( const char* path, FindFiles* out_result );
-_Bool path_find_files_substr( substring path, FindFiles* out_result );
+bool_t path_find_files( const char* path, FindFiles* out_result );
+bool_t path_find_files_string_slice( StringSlice path, FindFiles* out_result );
 void  path_find_files_free( FindFiles* ff );
 
-_Bool file_open( const char* path, FileOpenFlags flags, File* out_file );
-_Bool file_write( File* file, size_t size, const void* buf );
-_Bool file_write_fmt_va( File* file, const char* format, va_list va );
-_Bool file_write_fmt( File* file, const char* format, ... );
-_Bool file_read( File* file, size_t size, void* buf );
-void  file_close( File* file );
-_Bool file_check( File* file );
-_Bool file_truncate( File* file );
-_Bool file_seek( File* file, FileSeekType type, ssize_t seek );
-_Bool file_query_seek( File* file, ssize_t* out_seek );
-_Bool file_path_query_create( const char* path, time_t* out_time );
-_Bool file_path_query_modify( const char* path, time_t* out_time );
-_Bool file_path_move( const char* dst, const char* src );
-_Bool file_path_copy( const char* dst, const char* src );
-_Bool file_path_remove( const char* path );
+#define file_null()\
+    (File){ .handle=0, .type=FT_UNKNOWN, .create=0, .modify=0, .size=0 }
+bool_t file_open( const char* path, FileFlags flags, File* out_file );
+bool_t file_write( File* file, size_t size, const void* buf );
+bool_t file_write_fmt_va( File* file, const char* format, va_list va );
+bool_t file_write_fmt( File* file, const char* format, ... );
+bool_t file_read( File* file, size_t size, void* buf );
+void   file_close( File* file );
+bool_t file_check( File* file );
+bool_t file_truncate( File* file );
+bool_t file_seek( File* file, FileSeek type, ssize_t seek );
+bool_t file_query_seek( File* file, ssize_t* out_seek );
+bool_t file_path_exists( const char* path );
+bool_t file_path_query_create( const char* path, time_t* out_time );
+bool_t file_path_query_modify( const char* path, time_t* out_time );
+bool_t file_path_move( const char* dst, const char* src );
+bool_t file_path_copy( const char* dst, const char* src );
+bool_t file_path_remove( const char* path );
+
+bool_t file_find_string_slice(
+    StringSlice pattern, FileFindFlags flags, DynamicString** out_result );
+
+// TODO(alicia): rewrite
 FileTimeCmp file_path_time_cmp(
     const char* lhs, const char* rhs, FileTimeCmpWhich which );
 FileTimeCmp file_path_time_cmp_multi(
     const char* lhs, size_t count, const char** rhs, FileTimeCmpWhich which );
-FileTimeCmp file_path_time_cmp_multi_substr(
-    const char* lhs, size_t count, substring* rhs, FileTimeCmpWhich which );
+FileTimeCmp file_path_time_cmp_multi_string_slice(
+    const char* lhs, size_t count, StringSlice* rhs, FileTimeCmpWhich which );
 
-Compiler query_compiler(void);
-Platform query_platform(void);
-Arch     query_arch(void);
-_Bool    query_64bit(void);
-_Bool    compiler_is_mingw(void);
-_Bool    platform_is_posix( Platform platform );
-
-const char* cbuild_compiler(void);
-const char* cbuild_command_line(void);
-const char* cbuild_compile_time(void);
-
-void _init_( const char* argv0, const char* file, LogLevel log );
-#define init( log_level )\
-    _init_( argv[0], __FILE__, log_level )
+// NOTE(alicia): end: Functions
 
 #endif /* Header Guard */
 
@@ -434,12 +930,16 @@ void _init_( const char* argv0, const char* file, LogLevel log );
             #define COMPILER_CFLAGS\
                 " -O0 -g -gcodeview -fuse-ld=lld -Wl,/debug "
         #else
-            #define COMPILER_CFLAGS " -O0 -g "
+            #define COMPILER_CFLAGS " -O0 -g"
         #endif
     #else
         #define COMPILER_CFLAGS " -O2 "
     #endif
-    #if !defined(_WIN32)
+    #if defined(_WIN32)
+        #if defined(__MINGW32__)
+            #define COMPILER_ADDITIONAL_FLAGS "-femulated-tls"
+        #endif
+    #else
         #define COMPILER_ADDITIONAL_FLAGS\
             " -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=199309L -lpthread"
     #endif
@@ -503,11 +1003,30 @@ static const char* global_compile_time = "";
 
 static LogLevel global_log_level = LOG_LEVEL_INFO;
 
-_Bool internal_thread_create( JobFN* proc, void* params );
+bool_t internal_thread_create( JobFN* proc, void* params );
 
 static Mutex global_log_mtx = mutex_null();
 
 // NOTE(alicia): C-stdlib implementation
+
+static bool_t file_flags_valid( FileFlags flags ) {
+    if( !( flags & FF_READ | FF_WRITE ) ) {
+        cb_error( "File flags must have READ and/or WRITE set!" );
+        return false;
+    }
+    if( flags & FF_TRUNCATE ) {
+        if( flags & FF_APPEND ) {
+            cb_error( "File flag APPEND and TRUNCATE cannot be set at the same time!" );
+            return false;
+        }
+        if( flags & FF_READ ) {
+            cb_error( "File flag TRUNCATE and READ cannot be set at the same time!" );
+            return false;
+        }
+    }
+
+    return true;
+}
 
 FileTimeCmp file_path_time_cmp(
     const char* lhs, const char* rhs, FileTimeCmpWhich which
@@ -564,8 +1083,8 @@ FileTimeCmp file_path_time_cmp_multi(
     }
     return res;
 }
-FileTimeCmp file_path_time_cmp_multi_substr(
-    const char* lhs, size_t count, substring* rhs, FileTimeCmpWhich which
+FileTimeCmp file_path_time_cmp_multi_string_slice(
+    const char* lhs, size_t count, StringSlice* rhs, FileTimeCmpWhich which
 ) {
     FileTimeCmp res = FILE_TIME_CMP_EQUAL;
     for( size_t i = 0; i < count; ++i ) {
@@ -584,8 +1103,8 @@ FileTimeCmp file_path_time_cmp_multi_substr(
     return res;
 }
 
-_Bool path_find_files( const char* path, FindFiles* out_result ) {
-    return path_find_files_substr( substr_new( 0, path ), out_result );
+bool_t path_find_files( const char* path, FindFiles* out_result ) {
+    return path_find_files_string_slice( string_slice_new( 0, path ), out_result );
 }
 void path_find_files_free( FindFiles* ff ) {
     if( ff ) {
@@ -599,13 +1118,13 @@ void path_find_files_free( FindFiles* ff ) {
     }
 }
 
-_Bool pipe_write_fmt_va( Pipe* wpipe, const char* format, va_list va ) {
-    dstring* str = dstring_fmt_va( format, va );
+bool_t pipe_write_fmt_va( Pipe* wpipe, const char* format, va_list va ) {
+    DynamicString* str = dstring_fmt_va( format, va );
     if( !str ) {
         cb_error( "pipe_write_fmt: failed to format string!" );
         return false;
     }
-    substring substr = substr_from_dstring( str );
+    StringSlice substr = string_slice_from_dstring( str );
     while( substr.len ) {
         uint32_t written = 0;
         if( !pipe_write( wpipe, substr.len, substr.cc, &written ) ) {
@@ -613,15 +1132,15 @@ _Bool pipe_write_fmt_va( Pipe* wpipe, const char* format, va_list va ) {
             return false;
         }
 
-        substr = substr_advance_by( substr, written );
+        substr = string_slice_advance_by( substr, written );
     }
     dstring_free( str );
     return true;
 }
-_Bool pipe_write_fmt( Pipe* wpipe, const char* format, ... ) {
+bool_t pipe_write_fmt( Pipe* wpipe, const char* format, ... ) {
     va_list va;
     va_start( va, format );
-    _Bool res = pipe_write_fmt_va( wpipe, format, va );
+    bool_t res = pipe_write_fmt_va( wpipe, format, va );
     va_end( va );
     return res;
 }
@@ -636,20 +1155,11 @@ struct JobQueue {
     Atom status;
     Atom front, back;
     Atom len;
-    struct JobEntry entries[];
+    struct JobEntry entries[32];
 };
-#if !defined(MAX_THREADS) || MAX_THREADS == 0
-    #undef MAX_THREADS
-    #define MAX_THREADS (8)
-#endif
-#if !defined(MAX_JOBS) || MAX_JOBS == 0
-    #undef  MAX_JOBS
-    #define MAX_JOBS    (32)
-#endif
-
 static struct JobQueue* global_queue = NULL;
 
-_Bool job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
+bool_t job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
     if( !queue->len ) {
         return false;
     }
@@ -659,7 +1169,7 @@ _Bool job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
 
     memory_fence();
 
-    *out_entry = queue->entries[ (front + 1) % MAX_JOBS ];
+    *out_entry = queue->entries[ (front + 1) % static_array_len( queue->entries ) ];
     return true;
 }
 
@@ -689,12 +1199,12 @@ void job_queue_proc( uint32_t id, void* params ) {
     }
 }
 
-_Bool ___create_queue(void) {
+bool_t ___create_queue(void) {
     if( global_queue ) {
         return true;
     }
     cb_info( "creating job queue . . ." );
-    size_t buf_size = sizeof(struct JobQueue) + (sizeof(struct JobEntry) * MAX_JOBS);
+    size_t buf_size = sizeof(struct JobQueue);
     struct JobQueue* queue = memory_alloc( buf_size );
     if( !queue ) {
         cb_error( "failed to allocate job queue!" );
@@ -709,7 +1219,7 @@ _Bool ___create_queue(void) {
 
     memory_fence();
 
-    for( size_t i = 0; i < MAX_THREADS; ++i ) {
+    for( size_t i = 0; i < THREAD_COUNT; ++i ) {
         if( !internal_thread_create( job_queue_proc, queue ) ) {
             cb_error( "failed to spawn thread!" );
             semaphore_destroy( &queue->wakeup );
@@ -725,25 +1235,25 @@ _Bool ___create_queue(void) {
     memory_fence();
     atomic_add( &queue->status, 1 );
 
-    cb_info( "job queue created with %u threads.", MAX_THREADS );
+    cb_info( "job queue created with %u threads.", THREAD_COUNT );
     global_queue = queue;
 
     return true;
 }
 
-_Bool job_enqueue( JobFN* job, void* params, uint32_t ms ) {
+bool_t job_enqueue( JobFN* job, void* params, uint32_t ms ) {
     if( !___create_queue() ) {
         return false;
     }
 
     if( ms ) {
-        if( global_queue->len >= MAX_JOBS ) {
+        if( global_queue->len >= static_array_len( global_queue->entries ) ) {
             if( !job_wait( ms ) ) {
                 return false;
             }
         }
     } else {
-        if( global_queue->len >= MAX_JOBS ) {
+        if( global_queue->len >= static_array_len( global_queue->entries ) ) {
             return false;
         }
     }
@@ -758,7 +1268,7 @@ _Bool job_enqueue( JobFN* job, void* params, uint32_t ms ) {
     entry.fn     = job;
     entry.params = params;
 
-    global_queue->entries[back % MAX_JOBS] = entry;
+    global_queue->entries[back % static_array_len( global_queue->entries )] = entry;
 
     memory_fence();
 
@@ -767,7 +1277,7 @@ _Bool job_enqueue( JobFN* job, void* params, uint32_t ms ) {
     #undef check
     return true;
 }
-_Bool job_wait( uint32_t ms ) {
+bool_t job_wait( uint32_t ms ) {
     if( !global_queue ) {
         return true;
     }
@@ -790,7 +1300,7 @@ _Bool job_wait( uint32_t ms ) {
     }
     return false;
 }
-_Bool job_wait_all( uint32_t ms ) {
+bool_t job_wait_all( uint32_t ms ) {
     if( !global_queue ) {
         return true;
     }
@@ -809,8 +1319,8 @@ _Bool job_wait_all( uint32_t ms ) {
     return false;
 }
 
-_Bool file_write_fmt_va( File* file, const char* format, va_list va ) {
-    dstring* str = dstring_fmt_va( format, va );
+bool_t file_write_fmt_va( File* file, const char* format, va_list va ) {
+    DynamicString* str = dstring_fmt_va( format, va );
     if( !str ) {
         cb_error( "file_write_fmt: failed to format string!" );
     }
@@ -819,42 +1329,42 @@ _Bool file_write_fmt_va( File* file, const char* format, va_list va ) {
         return true;
     }
 
-    _Bool res = file_write( file, dstring_len( str ), str );
+    bool_t res = file_write( file, dstring_len( str ), str );
     dstring_free( str );
     return res;
 }
-_Bool file_write_fmt( File* file, const char* format, ... ) {
+bool_t file_write_fmt( File* file, const char* format, ... ) {
     va_list va;
     va_start( va, format );
-    _Bool res = file_write_fmt_va( file, format, va );
+    bool_t res = file_write_fmt_va( file, format, va );
     va_end( va );
     return res;
 }
-substring* path_split_chunks_substr( substring path ) {
+StringSlice* path_split_chunks_string_slice( StringSlice path ) {
     if( !path.len || !path.cc ) {
         cb_warn( "path_split_chunks: attempted to split empty path!" );
         return NULL;
     }
 
-    substring* res = darray_empty( substring, 10 );
+    StringSlice* res = darray_empty( StringSlice, 10 );
     if( !res ) {
         cb_error( "path_split_chunks: failed to allocate result!" );
         return NULL;
     }
     
-    substring subpath = path;
+    StringSlice subpath = path;
     while( subpath.len ) {
         size_t sep = 0;
-        if( substr_find( subpath, '/', &sep ) ) {
+        if( string_slice_find( subpath, '/', &sep ) ) {
             if( !sep ) {
-                subpath = substr_advance( subpath );
+                subpath = string_slice_advance( subpath );
                 continue;
             }
 
-            substring chunk = subpath;
+            StringSlice chunk = subpath;
             chunk.len       = sep;
 
-            substring* _new = darray_push( res, &chunk );
+            StringSlice* _new = darray_push( res, &chunk );
             if( !_new ) {
                 darray_free( res );
                 cb_error( "path_split_chunks: failed to reallocate result!" );
@@ -862,9 +1372,9 @@ substring* path_split_chunks_substr( substring path ) {
             }
 
             res     = _new;
-            subpath = substr_advance_by( subpath, sep + 1 );
+            subpath = string_slice_advance_by( subpath, sep + 1 );
         } else {
-            substring* _new = darray_push( res, &subpath );
+            StringSlice* _new = darray_push( res, &subpath );
             if( !_new ) {
                 darray_free( res );
                 cb_error( "path_split_chunks: failed to reallocate result!" );
@@ -877,10 +1387,10 @@ substring* path_split_chunks_substr( substring path ) {
 
     return res;
 }
-substring* path_split_chunks( const char* path ) {
-    return path_split_chunks_substr( substr_new( 0, path ) );
+StringSlice* path_split_chunks( const char* path ) {
+    return path_split_chunks_string_slice( string_slice_new( 0, path ) );
 }
-_Bool path_glob_match_substr( substring path, substring glob ) {
+bool_t path_glob_match_string_slice( StringSlice path, StringSlice glob ) {
     if( glob.len == 1 && *glob.cc == '*' ) {
         return true;
     }
@@ -889,42 +1399,42 @@ _Bool path_glob_match_substr( substring path, substring glob ) {
         if( *glob.cc != *path.cc && *glob.cc != '?' ) {
             return false;
         }
-        glob = substr_advance( glob );
-        path = substr_advance( path );
+        glob = string_slice_advance( glob );
+        path = string_slice_advance( path );
     }
 
-    substring mp, cp;
+    StringSlice mp, cp;
     while( path.len ) {
         if( *glob.cc == '*' ) {
-            glob = substr_advance( glob );
+            glob = string_slice_advance( glob );
             if( !glob.len ) {
                 return true;
             }
 
             mp = glob;
-            cp = substr_advance( path );
+            cp = string_slice_advance( path );
         } else if( *glob.cc == *path.cc || *glob.cc == '?' ) {
-            glob = substr_advance( glob );
-            path = substr_advance( path );
+            glob = string_slice_advance( glob );
+            path = string_slice_advance( path );
         } else {
             glob = mp;
-            cp   = substr_advance( cp );
+            cp   = string_slice_advance( cp );
             path = cp;
         }
     }
 
     while( glob.len && *glob.cc == '*' ) {
-        glob = substr_advance( glob );
+        glob = string_slice_advance( glob );
     }
     return glob.len ? false : true;
 }
-_Bool path_glob_match( const char* path, const char* glob ) {
-    return path_glob_match_substr( substr_new( 0, path ), substr_new( 0, glob ) );
+bool_t path_glob_match( const char* path, const char* glob ) {
+    return path_glob_match_string_slice( string_slice_new( 0, path ), string_slice_new( 0, glob ) );
 }
-dstring* path_push_chunk( dstring* path, const char* chunk ) {
-    return path_push_chunk_substr( path, substr_new( 0, chunk ) );
+DynamicString* path_push_chunk( DynamicString* path, const char* chunk ) {
+    return path_push_chunk_string_slice( path, string_slice_new( 0, chunk ) );
 }
-dstring* path_push_chunk_substr( dstring* path, substring chunk ) {
+DynamicString* path_push_chunk_string_slice( DynamicString* path, StringSlice chunk ) {
     if( !chunk.len ) {
         return path;
     }
@@ -940,15 +1450,15 @@ dstring* path_push_chunk_substr( dstring* path, substring chunk ) {
         head = dstring_head( dstring_push( head->buf, '/' ) );
     }
 
-    return dstring_append_substr( head->buf, chunk );
+    return dstring_append_string_slice( head->buf, chunk );
 }
-_Bool path_peek_chunk(
+bool_t path_peek_chunk(
     const char* path, size_t* out_chunk_len, const char** out_chunk
 ) {
-    substring chunk;
+    StringSlice chunk;
     memory_zero( &chunk, sizeof(chunk) );
-    _Bool res = path_peek_chunk_substr(
-        substr_new( 0, path ), &chunk );
+    bool_t res = path_peek_chunk_string_slice(
+        string_slice_new( 0, path ), &chunk );
 
     if( res ) {
         *out_chunk_len = chunk.len;
@@ -956,19 +1466,19 @@ _Bool path_peek_chunk(
     }
     return res;
 }
-_Bool path_peek_chunk_substr(
-    substring path, substring* out_chunk
+bool_t path_peek_chunk_string_slice(
+    StringSlice path, StringSlice* out_chunk
 ) {
     if( !path.len ) {
         return false;
     }
     size_t sep = 0;
-    if( substr_find_last( path, '/', &sep ) ) {
+    if( string_slice_find_last( path, '/', &sep ) ) {
         if( !sep ) {
             return false;
         }
-        substring chunk = path;
-        chunk = substr_advance_by( chunk, sep + 1 );
+        StringSlice chunk = path;
+        chunk = string_slice_advance_by( chunk, sep + 1 );
 
         *out_chunk = chunk;
         return out_chunk->len != 0;
@@ -977,11 +1487,11 @@ _Bool path_peek_chunk_substr(
     *out_chunk = path;
     return true;
 }
-_Bool path_pop_chunk(
-    dstring* path, size_t opt_chunk_size, char* opt_out_chunk
+bool_t path_pop_chunk(
+    DynamicString* path, size_t opt_chunk_size, char* opt_out_chunk
 ) {
-    substring chunk = substr_empty();
-    if( !path_peek_chunk_substr( substr_from_dstring( path ), &chunk ) ) {
+    StringSlice chunk = string_slice_empty();
+    if( !path_peek_chunk_string_slice( string_slice_from_dstring( path ), &chunk ) ) {
         return false;
     }
 
@@ -998,30 +1508,30 @@ _Bool path_pop_chunk(
     dstring_truncate( path, dstring_len( path ) - truncate );
     return true;
 }
-_Bool path_file_name( substring path, substring* out_chunk ) {
+bool_t path_file_name( StringSlice path, StringSlice* out_chunk ) {
     if( !path.len ) {
         return false;
     }
 
     size_t sep = 0;
-    if( substr_find_last( path, '/', &sep ) ) {
+    if( string_slice_find_last( path, '/', &sep ) ) {
         if( !sep || sep == path.len - 1 ) {
             return false;
         }
 
-        substring file_name = substr_advance_by( path, sep + 1 );
+        StringSlice file_name = string_slice_advance_by( path, sep + 1 );
         if( !file_name.len ) {
             return false;
         }
 
         switch( file_name.len ) {
             case 1: {
-                if( substr_cmp( file_name, substr_text( "." ) ) ) {
+                if( string_slice_cmp( file_name, string_slice_text( "." ) ) ) {
                     return false;
                 }
             } break;
             case 2: {
-                if( substr_cmp( file_name, substr_text( ".." ) ) ) {
+                if( string_slice_cmp( file_name, string_slice_text( ".." ) ) ) {
                     return false;
                 }
             } break;
@@ -1032,14 +1542,14 @@ _Bool path_file_name( substring path, substring* out_chunk ) {
         return true;
     }
 
-    if( substr_cmp( path, substr_text( "~" ) ) ) {
+    if( string_slice_cmp( path, string_slice_text( "~" ) ) ) {
         return false;
     }
     *out_chunk = path;
     return true;
 }
 
-const char* cbuild_compiler(void) {
+const char* cbuild_compiler_string(void) {
     return global_compiler;
 }
 const char* cbuild_command_line(void) {
@@ -1047,58 +1557,6 @@ const char* cbuild_command_line(void) {
 }
 const char* cbuild_compile_time(void) {
     return global_compile_time;
-}
-Compiler query_compiler(void) {
-#if defined(__clang__)
-    return COMPILER_CLANG;
-#elif defined(__GNUC__)
-    return COMPILER_GCC;
-#elif defined(_MSC_VER)
-    return COMPILER_MSVC;
-#else
-    return COMPILER_UNKNOWN;
-#endif
-}
-Platform query_platform(void) {
-#if defined(__linux__)
-    return PLATFORM_LINUX;
-#elif defined(_WIN32)
-    return PLATFORM_WINDOWS;
-#elif defined(__APPLE__)
-    return PLATFORM_MACOS;
-#else
-    return PLATFORM_UNKNOWN;
-#endif
-}
-_Bool compiler_is_mingw(void) {
-#if defined(__MINGW32__)
-    return true;
-#else
-    return false;
-#endif
-}
-Arch  query_arch(void) {
-#if defined(__arm__) || defined(_M_ARM) || defined( __aarch64__ ) || defined( _M_ARM64 )
-    return ARCH_ARM;
-#elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(__x86_64__)
-    return ARCH_X86;
-#else
-    return ARCH_UNKNOWN;
-#endif
-}
-_Bool query_64bit(void) {
-#if UINT64_MAX == UINTPTR_MAX
-    return true;
-#else
-    return false;
-#endif
-}
-_Bool platform_is_posix( Platform platform ) {
-    switch( platform ) {
-        case PLATFORM_LINUX:
-        case PLATFORM_MACOS: return true;
-        default: return false;
-    }
 }
 
 static char* get_global_string(void) {
@@ -1271,11 +1729,11 @@ size_t darray_remaining( const void* darray ) {
     darray_header* head = darray_head( (void*)darray );
     return head->cap - head->len;
 }
-_Bool darray_is_empty( const void* darray ) {
+bool_t darray_is_empty( const void* darray ) {
     darray_header* head = darray_head( (void*)darray );
     return head->len != 0;
 }
-_Bool darray_is_full( const void* darray ) {
+bool_t darray_is_full( const void* darray ) {
     darray_header* head = darray_head( (void*)darray );
     return head->len >= head->cap;
 }
@@ -1407,7 +1865,7 @@ void* darray_push( void* darray, const void* item ) {
     head->len++;
     return head->buf;
 }
-_Bool darray_push_try( void* darray, const void* item ) {
+bool_t darray_push_try( void* darray, const void* item ) {
     darray_header* head = darray_head( darray );
     if( head->len >= head->cap ) {
         return false;
@@ -1443,7 +1901,7 @@ void* darray_insert( void* darray, size_t index, const void* item ) {
     head->len++;
     return head->buf;
 }
-_Bool darray_remove( void* darray, size_t at, void* opt_out_item ) {
+bool_t darray_remove( void* darray, size_t at, void* opt_out_item ) {
     darray_header* head = darray_head( darray );
     if( !head->len || at >= head->len ) {
         return false;
@@ -1462,10 +1920,10 @@ _Bool darray_remove( void* darray, size_t at, void* opt_out_item ) {
     return true;
 }
 
-_Bool substr_is_empty( substring substr ) {
+bool_t string_slice_is_empty( StringSlice substr ) {
     return substr.len == 0;
 }
-_Bool substr_is_null_terminated( substring substr ) {
+bool_t string_slice_is_null_terminated( StringSlice substr ) {
     if( !substr.len ) {
         return false;
     }
@@ -1475,17 +1933,20 @@ _Bool substr_is_null_terminated( substring substr ) {
     }
     return false;
 }
-_Bool substr_cmp( substring a, substring b ) {
+bool_t string_slice_cmp( StringSlice a, StringSlice b ) {
     if( a.len != b.len ) {
         return false;
     }
     return memory_cmp( a.cc, b.cc, a.len );
 }
-_Bool substr_cmp_max( substring a, substring b ) {
-    size_t max = a.len > b.len ? b.len : a.len;
-    return memory_cmp( a.cc, b.cc, max );
+bool_t string_slice_cmp_clamped( StringSlice a, StringSlice b ) {
+    if( string_slice_is_empty( a ) || string_slice_is_empty( b ) ) {
+        return false;
+    }
+    size_t min = a.len > b.len ? b.len : a.len;
+    return memory_cmp( a.cc, b.cc, min );
 }
-_Bool substr_find( substring substr, char c, size_t* opt_out_pos ) {
+bool_t string_slice_find( StringSlice substr, char c, size_t* opt_out_pos ) {
     const char* ptr = memchr( substr.cc, c, substr.len );
     if( !ptr ) {
         return false;
@@ -1495,7 +1956,7 @@ _Bool substr_find( substring substr, char c, size_t* opt_out_pos ) {
     }
     return true;
 }
-_Bool substr_find_last( substring substr, char c, size_t* opt_out_pos ) {
+bool_t string_slice_find_last( StringSlice substr, char c, size_t* opt_out_pos ) {
     for( size_t i = substr.len; i-- > 0; ) {
         if( substr.cc[i] == c ) {
             if( opt_out_pos ) {
@@ -1506,66 +1967,66 @@ _Bool substr_find_last( substring substr, char c, size_t* opt_out_pos ) {
     }
     return false;
 }
-_Bool substr_find_set( substring substr, substring set, size_t* opt_out_pos ) {
+bool_t string_slice_find_set( StringSlice substr, StringSlice set, size_t* opt_out_pos ) {
     for( size_t i = 0; i < set.len; ++i ) {
-        if( substr_find( substr, set.cc[i], opt_out_pos ) ) {
+        if( string_slice_find( substr, set.cc[i], opt_out_pos ) ) {
             return true;
         }
     }
     return false;
 }
-_Bool substr_find_last_set( substring substr, substring set, size_t* out_pos ) {
+bool_t string_slice_find_last_set( StringSlice substr, StringSlice set, size_t* out_pos ) {
     for( size_t i = 0; i < set.len; ++i ) {
-        if( substr_find_last( substr, set.cc[i], out_pos ) ) {
+        if( string_slice_find_last( substr, set.cc[i], out_pos ) ) {
             return true;
         }
     }
     return false;
 }
-_Bool substr_find_substr( substring source, substring substr, size_t* out_pos ) {
-    substring rem = source;
+bool_t string_slice_find_string_slice( StringSlice source, StringSlice substr, size_t* out_pos ) {
+    StringSlice rem = source;
     while( rem.len ) {
         if( rem.len < substr.len ) {
             return false;
         }
 
         size_t start = 0;
-        if( substr_find( rem, substr.cc[0], &start ) ) {
-            rem = substr_advance_by( rem, start );
+        if( string_slice_find( rem, substr.cc[0], &start ) ) {
+            rem = string_slice_advance_by( rem, start );
             if( rem.len < substr.len ) {
                 return false;
             }
 
-            substring cmp = rem;
+            StringSlice cmp = rem;
             cmp.len       = substr.len;
-            if( substr_cmp( cmp, substr ) ) {
+            if( string_slice_cmp( cmp, substr ) ) {
                 *out_pos = rem.cc - source.cc;
                 return true;
             }
-            rem = substr_advance( rem );
+            rem = string_slice_advance( rem );
         } else {
             return false;
         }
     }
     return false;
 }
-substring substr_advance( substring substr ) {
+StringSlice string_slice_advance( StringSlice substr ) {
     if( !substr.len ) {
         return substr;
     }
-    substring res = substr;
+    StringSlice res = substr;
     res.cc++;
     res.len--;
     return res;
 }
-substring substr_advance_by( substring substr, size_t amount ) {
+StringSlice string_slice_advance_by( StringSlice substr, size_t amount ) {
     if( !substr.len ) {
         return substr;
     }
 
-    substring res = substr;
+    StringSlice res = substr;
     if( amount > res.len ) {
-        res.cc  = substr_last( res );
+        res.cc  = string_slice_last( res );
         res.len = 0;
         return res;
     }
@@ -1573,16 +2034,16 @@ substring substr_advance_by( substring substr, size_t amount ) {
     res.len -= amount;
     return res;
 }
-substring substr_truncate( substring substr, size_t max ) {
+StringSlice string_slice_truncate( StringSlice substr, size_t max ) {
     if( max > substr.len ) {
         return substr;
     }
-    substring res = substr;
+    StringSlice res = substr;
     res.len       = max;
     return res;
 }
-substring substr_trim( substring substr, size_t amount ) {
-    substring res = substr;
+StringSlice string_slice_trim( StringSlice substr, size_t amount ) {
+    StringSlice res = substr;
     if( amount > substr.len ) {
         res.len = 0;
         return res;
@@ -1590,33 +2051,33 @@ substring substr_trim( substring substr, size_t amount ) {
     res.len -= amount;
     return res;
 }
-char* substr_first( substring substr ) {
+char* string_slice_first( StringSlice substr ) {
     if( !substr.len ) {
         return NULL;
     }
     return (char*)substr.cc;
 }
-char* substr_last( substring substr ) {
+char* string_slice_last( StringSlice substr ) {
     if( !substr.len ) {
         return NULL;
     }
     return (char*)substr.cc + (substr.len - 1);
 }
-substring substr_trim_ws_lead( substring substr ) {
-    substring res = substr;
+StringSlice string_slice_trim_ws_lead( StringSlice substr ) {
+    StringSlice res = substr;
     while( res.len ) {
         if( isspace( *res.cc ) ) {
-            res = substr_advance( res );
+            res = string_slice_advance( res );
         } else {
             break;
         }
     }
     return res;
 }
-substring substr_trim_ws_trail( substring substr ) {
-    substring res = substr;
+StringSlice string_slice_trim_ws_trail( StringSlice substr ) {
+    StringSlice res = substr;
     while( res.len ) {
-        if( isspace( *substr_last( res ) ) ) {
+        if( isspace( *string_slice_last( res ) ) ) {
             res.len--;
         } else {
             break;
@@ -1624,10 +2085,10 @@ substring substr_trim_ws_trail( substring substr ) {
     }
     return res;
 }
-substring substr_trim_ws( substring substr ) {
-    return substr_trim_ws_lead( substr_trim_ws_trail( substr ) );
+StringSlice string_slice_trim_ws( StringSlice substr ) {
+    return string_slice_trim_ws_lead( string_slice_trim_ws_trail( substr ) );
 }
-size_t substr_len_utf8( substring substr ) {
+size_t string_slice_len_utf8( StringSlice substr ) {
     const unsigned char* ucc = (const unsigned char*)substr.cc;
     size_t res = 0;
     for( size_t i = 0; i < substr.len; ++i ) {
@@ -1637,37 +2098,37 @@ size_t substr_len_utf8( substring substr ) {
     }
     return res;
 }
-substring* substr_darray_from_arg( int argc, char** argv ) {
+StringSlice* string_slice_darray_from_arg( int argc, char** argv ) {
     if( argc <= 0 ) {
         return NULL;
     }
-    substring* res = darray_empty( substring, argc );
+    StringSlice* res = darray_empty( StringSlice, argc );
     if( !res ) {
         return NULL;
     }
 
     for( int i = 0; i < argc; ++i ) {
-        substring ss = substr_new( 0, argv[i] );
+        StringSlice ss = string_slice_new( 0, argv[i] );
         res = darray_push( res, &ss );
     }
     return res;
 }
-substring* substr_darray_from_delim( substring source, substring delim ) {
-    substring substr = source;
+StringSlice* string_slice_darray_from_delim( StringSlice source, StringSlice delim ) {
+    StringSlice substr = source;
     size_t cap = 0;
     while( substr.len ) {
         size_t delim_pos = 0;
-        if( substr_find_substr( substr, delim, &delim_pos ) ) {
+        if( string_slice_find_string_slice( substr, delim, &delim_pos ) ) {
             cap++;
 
-            substr = substr_advance_by( substr, delim_pos + delim.len );
+            substr = string_slice_advance_by( substr, delim_pos + delim.len );
         } else {
             cap++;
             break;
         }
     }
 
-    substring* res = darray_empty( substring, cap );
+    StringSlice* res = darray_empty( StringSlice, cap );
     if( !res ) {
         return NULL;
     }
@@ -1675,12 +2136,12 @@ substring* substr_darray_from_delim( substring source, substring delim ) {
     substr = source;
     while( substr.len ) {
         size_t delim_pos = 0;
-        if( substr_find_substr( substr, delim, &delim_pos ) ) {
-            substring item = substr;
+        if( string_slice_find_string_slice( substr, delim, &delim_pos ) ) {
+            StringSlice item = substr;
             item.len       = delim_pos;
 
             res    = darray_push( res, &item );
-            substr = substr_advance_by( substr, item.len + delim.len );
+            substr = string_slice_advance_by( substr, item.len + delim.len );
         } else {
             res = darray_push( res, &substr );
             break;
@@ -1690,52 +2151,59 @@ substring* substr_darray_from_delim( substring source, substring delim ) {
     return res;
 }
 
-size_t string_len( const char* string ) {
+size_t cstr_len( const char* string ) {
     return strlen( string );
 }
-size_t string_len_utf8( const char* string ) {
-    return substr_len_utf8( substr_new( 0, string ) );
+size_t cstr_len_utf8( const char* string ) {
+    return string_slice_len_utf8( string_slice_new( 0, string ) );
 }
-_Bool string_cmp( const char* a, const char* b ) {
+bool_t cstr_cmp( const char* a, const char* b ) {
     return strcmp( a, b ) == 0;
 }
-_Bool string_find( const char* string, char c, size_t* out_pos ) {
+bool_t cstr_find( const char* string, char c, size_t* opt_out_pos ) {
     char* res = strchr( string, c );
     if( !res ) {
         return false;
     }
-
-    *out_pos = res - string;
+    if( opt_out_pos ) {
+        *opt_out_pos = res - string;
+    }
     return true;
 }
-_Bool string_find_last( const char* string, char c, size_t* out_pos ) {
+bool_t cstr_find_last( const char* string, char c, size_t* opt_out_pos ) {
     char* res = strrchr( string, c );
     if( !res ) {
         return false;
     }
-    *out_pos = res - string;
+    if( opt_out_pos ) {
+        *opt_out_pos = res - string;
+    }
     return true;
 }
-_Bool string_find_set( const char* string, const char* set, size_t* out_pos ) {
+bool_t cstr_find_set( const char* string, const char* set, size_t* opt_out_pos ) {
     char* res = strpbrk( string, set );
     if( !res ) {
         return false;
     }
-    *out_pos = res - string;
+    if( opt_out_pos ) {
+        *opt_out_pos = res - string;
+    }
     return true;
 }
-_Bool string_find_string(
-    const char* string, const char* substr, size_t* out_pos
+bool_t cstr_find_cstr(
+    const char* string, const char* substr, size_t* opt_out_pos
 ) {
     char* res = strstr( string, substr );
     if( !res ) {
         return false;
     }
-    *out_pos = res - string;
+    if( opt_out_pos ) {
+        *opt_out_pos = res - string;
+    }
     return true;
 }
 
-dstring* dstring_empty( size_t size ) {
+DynamicString* dstring_empty( size_t size ) {
     dstring_header* res = memory_alloc( sizeof(*res) + size + 1 );
     if( !res ) {
         return NULL;
@@ -1743,10 +2211,10 @@ dstring* dstring_empty( size_t size ) {
     res->cap = size + 1;
     return res->buf;
 }
-dstring* dstring_new( size_t opt_len, const char* source ) {
+DynamicString* dstring_new( size_t opt_len, const char* source ) {
     size_t len = opt_len;
     if( !len ) {
-        len = string_len( source );
+        len = cstr_len( source );
         if( !len ) {
             return NULL;
         }
@@ -1761,17 +2229,17 @@ dstring* dstring_new( size_t opt_len, const char* source ) {
 
     return res->buf;
 }
-dstring* dstring_concat_array_substr( size_t len, substring* strings, substring sep ) {
+DynamicString* dstring_concat_array_string_slice( size_t len, StringSlice* strings, StringSlice sep ) {
     size_t total_size = 0;
     for( size_t i = 0; i < len; ++i ) {
         total_size += strings[i].len + sep.len;
     }
-    dstring* res = dstring_empty( total_size );
+    DynamicString* res = dstring_empty( total_size );
     if( !res ) {
         return NULL;
     }
     for( size_t i = 0; i < len; ++i ) {
-        dstring* _new = dstring_append_substr( res, strings[i] );
+        DynamicString* _new = dstring_append_string_slice( res, strings[i] );
         if( !_new ) {
             dstring_free( res );
             return NULL;
@@ -1781,7 +2249,7 @@ dstring* dstring_concat_array_substr( size_t len, substring* strings, substring 
         if( i + 1 >= len ) {
             break;
         }
-        _new = dstring_append_substr( res, sep );
+        _new = dstring_append_string_slice( res, sep );
         if( !_new ) {
             dstring_free( res );
             return NULL;
@@ -1790,18 +2258,18 @@ dstring* dstring_concat_array_substr( size_t len, substring* strings, substring 
     }
     return res;
 }
-dstring* dstring_concat_array( size_t len, const char** strings, const char* sep ) {
+DynamicString* dstring_concat_array( size_t len, const char** strings, const char* sep ) {
     size_t total_size = 0;
-    substring _sep    = substr_new( 0, sep );
+    StringSlice _sep    = string_slice_new( 0, sep );
     for( size_t i = 0; i < len; ++i ) {
-        total_size += string_len( strings[i] ) + _sep.len;
+        total_size += cstr_len( strings[i] ) + _sep.len;
     }
-    dstring* res = dstring_empty( total_size );
+    DynamicString* res = dstring_empty( total_size );
     if( !res ) {
         return NULL;
     }
     for( size_t i = 0; i < len; ++i ) {
-        dstring* _new = dstring_append_str( res, strings[i] );
+        DynamicString* _new = dstring_append_str( res, strings[i] );
         if( !_new ) {
             dstring_free( res );
             return NULL;
@@ -1811,7 +2279,7 @@ dstring* dstring_concat_array( size_t len, const char** strings, const char* sep
         if( i + 1 >= len ) {
             break;
         }
-        _new = dstring_append_substr( res, _sep );
+        _new = dstring_append_string_slice( res, _sep );
         if( !_new ) {
             dstring_free( res );
             return NULL;
@@ -1820,7 +2288,7 @@ dstring* dstring_concat_array( size_t len, const char** strings, const char* sep
     }
     return res;
 }
-dstring* dstring_fmt_va( const char* format, va_list va ) {
+DynamicString* dstring_fmt_va( const char* format, va_list va ) {
     va_list len, fmt;
     va_copy( len, va );
     va_copy( fmt, len );
@@ -1842,15 +2310,15 @@ dstring* dstring_fmt_va( const char* format, va_list va ) {
 
     return res->buf;
 }
-dstring* dstring_fmt( const char* format, ... ) {
+DynamicString* dstring_fmt( const char* format, ... ) {
     va_list va;
     va_start( va, format );
-    dstring* res = dstring_fmt_va( format, va );
+    DynamicString* res = dstring_fmt_va( format, va );
     va_end( va );
     return res;
 }
-dstring* dstring_clone( const dstring* source ) {
-    dstring_header* head = dstring_head( (dstring*)source );
+DynamicString* dstring_clone( const DynamicString* source ) {
+    dstring_header* head = dstring_head( (DynamicString*)source );
     dstring_header* res  = memory_alloc( sizeof(*res) + head->len + 16 );
     if( !res ) {
         return NULL;
@@ -1860,17 +2328,17 @@ dstring* dstring_clone( const dstring* source ) {
     memory_copy( res->buf, source, head->len );
     return res->buf;
 }
-void dstring_free( dstring* string ) {
+void dstring_free( DynamicString* string ) {
     if( string ) {
         dstring_header* head = dstring_head( string );
         size_t size = head->cap + sizeof(*head);
         memory_free( head, size );
     }
 }
-void* dstring_head( dstring* string ) {
+void* dstring_head( DynamicString* string ) {
     return string ? string - sizeof(dstring_header) : 0;
 }
-dstring* dstring_grow( dstring* string, size_t amount ) {
+DynamicString* dstring_grow( DynamicString* string, size_t amount ) {
     dstring_header* head = dstring_head( string );
     size_t old_size = head->cap + sizeof(*head);
     size_t new_size = old_size + amount + 1;
@@ -1881,12 +2349,12 @@ dstring* dstring_grow( dstring* string, size_t amount ) {
     res->cap += amount + 1;
     return res->buf;
 }
-void dstring_clear( dstring* string ) {
+void dstring_clear( DynamicString* string ) {
     dstring_header* head = dstring_head( string );
     memory_zero( head->buf, head->len );
     head->len = 0;
 }
-void dstring_truncate( dstring* string, size_t max_len ) {
+void dstring_truncate( DynamicString* string, size_t max_len ) {
     dstring_header* head = dstring_head( string );
     size_t len  = max_len > head->len ? head->len : max_len;
     size_t zero = head->len - len;
@@ -1896,30 +2364,30 @@ void dstring_truncate( dstring* string, size_t max_len ) {
     }
     head->len = len;
 }
-size_t dstring_len( const dstring* string ) {
-    dstring_header* head = dstring_head( (dstring*)string );
+size_t dstring_len( const DynamicString* string ) {
+    dstring_header* head = dstring_head( (DynamicString*)string );
     return head->len;
 }
-size_t dstring_cap( const dstring* string ) {
-    dstring_header* head = dstring_head( (dstring*)string );
+size_t dstring_cap( const DynamicString* string ) {
+    dstring_header* head = dstring_head( (DynamicString*)string );
     return head->cap;
 }
-size_t dstring_remaining( const dstring* string ) {
-    dstring_header* head = dstring_head( (dstring*)string );
+size_t dstring_remaining( const DynamicString* string ) {
+    dstring_header* head = dstring_head( (DynamicString*)string );
     return head->cap - head->len;
 }
-_Bool dstring_is_empty( const dstring* string ) {
-    dstring_header* head = dstring_head( (dstring*)string );
+bool_t dstring_is_empty( const DynamicString* string ) {
+    dstring_header* head = dstring_head( (DynamicString*)string );
     return head->len == 0;
 }
-_Bool dstring_is_full( const dstring* string ) {
-    dstring_header* head = dstring_head( (dstring*)string );
+bool_t dstring_is_full( const DynamicString* string ) {
+    dstring_header* head = dstring_head( (DynamicString*)string );
     return head->len >= head->cap;
 }
-dstring* dstring_concat( const dstring* left, const dstring* right ) {
+DynamicString* dstring_concat( const DynamicString* left, const DynamicString* right ) {
     dstring_header* hleft, *hright;
-    hleft  = dstring_head( (dstring*)left );
-    hright = dstring_head( (dstring*)right );
+    hleft  = dstring_head( (DynamicString*)left );
+    hright = dstring_head( (DynamicString*)right );
 
     dstring_header* res = dstring_head( dstring_empty( hleft->len + hright->len ) );
     if( !res ) {
@@ -1932,7 +2400,7 @@ dstring* dstring_concat( const dstring* left, const dstring* right ) {
 
     return res->buf;
 }
-dstring* dstring_concat_substr( substring left, substring right ) {
+DynamicString* dstring_concat_string_slice( StringSlice left, StringSlice right ) {
     dstring_header* res = dstring_head( dstring_empty( left.len + right.len ) );
     if( !res ) {
         return NULL;
@@ -1944,14 +2412,14 @@ dstring* dstring_concat_substr( substring left, substring right ) {
 
     return res->buf;
 }
-dstring* dstring_concat_str( const char* left, const char* right ) {
-    substring _left  = substr_new( 0, left );
-    substring _right = substr_new( 0, right );
-    return dstring_concat_substr( _left, _right );
+DynamicString* dstring_concat_str( const char* left, const char* right ) {
+    StringSlice _left  = string_slice_new( 0, left );
+    StringSlice _right = string_slice_new( 0, right );
+    return dstring_concat_string_slice( _left, _right );
 }
-dstring* dstring_prepend( dstring* string, const dstring* prepend ) {
+DynamicString* dstring_prepend( DynamicString* string, const DynamicString* prepend ) {
     dstring_header* head     = dstring_head( string );
-    dstring_header* hprepend = dstring_head( (dstring*)prepend );
+    dstring_header* hprepend = dstring_head( (DynamicString*)prepend );
 
     size_t new_len = head->len + hprepend->len;
     if( new_len + 1 > head->cap ) {
@@ -1967,7 +2435,7 @@ dstring* dstring_prepend( dstring* string, const dstring* prepend ) {
 
     return head->buf;
 }
-dstring* dstring_prepend_substr( dstring* string, substring prepend ) {
+DynamicString* dstring_prepend_string_slice( DynamicString* string, StringSlice prepend ) {
     dstring_header* head     = dstring_head( string );
 
     size_t new_len = head->len + prepend.len;
@@ -1984,12 +2452,12 @@ dstring* dstring_prepend_substr( dstring* string, substring prepend ) {
 
     return head->buf;
 }
-dstring* dstring_prepend_str( dstring* string, const char* prepend ) {
-    return dstring_prepend_substr( string, substr_new( 0, prepend ) );
+DynamicString* dstring_prepend_str( DynamicString* string, const char* prepend ) {
+    return dstring_prepend_string_slice( string, string_slice_new( 0, prepend ) );
 }
-dstring* dstring_append( dstring* string, const dstring* append ) {
+DynamicString* dstring_append( DynamicString* string, const DynamicString* append ) {
     dstring_header* head    = dstring_head( string );
-    dstring_header* happend = dstring_head( (dstring*)append );
+    dstring_header* happend = dstring_head( (DynamicString*)append );
 
     size_t new_len = head->len + happend->len;
     if( new_len + 1 > head->cap ) {
@@ -2004,7 +2472,7 @@ dstring* dstring_append( dstring* string, const dstring* append ) {
 
     return head->buf;
 }
-dstring* dstring_append_substr( dstring* string, substring append ) {
+DynamicString* dstring_append_string_slice( DynamicString* string, StringSlice append ) {
     dstring_header* head    = dstring_head( string );
 
     size_t new_len = head->len + append.len;
@@ -2020,10 +2488,10 @@ dstring* dstring_append_substr( dstring* string, substring append ) {
 
     return head->buf;
 }
-dstring* dstring_append_str( dstring* string, const char* append ) {
-    return dstring_append_substr( string, substr_new( 0, append ) );
+DynamicString* dstring_append_str( DynamicString* string, const char* append ) {
+    return dstring_append_string_slice( string, string_slice_new( 0, append ) );
 }
-dstring* dstring_insert( dstring* string, const dstring* insert, size_t index ) {
+DynamicString* dstring_insert( DynamicString* string, const DynamicString* insert, size_t index ) {
     dstring_header* head    = dstring_head( string );
 
     size_t i = index;
@@ -2031,7 +2499,7 @@ dstring* dstring_insert( dstring* string, const dstring* insert, size_t index ) 
         i = head->len ? head->len - 1 : 0;
     }
 
-    dstring_header* hinsert = dstring_head( (dstring*)insert );
+    dstring_header* hinsert = dstring_head( (DynamicString*)insert );
 
     size_t new_len = head->len + hinsert->len;
     if( new_len + 1 > head->cap ) {
@@ -2047,7 +2515,7 @@ dstring* dstring_insert( dstring* string, const dstring* insert, size_t index ) 
 
     return head->buf;
 }
-dstring* dstring_insert_substr( dstring* string, substring insert, size_t index ) {
+DynamicString* dstring_insert_string_slice( DynamicString* string, StringSlice insert, size_t index ) {
     dstring_header* head    = dstring_head( string );
 
     size_t i = index;
@@ -2069,10 +2537,10 @@ dstring* dstring_insert_substr( dstring* string, substring insert, size_t index 
 
     return head->buf;
 }
-dstring* dstring_insert_str( dstring* string, const char* insert, size_t index ) {
-    return dstring_insert_substr( string, substr_new( 0, insert ), index );
+DynamicString* dstring_insert_str( DynamicString* string, const char* insert, size_t index ) {
+    return dstring_insert_string_slice( string, string_slice_new( 0, insert ), index );
 }
-dstring* dstring_push( dstring* string, char c ) {
+DynamicString* dstring_push( DynamicString* string, char c ) {
     dstring_header* head = dstring_head( string );
     if( head->len + 1 >= head->cap ) {
         head = dstring_head( dstring_grow( string, 16 ) );
@@ -2084,7 +2552,7 @@ dstring* dstring_push( dstring* string, char c ) {
     head->buf[head->len]   = 0;
     return head->buf;
 }
-_Bool dstring_pop( dstring* string, char* opt_out_c ) {
+bool_t dstring_pop( DynamicString* string, char* opt_out_c ) {
     dstring_header* head = dstring_head( string );
     if( !head->len ) {
         return false;
@@ -2097,7 +2565,7 @@ _Bool dstring_pop( dstring* string, char* opt_out_c ) {
     head->buf[--head->len] = 0;
     return true;
 }
-_Bool dstring_remove( dstring* string, size_t index ) {
+bool_t dstring_remove( DynamicString* string, size_t index ) {
     dstring_header* head = dstring_head( string );
     if( index >= head->len ) {
         return false;
@@ -2106,7 +2574,7 @@ _Bool dstring_remove( dstring* string, size_t index ) {
     head->len--;
     return true;
 }
-dstring* dstring_emplace( dstring* string, char c, size_t index ) {
+DynamicString* dstring_emplace( DynamicString* string, char c, size_t index ) {
     dstring_header* head = dstring_head( string );
     if( index >= head->len ) {
         return NULL;
@@ -2161,7 +2629,7 @@ size_t memory_query_allocated(void) {
 size_t memory_query_total_allocated(void) {
     return global_total_memory_allocated;
 }
-void memory_set( void* memory, char value, size_t size ) {
+void memory_set( void* memory, int8_t value, size_t size ) {
     memset( memory, value, size );
 }
 void memory_zero( void* memory, size_t size ) {
@@ -2173,7 +2641,7 @@ void memory_copy( void* restrict dst, const void* restrict src, size_t size ) {
 void memory_move( void* dst, const void* src, size_t size ) {
     memmove( dst, src, size );
 }
-_Bool memory_cmp( const void* a, const void* b, size_t size ) {
+bool_t memory_cmp( const void* a, const void* b, size_t size ) {
     return memcmp( a, b, size ) == 0;
 }
 void logger_level_set( LogLevel level ) {
@@ -2181,10 +2649,10 @@ void logger_level_set( LogLevel level ) {
         global_log_level = level;
     }
 }
-LogLevel logger_level_get(void) {
+LogLevel logger_level_query(void) {
     return global_log_level;
 }
-void logger( LogLevel level, const char* format, ... ) {
+void logger_va( LogLevel level, const char* format, va_list va ) {
     level = level > LOG_LEVEL_ERROR ? LOG_LEVEL_ERROR : level;
     if( level < global_log_level ) {
         return;
@@ -2203,13 +2671,7 @@ void logger( LogLevel level, const char* format, ... ) {
     memory_fence();
 
     fprintf( streams[level], "%s", prefixes[level] );
-
-    va_list va;
-    va_start( va, format );
-    
     vfprintf( streams[level], format, va );
-
-    va_end( va );
     fprintf( streams[level], "\033[1;00m\n" );
 
     memory_fence();
@@ -2217,7 +2679,13 @@ void logger( LogLevel level, const char* format, ... ) {
         mutex_unlock( &global_log_mtx );
     }
 }
-_Bool program_exec( const char* command_line, int* opt_out_res ) {
+void logger( LogLevel level, const char* format, ... ) {
+    va_list va;
+    va_start( va, format );
+    logger_va( level, format, va );
+    va_end( va );
+}
+bool_t program_exec( const char* command_line, int* opt_out_res ) {
     ProcessID pid;
     if( !program_exec_async( command_line, NULL, NULL, NULL, &pid ) ) {
         return false;
@@ -2252,7 +2720,7 @@ void _init_( const char* argv0, const char* file, LogLevel log ) {
     double diff_main   = difftime( exe_m, main_m );
     double diff_cbuild = difftime( exe_m, cbuild_m );
 
-    dstring* old_name = dstring_concat_str( argv0, ".old" );
+    DynamicString* old_name = dstring_concat_str( argv0, ".old" );
 
     if( diff_main > 0.0 && diff_cbuild > 0.0 ) {
         FILE* fold = fopen( old_name, "r" );
@@ -2269,7 +2737,7 @@ void _init_( const char* argv0, const char* file, LogLevel log ) {
     if( !program_in_path( COMPILER ) ) {
         cb_error( "failed to find compiler '" COMPILER "' in path!" );
 #if defined(_WIN32)
-        if( substr_cmp( substr_text( "cl" ), substr_text( COMPILER ) ) ) {
+        if( string_slice_cmp( string_slice_text( "cl" ), string_slice_text( COMPILER ) ) ) {
             cb_error( "run vcvarsall.bat or run cbuild in Developer Command Prompt." );
         }
 #endif
@@ -2311,6 +2779,7 @@ void _init_( const char* argv0, const char* file, LogLevel log ) {
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <process.h>
 #include <wchar.h>
 
 static LARGE_INTEGER global_qpf;
@@ -2345,6 +2814,61 @@ static wchar_t* win32_get_path_buffer(void) {
     wchar_t* buf = (wchar_t*)(global_win32_path_buffer + offset);
     memory_zero( buf, sizeof(wchar_t) * PATH_MAX_LEN );
     return buf;
+}
+static void win32_utf8_to_wide(
+    size_t utf8_len, const char* utf8,
+    size_t wide_cap, wchar_t* out_wide, bool_t dont_zero
+) {
+    assert( wide_cap && utf8_len );
+
+    if( !dont_zero ) {
+        memory_zero( out_wide, wide_cap * sizeof(wchar_t) );
+    }
+
+    size_t remaining      = utf8_len;
+    size_t remaining_wide = wide_cap - 1;
+    while( remaining && remaining_wide ) {
+        size_t offset      = utf8_len - remaining;
+        size_t convert_len = remaining >= INT32_MAX - 1 ? INT32_MAX - 1 : remaining;
+        if( convert_len > remaining_wide ) {
+            convert_len = remaining_wide;
+        }
+
+        MultiByteToWideChar(
+            CP_UTF8, 0, utf8 + offset, convert_len,
+            out_wide + offset, convert_len );
+
+        remaining      -= convert_len;
+        remaining_wide -= convert_len;
+    }
+}
+static void win32_wide_to_utf8(
+    size_t wide_len, const wchar_t* wide,
+    size_t utf8_cap, char* out_utf8, bool_t dont_zero
+) {
+    assert( wide_len && utf8_cap );
+
+    if( !dont_zero ) {
+        memory_zero( out_utf8, utf8_cap );
+    }
+
+    size_t remaining      = wide_len;
+    size_t remaining_utf8 = utf8_cap - 1;
+    while( remaining && remaining_utf8 ) {
+        size_t offset      = wide_len - remaining;
+        size_t convert_len = remaining >= INT32_MAX - 1 ? INT32_MAX - 1 : remaining;
+        if( convert_len > remaining_utf8 ) {
+            convert_len = remaining_utf8;
+        }
+
+        WideCharToMultiByte(
+            CP_UTF8, 0, wide + offset, convert_len,
+            out_utf8 + offset, convert_len, 0, 0 );
+
+        remaining      -= convert_len;
+        remaining_utf8 -= convert_len;
+    }
+
 }
 static char* win32_wide_to_narrow( size_t opt_len, wchar_t* wide ) {
     if( !wide ) {
@@ -2401,7 +2925,136 @@ static char* win32_wide_to_narrow_alloc( int opt_len, wchar_t* wide ) {
     WideCharToMultiByte( CP_UTF8, 0, wide, len, buf, len, 0, 0 );
     return buf;
 }
-wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
+
+struct Win32WriteBuffer {
+    size_t cap;
+    size_t len;
+    void*  buffer;
+};
+size_t win32_write( struct Win32WriteBuffer* buf, size_t size, const void* write ) {
+    size_t rem      = buf->cap - buf->len;
+    size_t max_copy = size;
+    if( max_copy > rem ) {
+        max_copy = rem;
+    }
+
+    memory_copy( (char*)buf->buffer + buf->len, write, max_copy );
+    buf->len += max_copy;
+
+    return size - max_copy;
+}
+
+static size_t win32_path_posix_to_win32(
+    size_t posix_len, const char* posix,
+    size_t win32_cap, wchar_t* out_win32, bool_t dont_zero
+) {
+    #define PATH_IS_RELATIVE 0
+    #define PATH_IS_HOME     1
+    #define PATH_IS_ABSOLUTE 2
+    assert( win32_cap );
+
+    int path_type = PATH_IS_RELATIVE;
+    if( posix_len >= sizeof("A:") ) {
+        if( isalpha( posix[0] ) && posix[1] == ':' ) {
+            path_type = PATH_IS_ABSOLUTE;
+        }
+    } else if( posix[0] == '~' ) {
+        path_type = PATH_IS_HOME;
+    }
+
+    if( !dont_zero ) {
+        memory_zero( out_win32, sizeof(wchar_t) * win32_cap );
+    }
+
+    StringSlice home       = string_slice_empty();
+    StringSlice home_drive = string_slice_empty();
+    size_t      cwd_len    = 0;
+
+    switch( path_type ) {
+        case PATH_IS_RELATIVE: {
+            cwd_len = GetCurrentDirectoryW( 0, 0 );
+        } break;
+        case PATH_IS_HOME: {
+            home_drive.cc = getenv( "HOMEDRIVE" );
+            home.cc       = getenv( "HOMEPATH" );
+
+            home_drive.len = cstr_len( home_drive.cc );
+            home.len       = cstr_len( home.cc );
+        } break;
+        case PATH_IS_ABSOLUTE: break;
+    }
+
+    #define LOCAL_BUFFER_CAP (512)
+    wchar_t local[LOCAL_BUFFER_CAP];
+    memory_zero( local, sizeof(local) );
+
+    struct Win32WriteBuffer wb;
+    wb.cap    = sizeof(wchar_t) * (win32_cap - 1);
+    wb.len    = 0;
+    wb.buffer = out_win32;
+
+    StringSlice slice;
+    slice.len = posix_len;
+    slice.cc  = posix;
+
+    size_t result =
+        win32_write( &wb, sizeof(L"\\\\?\\") - sizeof(wchar_t), L"\\\\?\\" );
+
+    switch( path_type ) {
+        case PATH_IS_RELATIVE: {
+            GetCurrentDirectoryW( LOCAL_BUFFER_CAP, local );
+            result += win32_write( &wb, cwd_len * sizeof(wchar_t), local );
+        } break;
+        case PATH_IS_HOME: {
+            win32_utf8_to_wide(
+                home_drive.len, home_drive.cc, LOCAL_BUFFER_CAP, local, false );
+            result += win32_write( &wb, home_drive.len, local );
+            win32_utf8_to_wide(
+                home.len, home.cc, LOCAL_BUFFER_CAP, local, true );
+            result += win32_write( &wb, home.len, local );
+
+            slice = string_slice_advance( slice );
+        } break;
+        case PATH_IS_ABSOLUTE: break;
+    }
+
+    while( slice.len ) {
+        size_t sep = 0;
+        if( string_slice_find( slice, '/', &sep ) ) {
+            if( !sep ) {
+                slice = string_slice_advance( slice );
+                continue;
+            }
+
+            StringSlice chunk = slice;
+            chunk.len         = sep;
+
+            switch( chunk.len ) {
+                case 1: {
+                    if( chunk.cc[0] == '.' ) {
+                        slice = string_slice_advance_by( slice, sep + 1 );
+                        continue;
+                    }
+                } break;
+                case 2: {
+                    if( chunk.cc[0] == '.' && chunk.cc[1] == '.' ) {
+                        slice = string_slice_advance_by( slice, sep + 1 );
+                        continue;
+                    }
+                } break;
+            }
+
+        } else {
+
+        }
+    }
+
+    #undef PATH_IS_RELATIVE
+    #undef PATH_IS_HOME    
+    #undef PATH_IS_ABSOLUTE
+    return result;
+}
+wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, StringSlice path ) {
     #define PATH_RELATIVE 0
     #define PATH_HOME     1
     #define PATH_ABSOLUTE 2
@@ -2416,7 +3069,7 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
         path_type = PATH_HOME;
     }
 
-    substring subpath = path;
+    StringSlice subpath = path;
 
     size_t min    = sizeof("\\\\?\\A:");
     size_t offset = sizeof("\\\\?\\") - 1;
@@ -2436,8 +3089,8 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
             home_drive = getenv( "HOMEDRIVE" );
             home       = getenv( "HOMEPATH" );
 
-            home_drive_len = string_len( home_drive );
-            home_len       = string_len( home );
+            home_drive_len = cstr_len( home_drive );
+            home_len       = cstr_len( home );
         } break;
         default: break;
     }
@@ -2459,7 +3112,7 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
                 buf + offset, buf_cap - offset );
             offset += home_len;
 
-            subpath = substr_advance( subpath );
+            subpath = string_slice_advance( subpath );
         } break;
         default: break;
     }
@@ -2467,21 +3120,21 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
     size_t last_chunk_len = 0;
     while( subpath.len ) {
         size_t sep = 0;
-        if( substr_find( subpath, '/', &sep ) ) {
+        if( string_slice_find( subpath, '/', &sep ) ) {
             if( !sep ) {
-                subpath = substr_advance( subpath );
+                subpath = string_slice_advance( subpath );
                 continue;
             }
 
-            substring chunk = subpath;
+            StringSlice chunk = subpath;
             chunk.len       = sep;
 
             if( chunk.len < 3 ) {
-                if( substr_cmp( chunk, substr_text( "." ) ) ) {
-                    subpath = substr_advance_by( subpath, chunk.len + 1 );
+                if( string_slice_cmp( chunk, string_slice_text( "." ) ) ) {
+                    subpath = string_slice_advance_by( subpath, chunk.len + 1 );
                     continue;
                 }
-                if( substr_cmp( chunk, substr_text( ".." ) ) ) {
+                if( string_slice_cmp( chunk, string_slice_text( ".." ) ) ) {
                     for( size_t i = offset; i-- > 0; ) {
                         wchar_t c = buf[i];
                         if( c == '\\' ) {
@@ -2493,7 +3146,7 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
                         offset = min;
                     }
                     buf[offset] = 0;
-                    subpath = substr_advance_by( subpath, chunk.len + 1 );
+                    subpath = string_slice_advance_by( subpath, chunk.len + 1 );
                     continue;
                 }
             }
@@ -2510,12 +3163,12 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
             offset += chunk.len;
             last_chunk_len = chunk.len;
 
-            subpath = substr_advance_by( subpath, chunk.len + 1 );
+            subpath = string_slice_advance_by( subpath, chunk.len + 1 );
         } else {
-            if( substr_cmp( subpath, substr_text( "." ) ) ) {
+            if( string_slice_cmp( subpath, string_slice_text( "." ) ) ) {
                 break;
             }
-            if( substr_cmp( subpath, substr_text( ".." ) ) ) {
+            if( string_slice_cmp( subpath, string_slice_text( ".." ) ) ) {
                 for( size_t i = offset; i-- > 0; ) {
                     wchar_t c = buf[i];
                     if( c == '\\' ) {
@@ -2549,11 +3202,11 @@ wchar_t* win32_path_wide( size_t buf_cap, wchar_t* buf, substring path ) {
     #undef PATH_HOME    
     return buf;
 }
-wchar_t* win32_path( substring path ) {
+wchar_t* win32_path( StringSlice path ) {
     wchar_t* buf = win32_get_path_buffer();
     return win32_path_wide( PATH_MAX_LEN, buf, path );
 }
-wchar_t* win32_path_alloc( substring path ) {
+wchar_t* win32_path_alloc( StringSlice path ) {
     size_t buf_cap  = ( 512 + path.len );
     size_t buf_size = sizeof(wchar_t) * buf_cap;
     wchar_t* buf = memory_alloc( buf_size );
@@ -2571,7 +3224,9 @@ wchar_t* win32_path_alloc( substring path ) {
     return res;
 }
 
-_Bool win32_path_find_dirs( substring pattern, size_t* out_count, dstring** buffer ) {
+bool_t win32_path_find_dirs(
+    StringSlice pattern, size_t* out_count, DynamicString** buffer
+) {
     size_t dir_count = 0;
 
     size_t   wide_len    = pattern.len + 32;
@@ -2580,20 +3235,20 @@ _Bool win32_path_find_dirs( substring pattern, size_t* out_count, dstring** buff
 
     wchar_t* wpath = win32_path_wide( wide_len, wide_buffer, pattern );
 
-    _Bool recursive_dir = false;
+    bool_t recursive_dir = false;
 
-    substring path = pattern; {
-        substring last_chunk = substr_empty();
-        path_peek_chunk_substr( pattern, &last_chunk );
+    StringSlice path = pattern; {
+        StringSlice last_chunk = string_slice_empty();
+        path_peek_chunk_string_slice( pattern, &last_chunk );
 
-        if( substr_cmp( last_chunk, substr_text( "**" ) ) ) {
+        if( string_slice_cmp( last_chunk, string_slice_text( "**" ) ) ) {
             recursive_dir = true;
         }
 
-        path = substr_trim( path, last_chunk.len + 1 );
+        path = string_slice_trim( path, last_chunk.len + 1 );
 
         if( !path.len ) {
-            path = substr_text( "./" );
+            path = string_slice_text( "./" );
         }
     }
 
@@ -2614,7 +3269,7 @@ _Bool win32_path_find_dirs( substring pattern, size_t* out_count, dstring** buff
             continue;
         }
 
-        _Bool is_self = wcscmp( fd.cFileName, L"." ) == 0;
+        bool_t is_self = wcscmp( fd.cFileName, L"." ) == 0;
         if( !recursive_dir ) {
             if( is_self ) {
                 continue;
@@ -2628,7 +3283,7 @@ _Bool win32_path_find_dirs( substring pattern, size_t* out_count, dstring** buff
             continue;
         }
 
-        dstring* _new = dstring_append_substr( *buffer, path );
+        DynamicString* _new = dstring_append_string_slice( *buffer, path );
         if( !_new ) {
             cb_error( "path_find_files: failed to add path to list!" );
             FindClose( f );
@@ -2639,7 +3294,7 @@ _Bool win32_path_find_dirs( substring pattern, size_t* out_count, dstring** buff
 
         if( !is_self ) {
             {
-                char* last = substr_last( path );
+                char* last = string_slice_last( path );
                 if( !last || *last != '/' ) {
                     _new = dstring_push( *buffer, '/' );
                     if( !_new ) {
@@ -2683,13 +3338,13 @@ _Bool win32_path_find_dirs( substring pattern, size_t* out_count, dstring** buff
     *out_count = dir_count;
     return true;
 }
-_Bool win32_path_find_dirs_recursive(
-    substring base, substring pattern, _Bool is_recursive_level,
-    dstring** accum, size_t* out_count, dstring** buffer
+bool_t win32_path_find_dirs_recursive(
+    StringSlice base, StringSlice pattern, bool_t is_recursive_level,
+    DynamicString** accum, size_t* out_count, DynamicString** buffer
 ) {
-    substring chunk = pattern; {
+    StringSlice chunk = pattern; {
         size_t sep = 0;
-        if( substr_find( pattern, '/', &sep ) ) {
+        if( string_slice_find( pattern, '/', &sep ) ) {
             chunk.len = sep;
         }
 
@@ -2698,14 +3353,14 @@ _Bool win32_path_find_dirs_recursive(
         }
     }
 
-    dstring* _new = dstring_append_substr( *accum, base );
+    DynamicString* _new = dstring_append_string_slice( *accum, base );
     if( !_new ) {
         cb_error( "path_find_files: failed to reallocate accumulator!" );
         return false;
     }
     *accum = _new;
 
-    _new = path_push_chunk_substr( *accum, chunk );
+    _new = path_push_chunk_string_slice( *accum, chunk );
     if( !_new ) {
         cb_error( "path_find_files: failed to reallocate accumulator!" );
         return false;
@@ -2719,7 +3374,7 @@ _Bool win32_path_find_dirs_recursive(
     }
 
     size_t count = 0;
-    if( !win32_path_find_dirs( substr_from_dstring( *accum ), &count, buffer ) ) {
+    if( !win32_path_find_dirs( string_slice_from_dstring( *accum ), &count, buffer ) ) {
         return false;
     }
 
@@ -2727,15 +3382,15 @@ _Bool win32_path_find_dirs_recursive(
         chunk.len++;
     }
 
-    _Bool recursive_dir = substr_cmp( chunk, substr_text( "**" ) );
+    bool_t recursive_dir = string_slice_cmp( chunk, string_slice_text( "**" ) );
 
     if( recursive_dir ) {
         char* dir = *buffer + dir_offset;
         for( size_t i = 0; i < count; ++i ) {
             dstring_clear( *accum );
-            substring subdir = substr_new( 0, dir );
+            StringSlice subdir = string_slice_new( 0, dir );
 
-            if( substr_cmp( subdir, base ) ) {
+            if( string_slice_cmp( subdir, base ) ) {
                 goto win32_path_find_dirs_recursive_skip;
             }
 
@@ -2752,13 +3407,13 @@ _Bool win32_path_find_dirs_recursive(
             count += rcount;
 
 win32_path_find_dirs_recursive_skip:
-            dir_offset += string_len( *buffer + dir_offset ) + 1;
+            dir_offset += cstr_len( *buffer + dir_offset ) + 1;
             dir         = *buffer + dir_offset;
         }
     }
 
     *out_count += count;
-    pattern = substr_advance_by( pattern, chunk.len + 1 );
+    pattern = string_slice_advance_by( pattern, chunk.len + 1 );
 
     if( !pattern.len ) {
         return true;
@@ -2768,7 +3423,7 @@ win32_path_find_dirs_recursive_skip:
     for( size_t i = 0; i < count; ++i ) {
         dstring_clear( *accum );
 
-        substring subdir = substr_new( 0, dir );
+        StringSlice subdir = string_slice_new( 0, dir );
 
         if( !win32_path_find_dirs_recursive(
             subdir, pattern, false,
@@ -2777,20 +3432,20 @@ win32_path_find_dirs_recursive_skip:
             return false;
         }
 
-        dir_offset += string_len( *buffer + dir_offset ) + 1;
+        dir_offset += cstr_len( *buffer + dir_offset ) + 1;
         dir         = *buffer + dir_offset;
     }
 
     return true;
 }
-_Bool win32_path_find_files(
-    size_t dir_count, dstring* dirs,
-    substring pattern, size_t* out_count, dstring** buffer
+bool_t win32_path_find_files(
+    size_t dir_count, DynamicString* dirs,
+    StringSlice pattern, size_t* out_count, DynamicString** buffer
 ) {
     size_t largest_dir = 0; {
         char* at = dirs;
         for( size_t dir_index = 0; dir_index < dir_count; ++dir_index ) {
-            size_t len = string_len( at );
+            size_t len = cstr_len( at );
             if( len > largest_dir ) {
                 largest_dir = len;
             }
@@ -2806,7 +3461,7 @@ _Bool win32_path_find_files(
         cb_error( "path_find_files: failed to allocate wide buffer!" );
         return false;
     }
-    dstring* path = dstring_empty( max_path );
+    DynamicString* path = dstring_empty( max_path );
     if( !path ) {
         memory_free( wide_buffer, wide_size );
         cb_error( "path_find_files: failed to allocate path buffer!" );
@@ -2816,9 +3471,9 @@ _Bool win32_path_find_files(
     char*  at = dirs;
     size_t path_count = 0;
     for( size_t dir_index = 0; dir_index < dir_count; ++dir_index ) {
-        substring dir = substr_new( 0, at );
+        StringSlice dir = string_slice_new( 0, at );
         at += dir.len + 1; {
-            dstring* _new = dstring_append_substr( path, dir );
+            DynamicString* _new = dstring_append_string_slice( path, dir );
             if( !_new ) {
                 cb_error( "path_find_files: failed to construct path!" );
                 memory_free( wide_buffer, wide_size );
@@ -2827,7 +3482,7 @@ _Bool win32_path_find_files(
             }
             path = _new;
         } {
-            dstring* _new = path_push_chunk_substr( path, pattern );
+            DynamicString* _new = path_push_chunk_string_slice( path, pattern );
             if( !_new ) {
                 cb_error( "path_find_files: failed to construct path!" );
                 memory_free( wide_buffer, wide_size );
@@ -2838,7 +3493,7 @@ _Bool win32_path_find_files(
         }
 
         wchar_t* wpath =
-            win32_path_wide( max_path, wide_buffer, substr_from_dstring( path ) );
+            win32_path_wide( max_path, wide_buffer, string_slice_from_dstring( path ) );
         assert( wpath ); // assert that wide_buffer was big enough
 
         WIN32_FIND_DATAW fd;
@@ -2861,7 +3516,7 @@ _Bool win32_path_find_files(
                 continue;
             }
 
-            substring subpath;
+            StringSlice subpath;
             subpath.len = wcslen( fd.cFileName );
             if( !subpath.len ) {
                 continue;
@@ -2872,7 +3527,7 @@ _Bool win32_path_find_files(
                 max_path * sizeof(wchar_t), (char*)wide_buffer );
 
             subpath.cc = (char*)wide_buffer; {
-                dstring* _new = dstring_append_substr( path, subpath );
+                DynamicString* _new = dstring_append_string_slice( path, subpath );
                 if( !_new ) {
                     cb_error( "path_find_files: failed to create new path!" );
                     memory_free( wide_buffer, wide_size );
@@ -2887,8 +3542,8 @@ _Bool win32_path_find_files(
             }
             memory_zero( wide_buffer, subpath.len );
 
-            dstring* buf = dstring_append_substr(
-                *buffer, substr_from_dstring( path ) );
+            DynamicString* buf = dstring_append_string_slice(
+                *buffer, string_slice_from_dstring( path ) );
             if( !buf ) {
                 cb_error( "path_find_files: failed to add new path to buffer!" );
                 memory_free( wide_buffer, wide_size );
@@ -2916,21 +3571,21 @@ _Bool win32_path_find_files(
         return false;
     }
 }
-_Bool path_find_files_substr( substring path, FindFiles* out_result ) {
-    substring file_pattern = substr_empty();
+bool_t path_find_files_string_slice( StringSlice path, FindFiles* out_result ) {
+    StringSlice file_pattern = string_slice_empty();
     char*  dir             = ".";
-    _Bool  dir_allocated   = false;
+    bool_t  dir_allocated   = false;
 
-    if( path_file_name( path, &file_pattern ) && !substr_cmp( path, file_pattern ) ) {
-        substring remaining_path = path;
+    if( path_file_name( path, &file_pattern ) && !string_slice_cmp( path, file_pattern ) ) {
+        StringSlice remaining_path = path;
         remaining_path.len -= file_pattern.len;
         if( remaining_path.cc[remaining_path.len - 1] == '/' ) {
             remaining_path.len--;
         }
 
         size_t first_pat = 0;
-        if( !substr_find_set( remaining_path, substr_text( "?*" ), &first_pat ) ) {
-            dir           = dstring_from_substr( &remaining_path );
+        if( !string_slice_find_set( remaining_path, string_slice_text( "?*" ), &first_pat ) ) {
+            dir = dstring_from_string_slice( &remaining_path );
             if( !dir ) {
                 cb_error( "path_find_files: failed to allocate dir!" );
                 return false;
@@ -2939,33 +3594,33 @@ _Bool path_find_files_substr( substring path, FindFiles* out_result ) {
             goto path_find_files_simple;
         }
 
-        substring base = substr_empty(), pat = substr_empty(); {
+        StringSlice base = string_slice_empty(), pat = string_slice_empty(); {
             base     = remaining_path;
             base.len = first_pat;
 
             size_t sep = 0;
-            if( substr_find_last( base, '/', &sep ) ) {
+            if( string_slice_find_last( base, '/', &sep ) ) {
                 base.len = sep;
-                pat      = substr_advance_by( remaining_path, sep + 1 );
+                pat      = string_slice_advance_by( remaining_path, sep + 1 );
             } else {
-                base = substr_text( "./" );
+                base = string_slice_text( "./" );
                 pat  = remaining_path;
             }
         }
 
-        dstring* accum = dstring_empty( 255 );
+        DynamicString* accum = dstring_empty( 255 );
         if( !accum ) {
             cb_error( "path_find_files: failed to allocate accumulation buffer!" );
             return false;
         }
         size_t   dir_count = 0;
-        dstring* dirs      = dstring_empty( 255 );
+        DynamicString* dirs      = dstring_empty( 255 );
         if( !dirs ) {
             cb_error( "path_find_files: failed to allocate directories buffer!" );
             dstring_free( accum );
             return false;
         }
-        _Bool res = win32_path_find_dirs_recursive(
+        bool_t res = win32_path_find_dirs_recursive(
             base, pat, false,
             &accum, &dir_count, &dirs );
         dstring_free( accum );
@@ -2985,7 +3640,7 @@ _Bool path_find_files_substr( substring path, FindFiles* out_result ) {
             return true;
         }
 
-        dstring* file_buf = dstring_empty( 255 );
+        DynamicString* file_buf = dstring_empty( 255 );
 
         if( !file_buf ) {
             dstring_free( dirs );
@@ -3012,25 +3667,25 @@ _Bool path_find_files_substr( substring path, FindFiles* out_result ) {
             return true;
         }
 
-        substring* files = darray_empty( substring, file_count );
+        StringSlice* files = darray_empty( StringSlice, file_count );
         if( !files ) {
             dstring_free( file_buf );
             cb_error( "path_find_files: failed to allocate files array!" );
             return false;
         }
 
-        substring remaining_files = substr_from_dstring( file_buf );
+        StringSlice remaining_files = string_slice_from_dstring( file_buf );
         for(
             size_t file_index = 0;
             file_index < file_count && remaining_files.len;
             ++file_index
         ) {
-            substring file = remaining_files;
-            file.len       = string_len( file.cc );
+            StringSlice file = remaining_files;
+            file.len       = cstr_len( file.cc );
 
             darray_push( files, &file );
 
-            remaining_files = substr_advance_by( remaining_files, file.len + 1 );
+            remaining_files = string_slice_advance_by( remaining_files, file.len + 1 );
         }
 
         out_result->buffer = file_buf;
@@ -3044,14 +3699,14 @@ _Bool path_find_files_substr( substring path, FindFiles* out_result ) {
 
 path_find_files_simple:
     {
-        dstring* buf = dstring_empty(255);
+        DynamicString* buf = dstring_empty(255);
         if( !buf ) {
             cb_error( "path_find_files: failed to allocate buffer!" );
             return false;
         }
 
         size_t path_count = 0;
-        _Bool res = win32_path_find_files( 1, dir, file_pattern, &path_count, &buf );
+        bool_t res = win32_path_find_files( 1, dir, file_pattern, &path_count, &buf );
 
         if( dir_allocated ) {
             dstring_free( dir );
@@ -3061,20 +3716,20 @@ path_find_files_simple:
             return false;
         }
 
-        substring* paths = darray_empty( substring, path_count );
+        StringSlice* paths = darray_empty( StringSlice, path_count );
         if( !paths ) {
             cb_error( "path_find_files: failed to allocate paths array!" );
             dstring_free( buf );
             return false;
         }
 
-        substring subbuf = substr_from_dstring( buf );
+        StringSlice subbuf = string_slice_from_dstring( buf );
         for( size_t i = 0; i < path_count && subbuf.len; ++i ) {
-            substring path = subbuf;
-            path.len = string_len( path.cc );
+            StringSlice path = subbuf;
+            path.len = cstr_len( path.cc );
             darray_push( paths, &path );
 
-            subbuf = substr_advance_by( subbuf, path.len + 1 );
+            subbuf = string_slice_advance_by( subbuf, path.len + 1 );
         }
 
         out_result->count  = darray_len( paths );
@@ -3084,7 +3739,7 @@ path_find_files_simple:
     }
 }
 
-_Bool mutex_create( Mutex* out_mtx ) {
+bool_t mutex_create( Mutex* out_mtx ) {
     HANDLE handle = CreateMutexA( NULL, FALSE, NULL );
     if( !handle ) {
         cb_error( "mutex_create: failed to create mutex!" );
@@ -3097,7 +3752,7 @@ void mutex_destroy( Mutex* mtx ) {
     CloseHandle( mtx->handle );
     mtx->handle = 0;
 }
-_Bool mutex_lock( Mutex* mtx, uint32_t ms ) {
+bool_t mutex_lock( Mutex* mtx, uint32_t ms ) {
     memory_fence();
 
     DWORD res = WaitForSingleObject( mtx->handle, ms );
@@ -3112,7 +3767,7 @@ void mutex_unlock( Mutex* mtx ) {
     ReleaseMutex( mtx->handle );
 }
 
-_Bool semaphore_create( Semaphore* out_sem ) {
+bool_t semaphore_create( Semaphore* out_sem ) {
     HANDLE handle = CreateSemaphoreA( NULL, 0, INT32_MAX, 0 );
     if( !handle ) {
         return false;
@@ -3124,7 +3779,7 @@ void semaphore_destroy( Semaphore* sem ) {
     CloseHandle( sem->handle );
     sem->handle = 0;
 }
-_Bool semaphore_wait( Semaphore* sem, uint32_t ms ) {
+bool_t semaphore_wait( Semaphore* sem, uint32_t ms ) {
     DWORD res = WaitForSingleObject( sem->handle, ms );
 
     if( ms == UINT32_MAX ) {
@@ -3141,7 +3796,8 @@ struct Win32ThreadParams {
     uint32_t id;
 };
 volatile Atom global_thread_id = 1;
-DWORD thread_proc( void* params ) {
+
+unsigned int thread_proc( void* params ) {
     struct Win32ThreadParams* p = params;
     p->proc( p->id, p->params );
     memory_fence();
@@ -3149,7 +3805,7 @@ DWORD thread_proc( void* params ) {
 
     return 0;
 }
-_Bool internal_thread_create( JobFN* thread, void* params ) {
+bool_t internal_thread_create( JobFN* thread, void* params ) {
     struct Win32ThreadParams* p = memory_alloc( sizeof( *p ) );
     if( !p ) {
         cb_error( "failed to create thread!" );
@@ -3160,36 +3816,38 @@ _Bool internal_thread_create( JobFN* thread, void* params ) {
     p->params = params;
     memory_fence();
 
-    HANDLE h = CreateThread( 0, 0, thread_proc, p, 0, 0 );
+    HANDLE h = (HANDLE)_beginthreadex( 0, 0, thread_proc, p, 0, 0 );
+
     if( !h ) {
         cb_error( "failed to create thread!" );
         return false;
     }
+
     return true;
 }
 
-_Bool file_open( const char* path, FileOpenFlags flags, File* out_file ) {
+bool_t file_open( const char* path, FileFlags flags, File* out_file ) {
+    if( !file_flags_valid( flags ) ) {
+        return false;
+    }
+
     DWORD dwDesiredAccess       = 0;
-    if( flags & FILE_OPEN_FLAG_READ ) {
+    if( flags & FF_READ ) {
         dwDesiredAccess |= GENERIC_READ;
     }
-    if( flags & FILE_OPEN_FLAG_WRITE ) {
+    if( flags & FF_WRITE ) {
         dwDesiredAccess |= GENERIC_WRITE;
-    }
-    if( !dwDesiredAccess ) {
-        cb_error( "file_open: flags provided are invalid!" );
-        return false;
     }
     DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
     DWORD dwCreationDisposition = OPEN_EXISTING;
-    if( flags & FILE_OPEN_FLAG_CREATE ) {
+    if( flags & FF_CREATE ) {
         dwCreationDisposition = CREATE_ALWAYS;
-    } else if( flags & FILE_OPEN_FLAG_TRUNCATE ) {
+    } else if( flags & FF_TRUNCATE ) {
         dwCreationDisposition = TRUNCATE_EXISTING;
     }
     DWORD dwFlagsAndAttributes = 0;
 
-    wchar_t* wpath = win32_path( substr_new( 0, path ) );
+    wchar_t* wpath = win32_path( string_slice_new( 0, path ) );
     if( !wpath ) {
         cb_error( "file_open: failed to allocate path buffer!" );
         return false;
@@ -3235,70 +3893,93 @@ _Bool file_open( const char* path, FileOpenFlags flags, File* out_file ) {
             result.modify = win32_filetime_to_posix_time( fi.ftLastWriteTime );
 
             if( fi.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
-                result.type = FILE_TYPE_DIRECTORY;
+                result.type = FT_DIRECTORY;
             } else {
-                result.type = FILE_TYPE_FILE;
+                result.type = FT_FILE;
             }
         }
     }
 
-    if( flags & FILE_OPEN_FLAG_APPEND ) {
-        file_seek( result.handle, FILE_SEEK_TYPE_START, result.size );
+    if( flags & FF_APPEND ) {
+        file_seek( result.handle, FS_BEGIN, result.size );
     }
 
-    *out_file = result;
+    result.flags = flags;
+    *out_file    = result;
     return true;
 }
-_Bool file_path_move( const char* dst, const char* src ) {
-    wchar_t* wdst = win32_path( substr_new( 0, dst ) );
+bool_t file_path_exists( const char* path ) {
+    wchar_t* wpath = win32_path( string_slice_new( 0, path ) );
+    if( !wpath ) {
+        cb_error( "file_path_exists: failed to allocate wide path buffer!" );
+        return false;
+    }
+
+    DWORD dwDesiredAccess       = 0;
+    DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    DWORD dwCreationDisposition = OPEN_EXISTING;
+    DWORD dwFlagsAndAttributes  = 0;
+    HANDLE handle = CreateFileW(
+        wpath, dwDesiredAccess, dwShareMode,
+        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
+
+    if( handle == INVALID_HANDLE_VALUE ) {
+        return false;
+    }
+
+    CloseHandle( handle );
+    return true;
+}
+bool_t file_path_move( const char* dst, const char* src ) {
+    wchar_t* wdst = win32_path( string_slice_new( 0, dst ) );
     if( !wdst ) {
         cb_error( "file_path_move: failed to allocate path buffer!" );
         return false;
     }
-    wchar_t* wsrc = win32_path( substr_new( 0, src ) );
+    wchar_t* wsrc = win32_path( string_slice_new( 0, src ) );
     if( !wsrc ) {
         cb_error( "file_path_move: failed to allocate path buffer!" );
         return false;
     }
 
-    _Bool res = MoveFileW( wsrc, wdst ) != FALSE;
+    bool_t res = MoveFileW( wsrc, wdst ) != FALSE;
     if( !res ) {
         cb_error( "file_path_move: failed to move %S to %S!", wsrc, wdst );
     }
     return res;
 }
-_Bool file_path_copy( const char* dst, const char* src ) {
-    wchar_t* wdst = win32_path( substr_new( 0, dst ) );
+bool_t file_path_copy( const char* dst, const char* src ) {
+    wchar_t* wdst = win32_path( string_slice_new( 0, dst ) );
     if( !wdst ) {
         cb_error( "file_path_copy: failed to allocate path buffer!" );
         return false;
     }
-    wchar_t* wsrc = win32_path( substr_new( 0, src ) );
+    wchar_t* wsrc = win32_path( string_slice_new( 0, src ) );
     if( !wsrc ) {
         cb_error( "file_path_copy: failed to allocate path buffer!" );
         return false;
     }
 
-    _Bool res = CopyFileW( wsrc, wdst, FALSE ) != FALSE;
+    bool_t res = CopyFileW( wsrc, wdst, FALSE ) != FALSE;
     if( !res ) {
         cb_error( "file_path_copy: failed to copy %S to %S!", wsrc, wdst );
     }
     return res;
 }
-_Bool file_path_remove( const char* file ) {
-    wchar_t* wfile = win32_path( substr_new( 0, file ) );
+bool_t file_path_remove( const char* file ) {
+    wchar_t* wfile = win32_path( string_slice_new( 0, file ) );
     if( !wfile ) {
         cb_error( "file_path_remove: failed to allocate path buffer!" );
         return false;
     }
 
-    _Bool res = DeleteFileW( wfile ) != FALSE;
+    bool_t res = DeleteFileW( wfile ) != FALSE;
     if( !res ) {
         cb_error( "file_path_remove: failed to remove file %S!", wfile );
     }
     return res;
 }
-_Bool file_write( File* file, size_t size, const void* buf ) {
+bool_t file_write( File* file, size_t size, const void* buf ) {
 #if UINTPTR_MAX == UINT64_MAX
     DWORD bytes_written = 0;
     DWORD part0 = size > UINT32_MAX ? UINT32_MAX : size;
@@ -3327,7 +4008,7 @@ _Bool file_write( File* file, size_t size, const void* buf ) {
     return res;
 #endif
 }
-_Bool file_read( File* file, size_t size, void* buf ) {
+bool_t file_read( File* file, size_t size, void* buf ) {
 #if UINTPTR_MAX == UINT64_MAX
     DWORD bytes_read = 0;
     DWORD part0 = size > UINT32_MAX ? UINT32_MAX : size;
@@ -3359,7 +4040,7 @@ void file_close( File* file ) {
     }
     memory_zero( file, sizeof(*file) );
 }
-_Bool file_check( File* file ) {
+bool_t file_check( File* file ) {
     if( file ) {
         if( !file->handle || file->handle == INVALID_HANDLE_VALUE ) {
             return false;
@@ -3368,7 +4049,7 @@ _Bool file_check( File* file ) {
     }
     return false;
 }
-_Bool file_truncate( File* file ) {
+bool_t file_truncate( File* file ) {
     if( SetEndOfFile( file->handle ) == FALSE ) {
         cb_error( "file_truncate: failed to truncate file!" );
         return false;
@@ -3381,15 +4062,15 @@ _Bool file_truncate( File* file ) {
     }
     return true;
 }
-_Bool file_seek( File* file, FileSeekType type, ssize_t seek ) {
+bool_t file_seek( File* file, FileSeek type, ssize_t seek ) {
     LARGE_INTEGER li;
     li.QuadPart = seek;
     DWORD dwMoveMethod = 0;
     switch( seek ) {
-        case FILE_SEEK_TYPE_START: {
+        case FS_BEGIN: {
             dwMoveMethod = FILE_BEGIN;
         } break;
-        case FILE_SEEK_TYPE_END: {
+        case FS_END: {
             dwMoveMethod = FILE_END;
         } break;
         default: {
@@ -3408,7 +4089,7 @@ _Bool file_seek( File* file, FileSeekType type, ssize_t seek ) {
 
     return true;
 }
-_Bool file_query_seek( File* file, ssize_t* out_seek ) {
+bool_t file_query_seek( File* file, ssize_t* out_seek ) {
     LARGE_INTEGER move;
     move.QuadPart = 0;
     LARGE_INTEGER li;
@@ -3419,8 +4100,8 @@ _Bool file_query_seek( File* file, ssize_t* out_seek ) {
     *out_seek = li.QuadPart;
     return true;
 }
-_Bool file_path_query_create( const char* path, time_t* out_time ) {
-    wchar_t* wpath = win32_path( substr_new( 0, path ) );
+bool_t file_path_query_create( const char* path, time_t* out_time ) {
+    wchar_t* wpath = win32_path( string_slice_new( 0, path ) );
     if( !wpath ) {
         cb_error( "file_path_query_create: failed to allocate path buffer!" );
         return false;
@@ -3435,7 +4116,7 @@ _Bool file_path_query_create( const char* path, time_t* out_time ) {
 
     FILETIME ft;
     memory_zero( &ft, sizeof(ft) );
-    _Bool res = GetFileTime( handle, &ft, NULL, NULL );
+    bool_t res = GetFileTime( handle, &ft, NULL, NULL );
     CloseHandle( handle );
 
     if( !res ) {
@@ -3446,8 +4127,8 @@ _Bool file_path_query_create( const char* path, time_t* out_time ) {
     *out_time = win32_filetime_to_posix_time( ft );
     return true;
 }
-_Bool file_path_query_modify( const char* path, time_t* out_time ) {
-    wchar_t* wpath = win32_path( substr_new( 0, path ) );
+bool_t file_path_query_modify( const char* path, time_t* out_time ) {
+    wchar_t* wpath = win32_path( string_slice_new( 0, path ) );
     if( !wpath ) {
         cb_error( "file_path_query_modify: failed to allocate path buffer!" );
         return false;
@@ -3462,7 +4143,7 @@ _Bool file_path_query_modify( const char* path, time_t* out_time ) {
 
     FILETIME ft;
     memory_zero( &ft, sizeof(ft) );
-    _Bool res = GetFileTime( handle, NULL, NULL, &ft );
+    bool_t res = GetFileTime( handle, NULL, NULL, &ft );
     CloseHandle( handle );
 
     if( !res ) {
@@ -3483,21 +4164,21 @@ void platform_init(void) {
 
     QueryPerformanceFrequency( &global_qpf );
 }
-unsigned long atomic_add( Atom* ptr, unsigned long val ) {
-    unsigned long res = _InterlockedExchangeAdd( (volatile long*)ptr, val );
+uint32_t atomic_add( Atom* ptr, uint32_t val ) {
+    uint32_t res = _InterlockedExchangeAdd( (volatile long*)ptr, val );
     return res;
 }
-unsigned long atomic_sub( Atom* ptr, unsigned long val ) {
-    unsigned long res = _InterlockedExchangeAdd( (volatile long*)ptr, -((long)val) );
+uint32_t atomic_sub( Atom* ptr, uint32_t val ) {
+    uint32_t res = _InterlockedExchangeAdd( (volatile long*)ptr, -((long)val) );
     return res;
 }
-unsigned long long atomic_add64( Atom64* ptr, unsigned long long val ) {
-    unsigned long long res =
+uint64_t atomic_add64( Atom64* ptr, uint64_t val ) {
+    uint64_t res =
         _InterlockedExchangeAdd64( (volatile long long*)ptr, val );
     return res;
 }
-unsigned long long atomic_sub64( Atom64* ptr, unsigned long long val ) {
-    unsigned long long res =
+uint64_t atomic_sub64( Atom64* ptr, uint64_t val ) {
+    uint64_t res =
         _InterlockedExchangeAdd64( (volatile long long*)ptr, -((long long)val) );
     return res;
 }
@@ -3505,7 +4186,7 @@ unsigned long long atomic_sub64( Atom64* ptr, unsigned long long val ) {
 void thread_sleep( uint32_t ms ) {
     Sleep( ms );
 }
-dstring* path_pwd(void) {
+DynamicString* path_pwd(void) {
     dstring_header* res = dstring_head( dstring_empty( MAX_PATH ) );
     if( !res ) {
         return NULL;
@@ -3528,7 +4209,7 @@ double time_seconds(void) {
 double time_milliseconds(void) {
     return time_seconds() * 1000.0;
 }
-_Bool program_in_path( const char* prog ) {
+bool_t program_in_path( const char* prog ) {
     DWORD dwCreationFlags = CREATE_SUSPENDED;
     STARTUPINFOA startup;
     memory_zero( &startup, sizeof(startup) );
@@ -3537,7 +4218,7 @@ _Bool program_in_path( const char* prog ) {
     PROCESS_INFORMATION info;
     memory_zero( &info, sizeof(info) );
 
-    _Bool res = CreateProcessA(
+    bool_t res = CreateProcessA(
         NULL, (char*)prog, NULL, NULL, FALSE,
         dwCreationFlags, NULL, NULL, &startup, &info );
 
@@ -3549,14 +4230,14 @@ _Bool program_in_path( const char* prog ) {
 
     return res;
 }
-_Bool pipe_create( Pipe* out_read, Pipe* out_write ) {
+bool_t pipe_create( Pipe* out_read, Pipe* out_write ) {
     SECURITY_ATTRIBUTES attr;
     memory_zero( &attr, sizeof( attr ) );
     attr.nLength        = sizeof(attr);
     attr.bInheritHandle = TRUE;
 
     HANDLE pipes[2];
-    _Bool res = CreatePipe( pipes + 0, pipes + 1, &attr, kibibytes(64) );
+    bool_t res = CreatePipe( pipes + 0, pipes + 1, &attr, kibibytes(64) );
     if( !res ) {
         cb_error( "pipe_create: failed to create pipes!" );
         return false;
@@ -3574,25 +4255,25 @@ uint32_t pipe_peek( Pipe* rpipe ) {
     }
     return 0;
 }
-_Bool pipe_read(
+bool_t pipe_read(
     Pipe* rpipe, uint32_t buf_size, void* buf, uint32_t* out_read_size
 ) {
     if( !pipe_peek( rpipe ) ) {
         return false;
     }
     DWORD read_size = 0;
-    _Bool res = ReadFile( rpipe->handle, buf, buf_size, &read_size, NULL );
+    bool_t res = ReadFile( rpipe->handle, buf, buf_size, &read_size, NULL );
     if( res ) {
         *out_read_size = read_size;
         return true;
     }
     return false;
 }
-_Bool pipe_write(
+bool_t pipe_write(
     Pipe* wpipe, uint32_t buf_size, const void* buf, uint32_t* out_write_size
 ) {
     DWORD write_size = 0;
-    _Bool res = WriteFile( wpipe->handle, buf, buf_size, &write_size, NULL );
+    bool_t res = WriteFile( wpipe->handle, buf, buf_size, &write_size, NULL );
     if( res ) {
         *out_write_size = write_size;
         return true;
@@ -3605,7 +4286,7 @@ void pipe_close( Pipe* pipe ) {
         memory_zero( pipe, sizeof(*pipe) );
     }
 }
-_Bool pipe_check( Pipe* pipe ) {
+bool_t pipe_check( Pipe* pipe ) {
     if( pipe ) {
         if( !pipe->handle || pipe->handle == INVALID_HANDLE_VALUE ) {
             return false;
@@ -3614,7 +4295,7 @@ _Bool pipe_check( Pipe* pipe ) {
     }
     return false;
 }
-_Bool program_exec_async(
+bool_t program_exec_async(
     const char* command_line,
     Pipe* opt_stdin_r, Pipe* opt_stdout_w, Pipe* opt_stderr_w,
     ProcessID* out_pid
@@ -3630,7 +4311,7 @@ _Bool program_exec_async(
     startup.hStdOutput = GetStdHandle( STD_OUTPUT_HANDLE );
     startup.hStdError  = GetStdHandle( STD_ERROR_HANDLE );
 
-    _Bool bInheritHandle = FALSE;
+    bool_t bInheritHandle = FALSE;
     if( opt_stdin_r ) {
         startup.hStdInput = opt_stdin_r->handle;
         bInheritHandle    = TRUE;
@@ -3650,7 +4331,7 @@ _Bool program_exec_async(
 
     DWORD flags = 0;
 
-    _Bool res = CreateProcessA(
+    bool_t res = CreateProcessA(
         NULL, (char*)command_line, NULL, NULL,
         bInheritHandle, flags, NULL, NULL, &startup, &info );
 
@@ -3660,18 +4341,18 @@ _Bool program_exec_async(
     }
 
     CloseHandle( info.hThread );
-    *out_pid = info.hProcess;
+    out_pid->handle = info.hProcess;
     return true;
 }
-_Bool program_wait( ProcessID pid, uint32_t ms, int* opt_out_res ) {
-    if( WaitForSingleObject( pid, ms ) == WAIT_TIMEOUT ) {
-        cb_error( "process %p timed out!", pid );
+bool_t program_wait( ProcessID pid, uint32_t ms, int* opt_out_res ) {
+    if( WaitForSingleObject( pid.handle, ms ) == WAIT_TIMEOUT ) {
+        cb_error( "process %p timed out!", pid.handle );
         return false;
     }
     if( opt_out_res ) {
         DWORD exit_code = 0;
-        if( !GetExitCodeProcess( pid, &exit_code ) ) {
-            cb_warn( "process %p finished but failed to get return code!", pid );
+        if( !GetExitCodeProcess( pid.handle, &exit_code ) ) {
+            cb_warn( "process %p finished but failed to get return code!", pid.handle );
             return true;
         }
         *opt_out_res = exit_code;
@@ -3679,12 +4360,12 @@ _Bool program_wait( ProcessID pid, uint32_t ms, int* opt_out_res ) {
 
     return true;
 }
-void  program_terminate( ProcessID pid ) {
-    TerminateProcess( pid, 0 );
-    CloseHandle( pid );
+void program_terminate( ProcessID pid ) {
+    TerminateProcess( pid.handle, 0 );
+    CloseHandle( pid.handle );
 }
-void  program_close( ProcessID pid ) {
-    CloseHandle( pid );
+void program_close( ProcessID pid ) {
+    CloseHandle( pid.handle );
 }
 
 #else /* Platform Windows */
@@ -3702,7 +4383,7 @@ void  program_close( ProcessID pid ) {
 void platform_init(void) {
     return;
 }
-_Bool file_open( const char* path, FileOpenFlags flags, File* out_file ) {
+bool_t file_open( const char* path, FileOpenFlags flags, File* out_file ) {
     int oflag = 0;
     if(
         (flags & (FILE_OPEN_FLAG_READ | FILE_OPEN_FLAG_WRITE)) ==
@@ -3744,20 +4425,20 @@ _Bool file_open( const char* path, FileOpenFlags flags, File* out_file ) {
     *out_file = fd;
     return true;
 }
-_Bool file_write( File file, size_t size, const void* buf ) {
+bool_t file_write( File file, size_t size, const void* buf ) {
     return write( file, buf, size ) != -1;
 }
-_Bool file_read( File file, size_t size, void* buf ) {
+bool_t file_read( File file, size_t size, void* buf ) {
     return read( file, buf, size ) != -1;
 }
 void file_close( File file ) {
     close( file );
 }
-_Bool file_truncate( File file ) {
+bool_t file_truncate( File file ) {
     off_t pos = lseek( file, 0, SEEK_CUR );
     return ftruncate( file, pos ) == 0;
 }
-_Bool file_query_size( File file, size_t* out_size ) {
+bool_t file_query_size( File file, size_t* out_size ) {
     off_t pos  = lseek( file, 0, SEEK_CUR );
     if( pos < 0 ) {
         cb_error( "file_query_size: failed to get current position!" );
@@ -3769,13 +4450,13 @@ _Bool file_query_size( File file, size_t* out_size ) {
     *out_size = size;
     return true;
 }
-_Bool file_seek( File file, FileSeekType type, ssize_t seek ) {
+bool_t file_seek( File file, FileSeek type, ssize_t seek ) {
     int whence = 0;
     switch( type ) {
-        case FILE_SEEK_TYPE_START: {
+        case FS_BEGIN: {
             whence = SEEK_SET;
         } break;
-        case FILE_SEEK_TYPE_END: {
+        case FS_END: {
             whence = SEEK_END;
         } break;
         default: {
@@ -3784,7 +4465,7 @@ _Bool file_seek( File file, FileSeekType type, ssize_t seek ) {
     }
     return lseek( file, seek, whence ) >= 0;
 }
-_Bool file_query_seek( File file, ssize_t* out_seek ) {
+bool_t file_query_seek( File file, ssize_t* out_seek ) {
     off_t pos = lseek( file, 0, SEEK_CUR );
     if( pos < 0 ) {
         cb_error( "file_query_seek: failed to get current position!" );
@@ -3793,7 +4474,7 @@ _Bool file_query_seek( File file, ssize_t* out_seek ) {
     *out_seek = pos;
     return true;
 }
-_Bool file_query_info( File file, FileInfo* out_info ) {
+bool_t file_query_info( File file, FileInfo* out_info ) {
     struct stat st;
     memory_zero( &st, sizeof(st) );
     if( fstat( file, &st ) < 0 ) {
@@ -3813,17 +4494,17 @@ _Bool file_query_info( File file, FileInfo* out_info ) {
 
     return true;
 }
-_Bool file_query_info_path( const char* path, FileInfo* out_info ) {
+bool_t file_query_info_path( const char* path, FileInfo* out_info ) {
     File fd;
     if( !file_open( path, FILE_OPEN_FLAG_READ, &fd ) ) {
         cb_error( "file_query_info_path: failed to open file '%s'", path );
         return false;
     }
-    _Bool res = file_query_info( fd, out_info );
+    bool_t res = file_query_info( fd, out_info );
     file_close( fd );
     return res;
 }
-_Bool file_move( const char* dst, const char* src ) {
+bool_t file_move( const char* dst, const char* src ) {
     if( rename( src, dst ) == 0 ) {
         return true;
     } else {
@@ -3831,7 +4512,7 @@ _Bool file_move( const char* dst, const char* src ) {
         return false;
     }
 }
-_Bool file_copy( const char* dst, const char* src ) {
+bool_t file_copy( const char* dst, const char* src ) {
     #define MAX_COPY_BUF (1024)
     void* copy_buf = memory_alloc( MAX_COPY_BUF );
     if( !copy_buf ) {
@@ -3898,7 +4579,7 @@ _Bool file_copy( const char* dst, const char* src ) {
 
     return true;
 }
-_Bool file_remove( const char* path ) {
+bool_t file_remove( const char* path ) {
     if( remove(path) == 0 ) {
         return true;
     } else {
@@ -3907,7 +4588,7 @@ _Bool file_remove( const char* path ) {
     }
 }
 
-_Bool program_exec_async( const char* command_line, ProcessID* out_pid ) {
+bool_t program_exec_async( const char* command_line, ProcessID* out_pid ) {
     pid_t pid = fork();
     if( pid < 0 ) {
         return false;
@@ -3920,7 +4601,7 @@ _Bool program_exec_async( const char* command_line, ProcessID* out_pid ) {
         exit( system( command_line ) );
     }
 }
-_Bool program_wait( ProcessID pid, uint32_t ms, int* opt_out_res ) {
+bool_t program_wait( ProcessID pid, uint32_t ms, int* opt_out_res ) {
     if( ms != UINT32_MAX ) {
         double start   = time_milliseconds();
         double elapsed = 0.0;
@@ -3961,15 +4642,15 @@ void program_close( ProcessID pid ) {
     unused(pid);
 }
 
-_Bool program_in_path( const char* prog ) {
-    dstring* cmd = dstring_fmt( "which %s 2>&1 /dev/null", prog );
+bool_t program_in_path( const char* prog ) {
+    DynamicString* cmd = dstring_fmt( "which %s 2>&1 /dev/null", prog );
 
     if( !cmd ) {
         cb_error( "program_in_path: failed to allocate command buffer!" );
         return false;
     }
 
-    _Bool result = system( cmd ) == 0;
+    bool_t result = system( cmd ) == 0;
     dstring_free( cmd );
 
     return result;
@@ -3984,7 +4665,7 @@ double time_milliseconds(void) {
     clock_gettime( CLOCK_MONOTONIC, &ts );
     return ((double)ts.tv_sec * 1000.0) + ((double)ts.tv_nsec / 1000000.0);
 }
-dstring* path_pwd(void) {
+DynamicString* path_pwd(void) {
     dstring_header* res = dstring_head( dstring_empty( 1024 ) );
     if( !res ) {
         return NULL;
@@ -3994,7 +4675,7 @@ dstring* path_pwd(void) {
         memory_free( res );
         return NULL;
     }
-    res->len = string_len( res->buf );
+    res->len = cstr_len( res->buf );
 
     return res->buf;
 }

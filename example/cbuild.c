@@ -15,7 +15,7 @@
     #define TARGET "build/program"
 #endif
 
-dstring* generate_compile_command( const char* compiler );
+DynamicString* generate_compile_command( const char* compiler );
 int      compile_target( const char* command_line );
 void     print_help(void);
 
@@ -31,7 +31,7 @@ int main( int argc, char** argv ) {
     LogLevel level = LOG_LEVEL_INFO;
 
     // break arguments into sub string list.
-    substring* args = substr_darray_from_arg( argc, argv );
+    StringSlice* args = string_slice_darray_from_arg( argc, argv );
     // remove the first argument (executable path, not needed for this build 'script').
     darray_remove( args, 0, 0 );
 
@@ -39,7 +39,7 @@ int main( int argc, char** argv ) {
         // find --silent argument
         size_t _argc = darray_len( args );
         for( size_t i = 0; i < _argc; ++i ) {
-            if( substr_cmp( args[i], substr_text( "--silent" ) ) ) {
+            if( string_slice_cmp( args[i], string_slice_text( "--silent" ) ) ) {
                 // error disables info logs and warnings.
                 level = LOG_LEVEL_ERROR;
                 // remove this argument so further argument processing
@@ -71,17 +71,17 @@ int main( int argc, char** argv ) {
 
     // args parsing but for real this time.
     for( size_t i = 0; i < darray_len( args ); ++i ) {
-        substring current = args[i];
+        StringSlice current = args[i];
 
         if(
-            substr_cmp( current, substr_text( "-h" ) ) ||
-            substr_cmp( current, substr_text( "--help" ) )
+            string_slice_cmp( current, string_slice_text( "-h" ) ) ||
+            string_slice_cmp( current, string_slice_text( "--help" ) )
         ) {
             print_help();
             return 0;
         }
 
-        if( substr_cmp( current, substr_text( "run" ) ) ) {
+        if( string_slice_cmp( current, string_slice_text( "run" ) ) ) {
             run = true;
             continue;
         }
@@ -98,7 +98,7 @@ int main( int argc, char** argv ) {
     }
 
     // get compiler used to build cbuild with.
-    const char* compiler = cbuild_compiler();
+    const char* compiler = cbuild_compiler_string();
 
     // make sure that compiler is available.
     if( !program_in_path( compiler ) ) {
@@ -119,7 +119,7 @@ int main( int argc, char** argv ) {
     if( rebuild_necessary( &csj ) ) {
         // TODO(alicia): check for build dir (cbuild function)
         mkdir( "build" );
-        dstring* command = generate_compile_command( compiler );
+        DynamicString* command = generate_compile_command( compiler );
 
         int res = compile_target( command );
 
@@ -166,10 +166,7 @@ int compile_target( const char* command_line ) {
 
 _Bool rebuild_necessary( struct CollectSourcesJob* csj ) {
     // check if target already exists
-    // TODO(alicia): include function for this in cbuild!
-    File target_file = file_null();
-    if( file_open( TARGET, FILE_OPEN_FLAG_READ, &target_file ) ) {
-        file_close( &target_file );
+    if( file_path_exists( TARGET ) ) {
 
         // check if target needs to be rebuilt.
         FileTimeCmp cmp = file_path_time_cmp_multi_substr(
@@ -185,7 +182,8 @@ _Bool rebuild_necessary( struct CollectSourcesJob* csj ) {
         }
 
         cmp = file_path_time_cmp_multi_substr(
-            TARGET, csj->sources.count, csj->sources.paths, FILE_TIME_CMP_MODIFY );
+            TARGET, csj->sources.count,
+            csj->sources.paths, FILE_TIME_CMP_MODIFY );
 
         switch( cmp ) {
             case FILE_TIME_CMP_ERROR: {
@@ -200,7 +198,7 @@ _Bool rebuild_necessary( struct CollectSourcesJob* csj ) {
     }
 }
 
-dstring* generate_compile_command( const char* compiler ) {
+DynamicString* generate_compile_command( const char* compiler ) {
 #if defined(_MSC_VER)
     #define REBUILD_TARGET_COMMAND "%s /Fe:%s"
 #else
