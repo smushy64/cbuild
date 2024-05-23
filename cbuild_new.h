@@ -68,6 +68,8 @@
 #endif
 #define CBUILD_LOCAL_STRING_CAPACITY CBUILD_PATH_CAPACITY
 
+#define CBUILD_MAX_JOBS (32)
+
 #define CBUILD_THREAD_COUNT_MIN (1)
 #define CBUILD_THREAD_COUNT_MAX (16)
 
@@ -153,10 +155,15 @@ typedef struct {
     typedef int   File;
     typedef pid_t PID;
 #endif
-typedef isize Mutex;
-typedef isize Semaphore;
-typedef File  Pipe;
-typedef u32   ThreadCtx;
+typedef struct {
+    void* handle;
+} Mutex;
+typedef struct {
+    void* handle;
+} Semaphore;
+
+typedef File Pipe;
+typedef u32  ThreadCtx;
 
 #define THREAD_ANY_CONTEXT (UINT32_MAX)
 #define THREAD_MAIN (0)
@@ -352,7 +359,11 @@ atom   atomic_add( atom* _atom, atom val );
 atom64 atomic_add64( atom64* atom, atom64 val );
 void   fence(void);
 
-#define mutex_null() (0)
+#if defined(COMPILER_MSVC)
+    #define mutex_null() {0}
+#else
+    #define mutex_null() (Mutex){ .handle=NULL }
+#endif
 b32  mutex_create( Mutex* out_mutex );
 b32  mutex_is_valid( Mutex* mutex );
 void mutex_lock( Mutex* mutex );
@@ -360,13 +371,24 @@ b32  mutex_lock_timed( Mutex* mutex, u32 ms );
 void mutex_unlock( Mutex* mutex );
 void mutex_destroy( Mutex* mutex );
 
-#define semaphore_null() (0)
+#if defined(COMPILER_MSVC)
+    #define semaphore_null() {0}
+#else
+    #define semaphore_null() (Semaphore){ .handle=NULL }
+#endif
 b32  semaphore_create( Semaphore* out_semaphore );
 b32  semaphore_is_valid( Semaphore* semaphore );
 void semaphore_wait( Semaphore* semaphore );
 b32  semaphore_wait_timed( Semaphore* sem, u32 ms );
 void semaphore_signal( Semaphore* semaphore );
 void semaphore_destroy( Semaphore* semaphore );
+
+void thread_sleep( u32 ms );
+
+b32 job_enqueue( JobFN* job, void* params );
+b32 job_enqueue_timed( JobFN* job, void* params, u32 ms );
+b32 job_wait_next( u32 ms );
+b32 job_wait_all( u32 ms );
 
 char* local_char_buf( ThreadCtx ctx );
 char* local_char_buf_fmt_va( ThreadCtx ctx, const char* format, va_list va );
@@ -393,6 +415,20 @@ void logger( ThreadCtx ctx, LoggerLevel level, const char* format, ... );
 #else
     #define assertion( ... ) unused( __VA_ARGS__ )
 #endif
+
+#define expect( condition, ... ) do {\
+    if( !(condition) ) {\
+        fprintf( stderr,\
+            "\033[1;35mcbuild: FATAL expected: '"\
+            #condition "' in " __FILE__ " on line %i!\ncbuild: ",\
+            __LINE__ );\
+        fprintf( stderr, __VA_ARGS__ );\
+        fprintf( stderr, "\033[1;00m\n" );\
+        fflush( stderr );\
+        fence();\
+        panic();\
+    }\
+} while(0)
 
 #endif /* header guard */
 
@@ -422,35 +458,114 @@ struct DynamicArray {
     u8 buf[];
 };
 
-static b32 global_is_mt              = false;
+struct JobEntry {
+    JobFN* proc;
+    void*  params;
+};
+struct JobQueue {
+    Semaphore wakeup;
+    atom front, back;
+    atom pending, len;
+    struct JobEntry entries[CBUILD_MAX_JOBS];
+};
+
+volatile struct JobQueue* global_queue = NULL;
+
+volatile atom global_is_mt           = false; // boolean
 atom64     global_memory_usage       = 0;
 atom64     global_total_memory_usage = 0;
 atom       global_thread_id          = 1; // 0 is main thread
 
-static Mutex       global_logger_mutex = 0;
+static Mutex       global_logger_mutex = mutex_null();
 static LoggerLevel global_logger_level = LOGGER_LEVEL_INFO;
 
 volatile struct LocalBuffers* global_local_buffers = NULL;
 #if defined(COMPILER_MSVC)
-volatile struct GlobalBuffers global_buffers = {0};
+    volatile struct GlobalBuffers global_buffers = {0};
 #else
-volatile struct GlobalBuffers global_buffers =
-    (struct GlobalBuffers){ .obtained=false };
+    volatile struct GlobalBuffers global_buffers =
+        (struct GlobalBuffers){ .obtained=false };
 #endif
 
 void  thread_create( JobFN* func, void* params );
 char* internal_cwd(void);
 char* internal_home(void);
 
+static b32 job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
+    if( !queue->len ) {
+        return false;
+    }
+    atomic_add( &queue->len, -1 );
+
+    fence();
+    atom front = atomic_add( &queue->front, 1 );
+    fence();
+
+    *out_entry = queue->entries[ (front + 1) % CBUILD_MAX_JOBS ];
+    return true;
+}
+void job_queue_proc( u32 id, void* params ) {
+    struct JobQueue* queue = params;
+    fence();
+
+    for( ;; ) {
+        struct JobEntry entry;
+        memory_zero( &entry, sizeof(entry) );
+
+        semaphore_wait( &queue->wakeup );
+        fence();
+
+        if( job_dequeue( queue, &entry ) ) {
+            entry.proc( id, entry.params );
+            fence();
+            atomic_add( &queue->pending, -1 );
+        }
+    }
+}
+static void initialize_job_queue(void) {
+    cb_info( THREAD_ANY_CONTEXT,
+        "creating job queue with %u entries and %u threads . . .",
+        CBUILD_MAX_JOBS, CBUILD_THREAD_COUNT );
+
+    {
+        b32 logger_mutex_result = mutex_create( &global_logger_mutex );
+        expect( logger_mutex_result, "failed to create logger mutex!" );
+    }
+    fence();
+
+    atomic_add( &global_is_mt, 1 );
+
+    usize queue_size       = sizeof(*global_queue);
+    struct JobQueue* queue = memory_alloc( queue_size );
+
+    expect( queue, "failed to allocate job queue!" );
+
+    expect(
+        semaphore_create( &queue->wakeup ),
+        "failed to create job queue semaphore!" );
+    queue->front = -1;
+
+    fence();
+
+    for( usize i = 0; i < CBUILD_THREAD_COUNT; ++i ) {
+        thread_create( job_queue_proc, queue );
+    }
+
+    fence();
+    global_queue = queue;
+}
+static volatile struct JobQueue* get_job_queue(void) {
+    if( !global_queue ) {
+        initialize_job_queue();
+    }
+    return global_queue;
+}
 static volatile struct LocalBuffers* get_local_buffers(void) {
     if( !global_local_buffers ) {
         global_local_buffers = memory_alloc( sizeof(*global_local_buffers) );
-        if( !global_local_buffers ) {
-            cb_fatal( THREAD_ANY_CONTEXT,
-                "failed to allocate local buffers! size: %zu",
-                sizeof(*global_local_buffers) );
-            panic();
-        }
+        expect( global_local_buffers,
+            "failed to allocate local buffers! size: %zu",
+            sizeof(*global_local_buffers) );
     }
     return global_local_buffers;
 }
@@ -1377,6 +1492,85 @@ void darray_free( void* darray ) {
     }
 }
 
+b32 job_enqueue( JobFN* job, void* params ) {
+    volatile struct JobQueue* queue = get_job_queue();
+
+    if( queue->pending >= CBUILD_MAX_JOBS ) {
+        cb_warn( THREAD_ANY_CONTEXT,
+            "attempted to enqueu job while queue is full!" );
+        return false;
+    }
+
+    struct JobEntry entry;
+    entry.proc   = job;
+    entry.params = params;
+
+    fence();
+
+    atom back = atomic_add( &queue->back, 1 );
+    queue->entries[back % CBUILD_MAX_JOBS] = entry;
+
+    fence();
+
+    atomic_add( &queue->len, 1 );
+    atomic_add( &queue->pending, 1 );
+
+    semaphore_signal( (Semaphore*)&queue->wakeup );
+    return true;
+}
+b32 job_enqueue_timed( JobFN* job, void* params, u32 ms ) {
+    volatile struct JobQueue* queue = get_job_queue();
+
+    while( queue->pending >= CBUILD_MAX_JOBS ) {
+        if( !job_wait_next( ms ) ) {
+            return false;
+        }
+    }
+
+    expect( job_enqueue( job, params ),
+        "job_enqueue_timed: enqueue unexpectedly failed!" );
+    return true;
+}
+b32 job_wait_next( u32 ms ) {
+    volatile struct JobQueue* queue = get_job_queue();
+
+    u32 current = queue->pending;
+    if( !current ) {
+        return true;
+    }
+
+    if( ms == MT_WAIT_INFINITE ) {
+        while( queue->pending >= current ) {
+            thread_sleep( 1 );
+        }
+        return true;
+    } else for( u32 i = 0; i < ms; ++i ) {
+        if( queue->pending < current ) {
+            return true;
+        }
+        thread_sleep( 1 );
+    }
+
+    return false;
+}
+b32 job_wait_all( u32 ms ) {
+    volatile struct JobQueue* queue = get_job_queue();
+
+    if( ms == MT_WAIT_INFINITE ) {
+        while( queue->pending ) {
+            thread_sleep(1);
+        }
+        return true;
+    } else for( u32 i = 0; i < ms; ++i ) {
+        if( !queue->pending ) {
+            return true;
+        }
+        thread_sleep( 1 );
+    }
+
+    return false;
+}
+
 char* local_char_buf( ThreadCtx ctx ) {
     fence();
     return (char*)get_next_local_buffer( ctx );
@@ -1404,6 +1598,11 @@ void logger_va( ThreadCtx ctx, LoggerLevel level, const char* format, va_list va
     }
 
     if( global_is_mt ) {
+        printf( "locking %u . . .\n", ctx );
+        fence();
+        // expect(
+        //     mutex_lock_timed( &global_logger_mutex, MT_WAIT_INFINITE - 1 ),
+        //     "failed to lock logger!" );
         mutex_lock( &global_logger_mutex );
     }
 
@@ -1447,6 +1646,7 @@ void logger_va( ThreadCtx ctx, LoggerLevel level, const char* format, va_list va
     }
 
     if( global_is_mt ) {
+        printf( "%u unlock!\n", ctx );
         mutex_unlock( &global_logger_mutex );
     }
 }
@@ -1494,34 +1694,29 @@ b32 mutex_create( Mutex* out_mutex ) {
     if( !handle ) {
         return false;
     }
-    *out_mutex = *(isize*)&handle;
+    out_mutex->handle = (void*)handle;
     return true;
 }
 b32 mutex_is_valid( Mutex* mutex ) {
-    HANDLE handle = *(HANDLE*)mutex;
-    return handle != NULL;
+    return mutex->handle != NULL;
 }
 void mutex_lock( Mutex* mutex ) {
-    HANDLE handle = *(HANDLE*)mutex;
-    WaitForSingleObject( handle, INFINITE );
+    WaitForSingleObject( mutex->handle, INFINITE );
 }
 b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
     if( ms == INFINITE ) {
         mutex_lock( mutex );
         return true;
     }
-    HANDLE handle = *(HANDLE*)mutex;
-    DWORD  result = WaitForSingleObject( handle, ms );
+    DWORD  result = WaitForSingleObject( mutex->handle, ms );
     return result != WAIT_TIMEOUT;
 }
 void mutex_unlock( Mutex* mutex ) {
-    HANDLE handle = *(HANDLE*)mutex;
-    ReleaseMutex( handle );
+    ReleaseMutex( mutex->handle );
 }
 void mutex_destroy( Mutex* mutex ) {
-    HANDLE handle = *(HANDLE*)mutex;
-    CloseHandle( handle );
-    *mutex = 0;
+    CloseHandle( mutex->handle );
+    *mutex = mutex_null();
 }
 
 b32 semaphore_create( Semaphore* out_semaphore ) {
@@ -1529,27 +1724,29 @@ b32 semaphore_create( Semaphore* out_semaphore ) {
     if( !handle ) {
         return false;
     }
-    *out_semaphore = *(isize*)&handle;
+    out_semaphore->handle = handle;
     return true;
 }
 b32 semaphore_is_valid( Semaphore* semaphore ) {
-    HANDLE handle = *(HANDLE*)semaphore;
-    return handle != NULL;
+    return semaphore->handle != NULL;
 }
 void semaphore_wait( Semaphore* semaphore ) {
-    mutex_lock( semaphore );
+    WaitForSingleObject( semaphore->handle, INFINITE );
 }
 b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms ) {
-    return mutex_lock_timed( semaphore, ms );
+    if( ms == INFINITE ) {
+        semaphore_wait( semaphore );
+        return true;
+    }
+    DWORD  result = WaitForSingleObject( semaphore->handle, ms );
+    return result != WAIT_TIMEOUT;
 }
 void semaphore_signal( Semaphore* semaphore ) {
-    HANDLE handle = *(HANDLE*)semaphore;
-    ReleaseSemaphore( handle, 1, NULL );
+    ReleaseSemaphore( semaphore->handle, 1, NULL );
 }
 void semaphore_destroy( Semaphore* semaphore ) {
-    HANDLE handle = *(HANDLE*)semaphore;
-    CloseHandle( handle );
-    *semaphore = 0;
+    CloseHandle( semaphore->handle );
+    *semaphore = semaphore_null();
 }
 
 unsigned int win32_thread_proc( void* params ) {
@@ -1562,7 +1759,7 @@ unsigned int win32_thread_proc( void* params ) {
 }
 
 void thread_create( JobFN* func, void* params ) {
-    assertion(
+    expect(
         global_thread_id < (CBUILD_THREAD_COUNT + 1),
         "exceeded maximum number of threads!" );
 
@@ -1576,20 +1773,14 @@ void thread_create( JobFN* func, void* params ) {
     fence();
 
     HANDLE h = (HANDLE)_beginthreadex( 0, 0, win32_thread_proc, p, 0, 0 );
-    if( !h ) {
-        cb_fatal( THREAD_ANY_CONTEXT, "failed to create threads!" );
-        panic();
-    }
+    expect( h != NULL, "failed to create thread!" );
 }
 
 char* internal_cwd(void) {
     DWORD len = GetCurrentDirectoryA( 0, 0 );
     char* buf = memory_alloc( len );
 
-    if( !buf ) {
-        cb_fatal( THREAD_ANY_CONTEXT, "failed to allocate cwd buffer!" );
-        panic();
-    }
+    expect( buf, "failed to allocate working directory buffer!" );
 
     GetCurrentDirectoryA( len, buf );
 
@@ -1603,21 +1794,12 @@ char* internal_cwd(void) {
 }
 char* internal_home(void) {
     const char* drive = getenv( "HOMEDRIVE" );
-    if( !drive ) {
-        cb_fatal( THREAD_ANY_CONTEXT, "failed to get home drive!" );
-        panic();
-    }
+    expect( drive, "failed to get home directory drive!" );
     const char* home  = getenv( "HOMEPATH" );
-    if( !home ) {
-        cb_fatal( THREAD_ANY_CONTEXT, "failed to get home path!" );
-        panic();
-    }
+    expect( home, "failed to get home path!" );
 
     dstring* buf = dstring_concat_cstr( drive, home );
-    if( !buf ) {
-        cb_fatal( THREAD_ANY_CONTEXT, "failed to allocate home path buffer!" );
-        panic();
-    }
+    expect( buf, "failed to allocate home directory buffer!" );
 
     usize len = dstring_len( buf );
     for( usize i = 0; i < len; ++i ) {
@@ -1630,6 +1812,191 @@ char* internal_home(void) {
 }
 
 #else /* WINDOWS */
+#include <unistd.h>
+#include <limits.h>
+#include <pthread.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <semaphore.h>
+
+_Thread_local ThreadCtx global_current_thread = 0;
+volatile atom global_semaphore_val = 0;
+
+struct PosixThreadParams {
+    JobFN*    proc;
+    void*     params;
+    ThreadCtx id;
+};
+static struct PosixThreadParams global_posix_thread_params[CBUILD_THREAD_COUNT];
+
+static struct timespec ms_to_timespec( u32 ms ) {
+    struct timespec ts;
+    ts.tv_sec  = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000;
+    return ts;
+}
+static const char* generate_semaphore_name(void) {
+    atom val = atomic_add( &global_semaphore_val, 1 );
+    return (const char*)local_char_buf_fmt( global_current_thread, "sem%u", val );
+}
+
+b32 path_is_absolute( string path ) {
+    return path.len && path.cc[0] == '/';
+}
+atom atomic_add( atom* _atom, atom val ) {
+    return __sync_fetch_and_add( _atom, val );
+}
+atom64 atomic_add64( atom64* atom, atom64 val ) {
+    return __sync_fetch_and_add( atom, val );
+}
+void fence(void) {
+#if defined(ARCH_X86)
+    __asm__ volatile ("mfence":::"memory");
+#elif defined(ARCH_ARM)
+    __asm__ volatile ("dmb":::"memory");
+#else
+    __asm__ volatile ("":::"memory");
+#endif
+}
+
+b32 mutex_create( Mutex* out_mutex ) {
+    pthread_mutex_t* mtx = memory_alloc( sizeof(*mtx) );
+    if( !mtx ) {
+        return false;
+    }
+
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init( &attr );
+    pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_ERRORCHECK );
+
+    if( pthread_mutex_init( mtx, &attr ) != 0 ) {
+        return false;
+    }
+
+    pthread_mutexattr_destroy( &attr );
+
+    out_mutex->handle = (void*)mtx;
+    return true;
+}
+b32 mutex_is_valid( Mutex* mutex ) {
+    return mutex->handle != NULL;
+}
+void mutex_lock( Mutex* mutex ) {
+    expect( pthread_mutex_lock( mutex->handle ) == 0, "failed to lock!" );
+}
+b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
+    if( ms == MT_WAIT_INFINITE ) {
+        mutex_lock( mutex );
+        return true;
+    }
+
+    struct timespec ts = ms_to_timespec( ms );
+    int res = pthread_mutex_timedlock( mutex->handle, &ts );
+
+    switch( res ) {
+        case ETIMEDOUT: {
+            cb_warn( global_current_thread, "mutex timed out!" );
+            return false;
+        } break;
+        case 0: return true;
+        default: {
+            expect( res == 0, "mutex lock failed!" );
+        } return false;
+    }
+}
+void mutex_unlock( Mutex* mutex ) {
+    pthread_mutex_lock( mutex->handle );
+}
+void mutex_destroy( Mutex* mutex ) {
+    if( !mutex ) {
+        return;
+    }
+    pthread_mutex_destroy( mutex->handle );
+    memory_free( mutex->handle, sizeof(pthread_mutex_t) );
+    *mutex = mutex_null();
+}
+
+b32 semaphore_create( Semaphore* out_semaphore ) {
+    sem_t* s = sem_open( generate_semaphore_name(), O_CREAT, 0644, 0 );
+    if( !s ) {
+        return false;
+    }
+    out_semaphore->handle = s;
+    return true;
+}
+b32 semaphore_is_valid( Semaphore* semaphore ) {
+    return semaphore->handle != NULL;
+}
+void semaphore_wait( Semaphore* semaphore ) {
+    sem_wait( semaphore->handle );
+}
+b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms ) {
+    if( ms == MT_WAIT_INFINITE ) {
+        semaphore_wait( semaphore );
+        return true;
+    }
+
+    struct timespec ts = ms_to_timespec( ms );
+    int res = sem_timedwait( semaphore->handle, &ts );
+
+    return res != ETIMEDOUT;
+}
+void semaphore_signal( Semaphore* semaphore ) {
+    sem_post( semaphore->handle );
+}
+void semaphore_destroy( Semaphore* semaphore ) {
+    sem_close( semaphore->handle );
+    *semaphore = semaphore_null();
+}
+
+void thread_sleep( u32 ms ) {
+    struct timespec ts = ms_to_timespec( ms );
+
+    expect( nanosleep( &ts, 0 ) != EFAULT, "nanosleep failed!" );
+}
+
+void* posix_thread_proc( void* params ) {
+    struct PosixThreadParams* p = params;
+    global_current_thread = p->id;
+
+    fence();
+    p->proc( p->id, p->params );
+    fence();
+
+    return 0;
+}
+
+void thread_create( JobFN* func, void* params ) {
+    expect(
+        global_thread_id < (CBUILD_THREAD_COUNT + 1),
+        "exceeded maximum number of threads!" );
+
+    u32 id = atomic_add( &global_thread_id, 1 );
+
+    struct PosixThreadParams* p = global_posix_thread_params + (id - 1);
+    p->id     = id;
+    p->params = params;
+    p->proc   = func;
+
+    fence();
+
+    pthread_t thread;
+    int res = pthread_create( &thread, NULL, posix_thread_proc, p );
+    expect( res == 0, "failed to create thread!" );
+}
+
+char* internal_cwd(void) {
+    char* buf = memory_alloc( PATH_MAX );
+    expect( buf, "failed to allocate working directory buffer!" );
+
+    char* res = getcwd( buf, PATH_MAX );
+    expect( res, "failed to get working directory!" );
+
+    return res;
+}
+char* internal_home(void) {
+    return getenv( "HOME" );
+}
 
 #endif /* POSIX */
 
