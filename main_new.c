@@ -2,26 +2,22 @@
 #define CBUILD_ASSERTIONS
 #include "cbuild_new.h"
 #include <stdio.h>
-
-void test( u32 id, void* params ) {
-    cb_info( id, "%s", params );
-}
+#include <string.h>
+#include <glob.h>
 
 int main( int argc, char** argv ) {
+    init( LOGGER_LEVEL_INFO );
 
-    expect( false, "test" );
+    glob_t buf;
+    if( glob( "**/*", GLOB_NOSORT | GLOB_TILDE, 0, &buf ) == 0 ) {
+        cb_info( "glob success" );
 
-    u32 id = 0;
-    #define push()\
-        printf( ">>> %u . . .\n", id );\
-        job_enqueue( test, "hello, world!" );\
-        printf( "||| %u!\n", id++ );
+        for( usize i = 0; i < buf.gl_pathc; ++i ) {
+            cb_info( "%zu: %s", i, buf.gl_pathv[i] );
+        }
 
-    push();
-    push();
-    push();
-    push();
-    job_wait_all( MT_WAIT_INFINITE );
+        globfree( &buf );
+    }
 
     return 0;
 }

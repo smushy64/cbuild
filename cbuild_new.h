@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <time.h>
 
 #if defined(__clang__)
@@ -144,10 +145,6 @@ typedef enum {
     FOPEN_APPEND   = (1 << 4),
 } FileOpenFlags;
 
-typedef struct {
-    const void* opaque; // char* on posix, wchar_t* on windows
-} PathCanonical;
-
 #if defined(PLATFORM_WINDOWS)
     typedef isize File;
     typedef isize PID;
@@ -174,16 +171,17 @@ typedef void JobFN( ThreadCtx thread, void* params );
 static inline void _0( int _, ... ) {(void)_;}
 #define unused( ... ) _0( 0, __VA_ARGS__ )
 
+#define panic() exit(-1)
+
 #if defined(COMPILER_MSVC)
-    #define panic()          __debugbreak()
     #define unreachable()    __assume(0)
     #define debugger_break() panic()
 #else
-    #define panic()          __builtin_trap()
     #define unreachable()    __builtin_unreachable()
     #define debugger_break() __builtin_debugtrap()
 #endif
 
+#define static_array_len( array ) (sizeof(array) / sizeof((array)[0]))
 /// @brief Convert kilobytes to bytes.
 /// @param kb (size_t) Kilobytes.
 /// @return (size_t) @c kb as bytes.
@@ -216,6 +214,8 @@ static inline void _0( int _, ... ) {(void)_;}
 /// @param tb (size_t) Tebibytes.
 /// @return (size_t) @c tb as bytes.
 #define tebibytes( tb ) (gibibytes(tb) * 1024ULL)
+
+#define init( logger_level ) _init_( logger_level, argv[0], __FILE__ )
 
 void* memory_alloc( usize size );
 void* memory_realloc( void* memory, usize old_size, usize new_size );
@@ -319,11 +319,27 @@ string path_cwd(void);
 string path_home(void);
 b32 path_is_absolute( string path );
 usize path_chunk_count( string path );
-usize path_canonical_calculate_len( string path );
-PathCanonical path_canonicalize( string path, usize buf_cap, char* buf );
-PathCanonical path_canonicalize_local( ThreadCtx ctx, string path );
-#define path_canonicalize_local_text( ctx, literal )\
-    path_canonicalize_local( ctx, string_text( literal ) )
+string* path_chunk_split( string path );
+
+#define file_null() (0)
+b32 file_open( const cstr* path, FileOpenFlags flags, File* out_file );
+void file_close( File* file );
+b32 file_write( File* file, usize size, const void* buf );
+b32 file_write_fmt_va( File* file, const char* format, va_list va );
+b32 file_write_fmt( File* file, const char* format, ... );
+b32 file_read( File* file, usize size, void* buf );
+b32 file_truncate( File* file );
+usize file_query_size( File* file );
+b32 file_seek( File* file, FileSeek type, isize seek );
+usize file_query_position( File* file );
+b32 file_exists( const cstr* path );
+time_t file_query_time_create( const cstr* path );
+time_t file_query_time_modify( const cstr* path );
+b32 file_move( const cstr* dst, const cstr* src );
+b32 file_copy( const cstr* dst, const cstr* src );
+b32 file_remove( const cstr* path );
+f64 file_time_create_diff( const cstr* lhs, const cstr* rhs );
+f64 file_time_modify_diff( const cstr* lhs, const cstr* rhs );
 
 void* darray_empty( usize stride, usize cap );
 void* darray_from_array( usize stride, usize len, const void* buf );
@@ -357,6 +373,8 @@ void darray_free( void* darray );
 
 atom   atomic_add( atom* _atom, atom val );
 atom64 atomic_add64( atom64* atom, atom64 val );
+atom   atomic_compare_swap( atom* _atom, atom comp, atom exch );
+atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch );
 void   fence(void);
 
 #if defined(COMPILER_MSVC)
@@ -390,25 +408,29 @@ b32 job_enqueue_timed( JobFN* job, void* params, u32 ms );
 b32 job_wait_next( u32 ms );
 b32 job_wait_all( u32 ms );
 
+ThreadCtx thread_context(void);
+
 char* local_char_buf( ThreadCtx ctx );
 char* local_char_buf_fmt_va( ThreadCtx ctx, const char* format, va_list va );
 char* local_char_buf_fmt( ThreadCtx ctx, const char* format, ... );
 
+void logger_set_level( LoggerLevel level );
+LoggerLevel logger_get_level(void);
 void logger_va( ThreadCtx ctx, LoggerLevel level, const char* format, va_list va );
 void logger( ThreadCtx ctx, LoggerLevel level, const char* format, ... );
 
-#define cb_info( ctx, ... )  logger( ctx, LOGGER_LEVEL_INFO, __VA_ARGS__ )
-#define cb_warn( ctx, ... )  logger( ctx, LOGGER_LEVEL_WARNING, __VA_ARGS__ )
-#define cb_error( ctx, ... ) logger( ctx, LOGGER_LEVEL_ERROR, __VA_ARGS__ )
-#define cb_fatal( ctx, ... ) logger( ctx, LOGGER_LEVEL_FATAL, __VA_ARGS__ )
+#define cb_info( ... )  logger( thread_context(), LOGGER_LEVEL_INFO, __VA_ARGS__ )
+#define cb_warn( ... )  logger( thread_context(), LOGGER_LEVEL_WARNING, __VA_ARGS__ )
+#define cb_error( ... ) logger( thread_context(), LOGGER_LEVEL_ERROR, __VA_ARGS__ )
+#define cb_fatal( ... ) logger( thread_context(), LOGGER_LEVEL_FATAL, __VA_ARGS__ )
 
 #if defined(CBUILD_ASSERTIONS)
     #define assertion( condition, ... ) do {\
         if( !(condition) ) {\
-            cb_fatal( THREAD_ANY_CONTEXT,\
+            cb_fatal(\
                 "condtion '" #condition "' failed in " __FILE__ " on line %i!",\
                 __LINE__ );\
-            cb_fatal( THREAD_ANY_CONTEXT, __VA_ARGS__ );\
+            cb_fatal( __VA_ARGS__ );\
             panic();\
         }\
     } while(0)
@@ -429,6 +451,20 @@ void logger( ThreadCtx ctx, LoggerLevel level, const char* format, ... );
         panic();\
     }\
 } while(0)
+
+#define unimplemented() do {\
+    fprintf( stderr,\
+        "\033[1;35mcbuild: FATAL unimplemented path "\
+        "in " __FILE__ " on line %i!\033[1;00m\n", __LINE__ );\
+    fflush( stderr );\
+    fence();\
+    panic();\
+} while(0)
+
+void _init_(
+    LoggerLevel logger_level,
+    const cstr* executable_name,
+    const cstr* source_name );
 
 #endif /* header guard */
 
@@ -474,7 +510,9 @@ volatile struct JobQueue* global_queue = NULL;
 volatile atom global_is_mt           = false; // boolean
 atom64     global_memory_usage       = 0;
 atom64     global_total_memory_usage = 0;
-atom       global_thread_id          = 1; // 0 is main thread
+
+atom                    global_thread_id      = 1; // 0 is main thread
+_Thread_local ThreadCtx global_thread_context = 0;
 
 static Mutex       global_logger_mutex = mutex_null();
 static LoggerLevel global_logger_level = LOGGER_LEVEL_INFO;
@@ -523,16 +561,11 @@ void job_queue_proc( u32 id, void* params ) {
     }
 }
 static void initialize_job_queue(void) {
-    cb_info( THREAD_ANY_CONTEXT,
+    cb_info(
         "creating job queue with %u entries and %u threads . . .",
         CBUILD_MAX_JOBS, CBUILD_THREAD_COUNT );
 
-    {
-        b32 logger_mutex_result = mutex_create( &global_logger_mutex );
-        expect( logger_mutex_result, "failed to create logger mutex!" );
-    }
-    fence();
-
+    expect( mutex_create( &global_logger_mutex ), "failed to create logger mutex!" );
     atomic_add( &global_is_mt, 1 );
 
     usize queue_size       = sizeof(*global_queue);
@@ -596,7 +629,57 @@ static volatile struct GlobalBuffers* get_global_buffers(void) {
     }
     return &global_buffers;
 }
+static b32 validate_file_flags( FileOpenFlags flags ) {
+    if( !( flags & FOPEN_READ | FOPEN_WRITE ) ) {
+        cb_error( "File flags must have READ and/or WRITE set!" );
+        return false;
+    }
+    if( flags & FOPEN_TRUNCATE ) {
+        if( flags & FOPEN_APPEND ) {
+            cb_error( "File flag APPEND and TRUNCATE cannot be set at the same time!" );
+            return false;
+        }
+        if( flags & FOPEN_READ ) {
+            cb_error( "File flag TRUNCATE and READ cannot be set at the same time!" );
+            return false;
+        }
+    }
 
+    return true;
+}
+
+void _init_(
+    LoggerLevel logger_level,
+    const cstr* executable_name,
+    const cstr* source_name
+) {
+    logger_set_level( logger_level );
+
+    (void)get_local_buffers();
+    (void)get_global_buffers();
+
+    expect( file_exists( __FILE__ ),
+        "cbuild MUST be run from its source code directory!" );
+    expect( file_exists( source_name ),
+        "cbuild MUST be run from its source code directory!" );
+
+    b32 rebuild = false;
+    if( file_exists( executable_name ) ) {
+        f64 diff_source = file_time_modify_diff( executable_name, source_name );
+        f64 diff_header = file_time_modify_diff( executable_name, __FILE__ );
+
+        rebuild = (diff_source < 0.0) || (diff_header < 0.0);
+    } else {
+        rebuild = true;
+    }
+
+    if( !rebuild ) {
+        return;
+    }
+
+    // rebuild
+
+}
 void* memory_alloc( usize size ) {
     void* res = malloc( size );
     if( !res ) {
@@ -631,7 +714,7 @@ void* memory_realloc( void* memory, usize old_size, usize new_size ) {
 }
 void memory_free( void* memory, usize size ) {
     if( !memory ) {
-        cb_warn( THREAD_ANY_CONTEXT, "attempted to free null pointer!" );
+        cb_warn( "attempted to free null pointer!" );
         return;
     }
     free( memory );
@@ -1013,7 +1096,6 @@ dstring* dstring_insert( dstring* str, string insert, usize at ) {
     }
     if( at >= res->len ) {
         cb_warn(
-            THREAD_ANY_CONTEXT,
             "dstring_insert: attempted to insert past dstring bounds! "
             "len: %zu index: %zu", res->len, at );
         return NULL;
@@ -1065,7 +1147,6 @@ b32 dstring_remove( dstring* str, usize index ) {
     struct DynamicString* head = dstring_head( str );
     if( !head->len || index > head->len ) {
         cb_warn(
-            THREAD_ANY_CONTEXT,
             "dstring_remove: attempted to remove past dstring bounds! "
             "len: %zu index: %zu", head->len, index );
         return false;
@@ -1083,7 +1164,6 @@ b32 dstring_remove_range( dstring* str, usize from_inclusive, usize to_exclusive
     struct DynamicString* head = dstring_head( str );
     if( !head->len || from_inclusive >= head->len || to_exclusive > head->len ) {
         cb_warn(
-            THREAD_ANY_CONTEXT,
             "dstring_remove_range: attempted to remove past dstring bounds! "
             "len: %zu range: (%zu, %zu]", head->len, from_inclusive, to_exclusive );
         return false;
@@ -1172,6 +1252,44 @@ usize path_chunk_count( string path ) {
     }
 
     return count;
+}
+string* path_chunk_split( string path ) {
+    usize   cap = path_chunk_count( path );
+    string* res = darray_empty( sizeof(*res), cap ? cap : 1 );
+    if( !res ) {
+        return NULL;
+    }
+
+    string subpath = path;
+    while( subpath.len ) {
+        usize sep = 0;
+        if( string_find( subpath, '/', &sep ) ) {
+            string chunk = subpath;
+            chunk.len    = sep;
+
+            expect( darray_try_push( res, &chunk ), "push should have worked!" );
+
+            subpath = string_adv_by( subpath, sep + 1 );
+        } else {
+            expect( darray_try_push( res, &subpath ), "push should have worked!" );
+            break;
+        }
+    }
+
+    return res;
+}
+
+f64 file_time_create_diff( const cstr* lhs, const cstr* rhs ) {
+    time_t _lhs = file_query_time_create( lhs );
+    time_t _rhs = file_query_time_create( rhs );
+
+    return difftime( _lhs, _rhs );
+}
+f64 file_time_modify_diff( const cstr* lhs, const cstr* rhs ) {
+    time_t _lhs = file_query_time_modify( lhs );
+    time_t _rhs = file_query_time_modify( rhs );
+
+    return difftime( _lhs, _rhs );
 }
 
 void* darray_empty( usize stride, usize cap ) {
@@ -1278,7 +1396,7 @@ b32 darray_try_emplace( void* darray, const void* item, usize at ) {
         return false;
     }
     if( at >= head->len ) {
-        cb_warn( THREAD_ANY_CONTEXT,
+        cb_warn(
             "darray_emplace: attempted to emplace past darray bounds! "
             "len: %zu index: %zu", head->len, at );
         return false;
@@ -1299,7 +1417,7 @@ b32 darray_try_insert( void* darray, usize count, const void* items, usize at ) 
         return false;
     }
     if( at >= head->len ) {
-        cb_warn( THREAD_ANY_CONTEXT,
+        cb_warn(
             "darray_insert: attempted to insert past darray bounds! "
             "len: %zu index: %zu", head->len, at );
         return false;
@@ -1358,7 +1476,7 @@ void* darray_push( void* darray, const void* item ) {
 }
 void* darray_emplace( void* darray, const void* item, usize at ) {
     if( at >= darray_len( darray ) ) {
-        cb_warn( THREAD_ANY_CONTEXT,
+        cb_warn(
             "darray_emplace: attempted to emplace past darray bounds! "
             "len: %zu index: %zu", darray_len( darray ), at );
         return NULL;
@@ -1381,7 +1499,7 @@ void* darray_insert( void* darray, usize count, const void* items, usize at ) {
     struct DynamicArray* res = darray_head( darray );
 
     if( at >= res->len ) {
-        cb_warn( THREAD_ANY_CONTEXT,
+        cb_warn(
             "darray_insert: attempted to insert past darray bounds! "
             "len: %zu index: %zu", res->len, at );
         return false;
@@ -1417,7 +1535,6 @@ b32 darray_remove( void* darray, usize index ) {
     struct DynamicArray* head = darray_head( darray );
     if( !head->len || index > head->len ) {
         cb_warn(
-            THREAD_ANY_CONTEXT,
             "darray_remove: attempted to remove past array bounds! "
             "len: %zu index: %zu", head->len, index );
         return false;
@@ -1439,7 +1556,6 @@ b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive 
     struct DynamicArray* head = darray_head( darray );
     if( !head->len || from_inclusive >= head->len || to_exclusive > head->len ) {
         cb_warn(
-            THREAD_ANY_CONTEXT,
             "darray_remove_range: attempted to remove past array bounds! "
             "len: %zu range: (%zu, %zu]", head->len, from_inclusive, to_exclusive );
         return false;
@@ -1496,8 +1612,8 @@ b32 job_enqueue( JobFN* job, void* params ) {
     volatile struct JobQueue* queue = get_job_queue();
 
     if( queue->pending >= CBUILD_MAX_JOBS ) {
-        cb_warn( THREAD_ANY_CONTEXT,
-            "attempted to enqueu job while queue is full!" );
+        cb_warn(
+            "attempted to enqueue job while queue is full!" );
         return false;
     }
 
@@ -1571,6 +1687,10 @@ b32 job_wait_all( u32 ms ) {
     return false;
 }
 
+ThreadCtx thread_context(void) {
+    return global_thread_context;
+}
+
 char* local_char_buf( ThreadCtx ctx ) {
     fence();
     return (char*)get_next_local_buffer( ctx );
@@ -1592,61 +1712,62 @@ static b32 logger_check_level( LoggerLevel level ) {
     return level >= global_logger_level;
 }
 
+void logger_set_level( LoggerLevel level ) {
+    global_logger_level = level;
+}
+LoggerLevel logger_get_level(void) {
+    return global_logger_level;
+}
 void logger_va( ThreadCtx ctx, LoggerLevel level, const char* format, va_list va ) {
     if( !logger_check_level( level ) ) {
         return;
     }
 
+    static const char local_level_letters[] = {
+        'I', // LOGGER_LEVEL_INFO
+        'W', // LOGGER_LEVEL_WARNING
+        'E', // LOGGER_LEVEL_ERROR
+        'F', // LOGGER_LEVEL_FATAL
+    };
+
+    static const char* local_level_colors[] = {
+        "",           // LOGGER_LEVEL_INFO
+        "\033[1;33m", // LOGGER_LEVEL_WARNING
+        "\033[1;31m", // LOGGER_LEVEL_ERROR
+        "\033[1;35m", // LOGGER_LEVEL_FATAL
+    };
+
+    FILE* const level_output[] = {
+        stdout, // LOGGER_LEVEL_INFO
+        stdout, // LOGGER_LEVEL_WARNING
+        stderr, // LOGGER_LEVEL_ERROR
+        stderr, // LOGGER_LEVEL_FATAL
+    };
+
+    #define LETTER_BUFFER_SIZE sizeof("[%c:??]    ")
+    char buf[LETTER_BUFFER_SIZE];
+    memory_zero( buf, LETTER_BUFFER_SIZE );
+
+    if( ctx == THREAD_ANY_CONTEXT ) {
+        snprintf( buf, LETTER_BUFFER_SIZE, "[%c:??]", local_level_letters[level] );
+    } else {
+        snprintf( buf, LETTER_BUFFER_SIZE,
+            "[%c:%02u]", local_level_letters[level], ctx );
+    }
+
     if( global_is_mt ) {
-        printf( "locking %u . . .\n", ctx );
-        fence();
-        // expect(
-        //     mutex_lock_timed( &global_logger_mutex, MT_WAIT_INFINITE - 1 ),
-        //     "failed to lock logger!" );
         mutex_lock( &global_logger_mutex );
     }
 
-    switch( level ) {
-        case LOGGER_LEVEL_INFO: {
-            if( ctx == THREAD_ANY_CONTEXT ) {
-                printf( "[I:??] cbuild: " );
-            } else {
-                printf( "[I:%02u] cbuild: ", ctx );
-            }
-            vfprintf( stdout, format, va );
-            printf( "\033[1;00m\n" );
-        } break;
-        case LOGGER_LEVEL_WARNING: {
-            if( ctx == THREAD_ANY_CONTEXT ) {
-                printf( "\033[1;33m" "[W:??] cbuild: " );
-            } else {
-                printf( "\033[1;33m" "[W:%02u] cbuild: ", ctx );
-            }
-            vfprintf( stdout, format, va );
-            printf( "\033[1;00m\n" );
-        } break;
-        case LOGGER_LEVEL_ERROR: {
-            if( ctx == THREAD_ANY_CONTEXT ) {
-                fprintf( stderr, "\033[1;31m" "[E:??] cbuild: " );
-            } else {
-                fprintf( stderr, "\033[1;31m" "[E:%02u] cbuild: ", ctx );
-            }
-            vfprintf( stderr, format, va );
-            fprintf( stderr, "\033[1;00m\n" );
-        } break;
-        case LOGGER_LEVEL_FATAL: {
-            if( ctx == THREAD_ANY_CONTEXT ) {
-                fprintf( stderr, "\033[1;35m" "[F:??] cbuild: " );
-            } else {
-                fprintf( stderr, "\033[1;35m" "[F:%02u] cbuild: ", ctx );
-            }
-            vfprintf( stderr, format, va );
-            fprintf( stderr, "\033[1;00m\n" );
-        } break;
-    }
+    FILE* output = level_output[level];
+
+    fprintf( output, "%s%s cbuild: ", local_level_colors[level], buf );
+    vfprintf( output, format, va );
+    fprintf( output, "\033[1;00m\n" );
+
+    fflush( output );
 
     if( global_is_mt ) {
-        printf( "%u unlock!\n", ctx );
         mutex_unlock( &global_logger_mutex );
     }
 }
@@ -1685,6 +1806,13 @@ atom atomic_add( atom* _atom, atom val ) {
 atom64 atomic_add64( atom64* atom, atom64 val ) {
     return _InterlockedExchangeAdd64( atom, val );
 }
+atom atomic_compare_swap( atom* _atom, atom comp, atom exch ) {
+    return _InterlockedCompareExchange( _atom, exch, comp );
+}
+atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch ) {
+    return _InterlockedCompareExchange64( _atom, exch, comp );
+}
+
 void fence(void) {
     MemoryBarrier();
 }
@@ -1751,6 +1879,7 @@ void semaphore_destroy( Semaphore* semaphore ) {
 
 unsigned int win32_thread_proc( void* params ) {
     struct Win32ThreadParams* p = params;
+    global_thread_context = p->id;
     
     p->proc( p->id, p->params );
     fence();
@@ -1811,16 +1940,21 @@ char* internal_home(void) {
     return buf;
 }
 
-#else /* WINDOWS */
+#else /* WINDOWS end */
 #include <unistd.h>
 #include <limits.h>
 #include <pthread.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <semaphore.h>
+#include <sys/stat.h>
 
-_Thread_local ThreadCtx global_current_thread = 0;
 volatile atom global_semaphore_val = 0;
+
+struct PosixMutex {
+    atom value;
+    u32  __padding;
+};
 
 struct PosixThreadParams {
     JobFN*    proc;
@@ -1837,17 +1971,164 @@ static struct timespec ms_to_timespec( u32 ms ) {
 }
 static const char* generate_semaphore_name(void) {
     atom val = atomic_add( &global_semaphore_val, 1 );
-    return (const char*)local_char_buf_fmt( global_current_thread, "sem%u", val );
+    return (const char*)local_char_buf_fmt( global_thread_context, "sem%u", val );
 }
 
 b32 path_is_absolute( string path ) {
     return path.len && path.cc[0] == '/';
 }
+b32 file_open( const cstr* path, FileOpenFlags flags, File* out_file ) {
+    if( !validate_file_flags( flags ) ) {
+        return false;
+    }
+    int oflag = 0;
+    if( (flags & (FOPEN_READ | FOPEN_WRITE)) == FOPEN_READ ) {
+        oflag |= O_RDONLY;
+    } else if( (flags & (FOPEN_READ | FOPEN_WRITE)) == FOPEN_WRITE ) {
+        oflag |= O_WRONLY;
+    } else { // read + write
+        oflag |= O_RDWR;
+    }
+    if( flags & FOPEN_TRUNCATE ) {
+        oflag |= O_TRUNC;
+    }
+    if( flags & FOPEN_CREATE ) {
+        oflag |= O_CREAT;
+    }
+    if( flags & FOPEN_APPEND ) {
+        oflag |= O_APPEND;
+    }
+
+    int fd = open( path, oflag );
+    if( fd < 0 ) {
+        cb_error( "file_open: failed to open '%s'!", path );
+        return false;
+    }
+
+    *out_file = fd;
+    return true;
+}
+void file_close( File* file ) {
+    close( *file );
+    *file = 0;
+}
+b32 file_write( File* file, usize size, const void* buf ) {
+    return write( *file, buf, size ) != -1;
+}
+b32 file_write_fmt_va( File* file, const char* format, va_list va ) {
+    char* b = local_char_buf_fmt_va( thread_context(), format, va );
+    return file_write( file, cstr_len( b ), b );
+}
+b32 file_write_fmt( File* file, const char* format, ... ) {
+    va_list va;
+    va_start( va, format );
+    b32 result = file_write_fmt_va( file, format, va );
+    va_end( va );
+
+    return result;
+}
+b32 file_read( File* file, usize size, void* buf ) {
+    return read( *file, buf, size ) != -1;
+}
+b32 file_truncate( File* file ) {
+    off_t pos = lseek( *file, 0, SEEK_CUR );
+    return ftruncate( *file, pos ) == 0;
+}
+usize file_query_size( File* file ) {
+    off_t pos = lseek( *file, 0, SEEK_CUR );
+    off_t res = lseek( *file, 0, SEEK_END );
+    lseek( *file, pos, SEEK_SET );
+
+    return res;
+}
+b32 file_seek( File* file, FileSeek type, isize seek ) {
+    static const int local_whence[] = {
+        SEEK_CUR, // FSEEK_CURRENT
+        SEEK_SET, // FSEEK_BEGIN
+        SEEK_END, // FSEEK_END
+    };
+    return lseek( *file, seek, local_whence[type] ) >= 0;
+}
+usize file_query_position( File* file ) {
+    off_t pos = lseek( *file, 0, SEEK_CUR );
+    expect( pos >= 0, "failed to get current file position!" );
+    return pos;
+}
+b32 file_exists( const cstr* path ) {
+    return access( path, F_OK ) == 0;
+}
+time_t file_query_time_create( const cstr* path ) {
+    struct stat st;
+    expect( stat( path, &st ) == 0, "failed to query create time for '%s'!", path );
+    return st.st_ctime;
+}
+time_t file_query_time_modify( const cstr* path ) {
+    struct stat st;
+    expect( stat( path, &st ) == 0, "failed to query modify time for '%s'!", path );
+    return st.st_mtime;
+}
+b32 file_move( const cstr* dst, const cstr* src ) {
+    return rename( src, dst ) == 0;
+}
+b32 file_copy( const cstr* dst, const cstr* src ) {
+    File _src, _dst;
+    if( !file_open( src, FOPEN_READ, &_src ) ) {
+        return false;
+    }
+    if( file_exists( dst ) ) {
+        if( !file_open( dst, FOPEN_WRITE | FOPEN_TRUNCATE, &_dst ) ) {
+            file_close( &_src );
+            return false;
+        }
+    } else {
+        if( !file_open( dst, FOPEN_WRITE | FOPEN_CREATE, &_dst ) ) {
+            file_close( &_src );
+            return false;
+        }
+    }
+
+    char* buf = local_char_buf( thread_context() );
+    usize rem = file_query_size( &_src );
+
+    while( rem ) {
+        usize max_write = rem;
+        if( rem > CBUILD_LOCAL_STRING_CAPACITY ) {
+            max_write = CBUILD_LOCAL_STRING_CAPACITY;
+        }
+
+        if( !file_read( &_src, max_write, buf ) ) {
+            file_close( &_src );
+            file_close( &_dst );
+            return false;
+        }
+        if( !file_write( &_dst, max_write, buf ) ) {
+            file_close( &_src );
+            file_close( &_dst );
+            return false;
+        }
+
+        rem -= max_write;
+    }
+
+    file_close( &_src );
+    file_close( &_dst );
+    return true;
+}
+b32 file_remove( const cstr* path ) {
+    return remove( path ) == 0;
+}
+
 atom atomic_add( atom* _atom, atom val ) {
     return __sync_fetch_and_add( _atom, val );
 }
 atom64 atomic_add64( atom64* atom, atom64 val ) {
     return __sync_fetch_and_add( atom, val );
+}
+atom atomic_compare_swap( atom* _atom, atom comp, atom exch ) {
+    return __sync_val_compare_and_swap( _atom, comp, exch );
+}
+atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch ) {
+    return __sync_val_compare_and_swap( atom, comp, exch );
 }
 void fence(void) {
 #if defined(ARCH_X86)
@@ -1860,29 +2141,18 @@ void fence(void) {
 }
 
 b32 mutex_create( Mutex* out_mutex ) {
-    pthread_mutex_t* mtx = memory_alloc( sizeof(*mtx) );
-    if( !mtx ) {
-        return false;
-    }
-
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init( &attr );
-    pthread_mutexattr_settype( &attr, PTHREAD_MUTEX_ERRORCHECK );
-
-    if( pthread_mutex_init( mtx, &attr ) != 0 ) {
-        return false;
-    }
-
-    pthread_mutexattr_destroy( &attr );
-
-    out_mutex->handle = (void*)mtx;
+    struct PosixMutex* mtx = (struct PosixMutex*)out_mutex;
+    mtx->value = 0;
     return true;
 }
 b32 mutex_is_valid( Mutex* mutex ) {
-    return mutex->handle != NULL;
+    return true;
 }
 void mutex_lock( Mutex* mutex ) {
-    expect( pthread_mutex_lock( mutex->handle ) == 0, "failed to lock!" );
+    struct PosixMutex* mtx = (struct PosixMutex*)mutex;
+    while( atomic_compare_swap( &mtx->value, 0, mtx->value + 1 ) != 0 ) {
+        thread_sleep(1);
+    }
 }
 b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
     if( ms == MT_WAIT_INFINITE ) {
@@ -1890,30 +2160,24 @@ b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
         return true;
     }
 
-    struct timespec ts = ms_to_timespec( ms );
-    int res = pthread_mutex_timedlock( mutex->handle, &ts );
+    struct PosixMutex* mtx = (struct PosixMutex*)mutex;
 
-    switch( res ) {
-        case ETIMEDOUT: {
-            cb_warn( global_current_thread, "mutex timed out!" );
-            return false;
-        } break;
-        case 0: return true;
-        default: {
-            expect( res == 0, "mutex lock failed!" );
-        } return false;
+    for( u32 i = 0; i < ms; ++i ) {
+        if( atomic_compare_swap( &mtx->value, 0, mtx->value + 1 ) != 0 ) {
+            thread_sleep(1);
+            continue;
+        } else {
+            return true;
+        }
     }
+    return false;
 }
 void mutex_unlock( Mutex* mutex ) {
-    pthread_mutex_lock( mutex->handle );
+    struct PosixMutex* mtx = (struct PosixMutex*)mutex;
+    atomic_compare_swap( &mtx->value, mtx->value, mtx->value - 1 );
 }
 void mutex_destroy( Mutex* mutex ) {
-    if( !mutex ) {
-        return;
-    }
-    pthread_mutex_destroy( mutex->handle );
-    memory_free( mutex->handle, sizeof(pthread_mutex_t) );
-    *mutex = mutex_null();
+    mutex->handle = 0;
 }
 
 b32 semaphore_create( Semaphore* out_semaphore ) {
@@ -1957,7 +2221,7 @@ void thread_sleep( u32 ms ) {
 
 void* posix_thread_proc( void* params ) {
     struct PosixThreadParams* p = params;
-    global_current_thread = p->id;
+    global_thread_context = p->id;
 
     fence();
     p->proc( p->id, p->params );
@@ -1998,6 +2262,6 @@ char* internal_home(void) {
     return getenv( "HOME" );
 }
 
-#endif /* POSIX */
+#endif /* POSIX end */
 
-#endif
+#endif /* CBUILD_IMPLEMENTATION end */
