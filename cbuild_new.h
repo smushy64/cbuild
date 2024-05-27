@@ -131,12 +131,12 @@ typedef enum {
     FTYPE_UNKNOWN,
     FTYPE_FILE,
     FTYPE_DIRECTORY,
-} FDType;
+} FileType;
 typedef enum {
     FSEEK_CURRENT,
     FSEEK_BEGIN,
     FSEEK_END,
-} FDSeek;
+} FileSeek;
 typedef enum {
     FOPEN_READ     = (1 << 0),
     FOPEN_WRITE    = (1 << 1),
@@ -180,8 +180,6 @@ typedef struct {
     dstring* buf;
 } WalkDirectory;
 
-#define THREAD_ANY_CONTEXT (UINT32_MAX)
-#define THREAD_MAIN (0)
 #define MT_WAIT_INFINITE (UINT32_MAX)
 
 typedef void JobFN( void* params );
@@ -423,7 +421,7 @@ b32 fd_write_fmt( FD* file, const char* format, ... );
 b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size );
 b32 fd_truncate( FD* file );
 usize fd_query_size( FD* file );
-void fd_seek( FD* file, FDSeek type, isize seek );
+void fd_seek( FD* file, FileSeek type, isize seek );
 usize fd_query_position( FD* file );
 time_t file_query_time_create( const cstr* path );
 time_t file_query_time_modify( const cstr* path );
@@ -890,17 +888,17 @@ void _init_(
         command_flatten_local( &rebuild_cmd ) );
 
     if( path_exists( old_name ) ) {
-        file_remove( old_name );
+        expect( file_remove( old_name ), "could not remove old executable!" );
     }
 
-    file_move( old_name, executable_name );
+    expect( file_move( old_name, executable_name ), "could not rename executable!" );
 
     fence();
 
     PID pid = process_exec( rebuild_cmd, false, 0, 0, 0 );
     int res = process_wait( pid );
     if( res != 0 ) {
-        cb_error( "failed to rebuild!" );
+        cb_fatal( "failed to rebuild!" );
         file_move( executable_name, old_name );
 
         exit(-1);
@@ -2959,7 +2957,7 @@ usize fd_query_size( FD* file ) {
 
     return res;
 }
-void fd_seek( FD* file, FDSeek type, isize seek ) {
+void fd_seek( FD* file, FileSeek type, isize seek ) {
     static const int local_whence[] = {
         SEEK_CUR, // FSEEK_CURRENT
         SEEK_SET, // FSEEK_BEGIN
