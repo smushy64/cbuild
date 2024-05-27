@@ -1859,6 +1859,18 @@ void path_walk_free( WalkDirectory* wd ) {
     }
 }
 
+b32 fd_write_fmt_va( FD* file, const char* format, va_list va ) {
+    char* formatted = local_fmt_va( format, va );
+    return fd_write( file, cstr_len( formatted ), formatted, 0 );
+}
+b32 fd_write_fmt( FD* file, const char* format, ... ) {
+    va_list va;
+    va_start( va, format );
+    b32 res = fd_write_fmt_va( file, format, va );
+    va_end( va );
+    return res;
+}
+
 void* darray_empty( usize stride, usize cap ) {
     struct DynamicArray* res = memory_alloc( sizeof(*res) + (stride * cap) );
     if( !res ) {
@@ -2512,15 +2524,582 @@ struct Win32ThreadParams {
     u32    id;
 };
 
+#define CBUILD_LOCAL_WIDE_CAPACITY (CBUILD_LOCAL_STRING_CAPACITY / 2)
+
 static struct Win32ThreadParams global_win32_thread_params[CBUILD_THREAD_COUNT];
 
-b32 path_is_absolute( string path ) {
-    if( path.len < 2 ) {
+static time_t win32_filetime_to_posix( FILETIME ft ) {
+    #define WIN32_TICKS_PER_SECOND (10000000)
+    #define WIN32_TO_POSIX_DIFF    (11644473600ULL)
+
+    ULARGE_INTEGER uli;
+    uli.LowPart  = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+
+    time_t res = (time_t)(
+        (uli.QuadPart / WIN32_TICKS_PER_SECOND) - WIN32_TO_POSIX_DIFF );
+
+    #undef WIN32_TICKS_PER_SECOND
+    #undef WIN32_TO_POSIX_DIFF
+    
+    return res;
+}
+static wchar_t* win32_local_utf8_to_wide( string utf8 ) {
+    assertion( utf8.cc && utf8.len < CBUILD_LOCAL_WIDE_CAPACITY, "invalid string!" );
+
+    wchar_t* buf = (wchar_t*)local_byte_buffer();
+
+    wchar_t* copy_dst = buf;
+    string rem = utf8;
+    while( rem.len ) {
+        // TODO(alicia): this should check for valid utf8 bound
+        usize max_convert = rem.len;
+        if( rem.len > INT32_MAX ) {
+            rem.len = INT32_MAX;
+        }
+
+        MultiByteToWideChar( CP_UTF8, 0, rem.cc, max_convert, copy_dst, max_convert );
+
+        copy_dst += max_convert;
+        rem       = string_adv_by( rem, max_convert );
+    }
+
+    return buf;
+}
+static string win32_local_wide_to_utf8( usize len, wchar_t* wide ) {
+    assertion( wide && len < CBUILD_LOCAL_WIDE_CAPACITY, "invalid string!" );
+
+    char* buf = (char*)local_byte_buffer();
+
+    char* copy_dst = buf;
+    usize rem      = len;
+
+    while( rem ) {
+        // TODO(alicia): check for valid windows unicode bounds?
+        // is that even a thing
+        usize max_convert = rem;
+        if( max_convert > INT32_MAX ) {
+            max_convert = INT32_MAX;
+        }
+
+        WideCharToMultiByte(
+            CP_UTF8, 0, wide, max_convert, copy_dst, max_convert, 0, 0 );
+
+        copy_dst += max_convert;
+        rem      -= max_convert;
+    }
+
+    return string_new( len, buf );
+}
+static string win32_local_error_message( DWORD error_code ) {
+    char* buf = (char*)local_byte_buffer();
+
+    FormatMessageA(
+        FORMAT_MESSAGE_FROM_SYSTEM, 0, error_code,
+        0, buf, CBUILD_LOCAL_STRING_CAPACITY, 0 );
+
+    return string_from_cstr( buf );
+}
+static wchar_t* win32_local_path_canon( string path ) {
+    #define PATH_RELATIVE 0
+    #define PATH_HOME     1
+    #define PATH_ABSOLUTE 2
+
+    int path_type = PATH_RELATIVE;
+
+    if( path.len >= sizeof("A:")  ) {
+        if( isalpha( path.cc[0] ) && path.cc[1] == ':' ) {
+            path_type = PATH_ABSOLUTE;
+        }
+    } else if( path.cc[0] == '~' ) {
+        path_type = PATH_HOME;
+    }
+
+    string subpath = path;
+
+    size_t min    = sizeof("\\\\?\\A:");
+    size_t offset = sizeof("\\\\?\\") - 1;
+
+    const char* home       = NULL;
+    const char* home_drive = NULL;
+    size_t home_drive_len  = 0;
+    size_t home_len        = 0;
+    size_t pwd_len         = 0;
+
+    switch( path_type ) {
+        case PATH_RELATIVE:  {
+            pwd_len   = GetCurrentDirectoryW( 0, 0 );
+        } break;
+        case PATH_ABSOLUTE: break;
+        case PATH_HOME: {
+            home_drive = getenv( "HOMEDRIVE" );
+            home       = getenv( "HOMEPATH" );
+
+            home_drive_len = cstr_len( home_drive );
+            home_len       = cstr_len( home );
+        } break;
+        default: break;
+    }
+
+    wchar_t* buf = (wchar_t*)local_byte_buffer();
+    memory_copy( buf, L"\\\\?\\", sizeof(L"\\\\?\\") - sizeof(wchar_t) );
+    switch( path_type ) {
+        case PATH_RELATIVE:  {
+            offset += GetCurrentDirectoryW(
+                CBUILD_LOCAL_WIDE_CAPACITY - offset, buf + offset );
+        } break;
+        case PATH_ABSOLUTE: break;
+        case PATH_HOME: {
+            MultiByteToWideChar(
+                CP_UTF8, 0, home_drive, home_drive_len,
+                buf + offset, CBUILD_LOCAL_WIDE_CAPACITY - offset );
+            offset += home_drive_len;
+            MultiByteToWideChar(
+                CP_UTF8, 0, home, home_len,
+                buf + offset, CBUILD_LOCAL_WIDE_CAPACITY - offset );
+            offset += home_len;
+
+            subpath = string_adv( subpath );
+        } break;
+        default: break;
+    }
+
+    size_t last_chunk_len = 0;
+    while( subpath.len ) {
+        size_t sep = 0;
+        if( string_find( subpath, '/', &sep ) ) {
+            if( !sep ) {
+                subpath = string_adv( subpath );
+                continue;
+            }
+
+            string chunk = subpath;
+            chunk.len    = sep;
+
+            if( chunk.len < 3 ) {
+                if( string_cmp( chunk, string_text( "." ) ) ) {
+                    subpath = string_adv_by( subpath, chunk.len + 1 );
+                    continue;
+                }
+                if( string_cmp( chunk, string_text( ".." ) ) ) {
+                    for( size_t i = offset; i-- > 0; ) {
+                        wchar_t c = buf[i];
+                        if( c == '\\' ) {
+                            offset = i;
+                            break;
+                        }
+                    }
+                    if( offset < min ) {
+                        offset = min;
+                    }
+                    buf[offset] = 0;
+                    subpath = string_adv_by( subpath, chunk.len + 1 );
+                    continue;
+                }
+            }
+
+            if( buf[offset - 1] != '\\' ) {
+                buf[offset++] = '\\';
+            }
+            if( offset + chunk.len >= CBUILD_LOCAL_WIDE_CAPACITY ) {
+                break;
+            }
+            MultiByteToWideChar(
+                CP_UTF8, 0, chunk.cc, chunk.len,
+                buf + offset, CBUILD_LOCAL_WIDE_CAPACITY - offset );
+            offset += chunk.len;
+            last_chunk_len = chunk.len;
+
+            subpath = string_adv_by( subpath, chunk.len + 1 );
+        } else {
+            if( string_cmp( subpath, string_text( "." ) ) ) {
+                break;
+            }
+            if( string_cmp( subpath, string_text( ".." ) ) ) {
+                for( size_t i = offset; i-- > 0; ) {
+                    wchar_t c = buf[i];
+                    if( c == '\\' ) {
+                        offset = i;
+                        break;
+                    }
+                }
+                if( offset < min ) {
+                    offset = min;
+                }
+                buf[offset] = 0;
+                break;
+            }
+
+            if( buf[offset - 1] != '\\' ) {
+                buf[offset++] = '\\';
+            }
+            if( offset + subpath.len >= CBUILD_LOCAL_WIDE_CAPACITY ) {
+                break;
+            }
+            MultiByteToWideChar(
+                CP_UTF8, 0, subpath.cc, subpath.len,
+                buf + offset, CBUILD_LOCAL_WIDE_CAPACITY - offset );
+            offset += subpath.len;
+            break;
+        }
+    }
+    buf[offset] = 0;
+
+    #undef PATH_RELATIVE
+    #undef PATH_HOME    
+    #undef PATH_ABSOLUTE
+    return buf;
+}
+
+b32 path_is_absolute( const cstr* path ) {
+    assertion( path, "null path!" );
+    if( !path[0] || !path[1] ) {
         return false;
     }
     return
-        isalpha( path.cc[0] ) &&
-        path.cc[1] == ':';
+        isalpha( path[0] ) &&
+        path[1] == ':';
+}
+
+static DWORD fd_open_dwaccess( FileOpenFlags flags ) {
+    DWORD res = 0;
+    if( flags & FOPEN_READ ) {
+        res |= GENERIC_READ;
+    }
+    if( flags & FOPEN_WRITE ) {
+        res |= GENERIC_WRITE;
+    }
+    return res;
+}
+static DWORD fd_open_dwcreationdisposition( FileOpenFlags flags ) {
+    DWORD res = CREATE_ALWAYS;
+    if( flags & FOPEN_CREATE ) {
+        res = CREATE_ALWAYS;
+    } else if( flags & FOPEN_TRUNCATE ) {
+        res = TRUNCATE_EXISTING;
+    }
+    return res;
+}
+static b32 fd_open_short( string path, FileOpenFlags flags, FD* out_file ) {
+    DWORD dwDesiredAccess       = fd_open_dwaccess( flags );
+    DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    DWORD dwCreationDisposition = fd_open_dwcreationdisposition( flags );
+    DWORD dwFlagsAndAttributes  = 0;
+
+    HANDLE handle = CreateFileA(
+        path.cc, dwDesiredAccess, dwShareMode, 0,
+        dwCreationDisposition, dwFlagsAndAttributes, 0 );
+    if( handle == INVALID_HANDLE_VALUE ) {
+        DWORD error_code = GetLastError();
+        string msg = win32_local_error_message( error_code );
+
+        cb_error(
+            "failed to open '%s'! reason: (0x%X) %s", path.cc, error_code, msg.cc );
+        return false;
+    }
+
+    *out_file = (usize)handle;
+    return true;
+}
+static b32 fd_open_long( string path, FileOpenFlags flags, FD* out_file ) {
+    DWORD dwDesiredAccess       = fd_open_dwaccess( flags );
+    DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    DWORD dwCreationDisposition = fd_open_dwcreationdisposition( flags );
+    DWORD dwFlagsAndAttributes  = 0;
+
+    wchar_t* wide = win32_local_path_canon( path );
+
+    HANDLE handle = CreateFileW(
+        wide, dwDesiredAccess, dwShareMode, 0,
+        dwCreationDisposition, dwFlagsAndAttributes, 0 );
+    if( handle == INVALID_HANDLE_VALUE ) {
+        DWORD error_code = GetLastError();
+        string msg = win32_local_error_message( error_code );
+
+        cb_error(
+            "failed to open '%S'! reason: (0x%X) %s", wide, error_code, msg.cc );
+        return false;
+    }
+
+    *out_file = (usize)handle;
+    return true;
+}
+
+b32 fd_open( const cstr* path, FileOpenFlags flags, FD* out_file ) {
+    if( !validate_file_flags( flags ) ) {
+        return false;
+    }
+    string path_str = string_from_cstr( path );
+    if( path_str.len >= PATH_MAX ) {
+        return fd_open_long( path_str, flags, out_file );
+    } else {
+        return fd_open_short( path_str, flags, out_file );
+    }
+}
+void fd_close( FD* file ) {
+    CloseHandle( (HANDLE)*file );
+    *file = 0;
+}
+
+static b32 fd_write_32(
+    FD* file, DWORD size, const void* buf, DWORD* opt_out_write_size
+) {
+    DWORD out_size = 0;
+    BOOL res = WriteFile( (HANDLE)*file, buf, size, &out_size, 0 );
+    if( opt_out_write_size ) {
+        *opt_out_write_size = out_size;
+    }
+    return res;
+}
+#if defined(ARCH_64BIT)
+static b32 fd_write_64(
+    FD* file, usize size, const void* buf, usize* opt_out_write_size
+) {
+    DWORD size0 = size > UINT32_MAX ? UINT32_MAX : size;
+    DWORD size1 = size > UINT32_MAX ? size - UINT32_MAX : 0;
+
+    usize write_total = 0;
+    DWORD write_size  = 0;
+    b32 res = fd_write_32( file, size0, buf, &write_size );
+    write_total = write_size;
+
+    if( write_size != size0 ) {
+        if( opt_out_write_size ) {
+            *opt_out_write_size = write_total;
+        }
+        return res;
+    }
+    if( !res ) {
+        return false;
+    }
+
+    if( size1 ) {
+        res = fd_write_32( file, size1, (const u8*)buf + size0, &write_size );
+        if( !res ) {
+            return false;
+        }
+        write_total += write_size;
+    }
+
+    if( opt_out_write_size ) {
+        *opt_out_write_size = write_total;
+    }
+    return true;
+}
+#endif
+
+static b32 fd_read_32(
+    FD* file, DWORD size, void* buf, DWORD* opt_out_read_size
+) {
+    DWORD out_size = 0;
+    BOOL res = ReadFile( (HANDLE)*file, buf, size, &out_size, 0 );
+    if( opt_out_read_size ) {
+        *opt_out_read_size = out_size;
+    }
+    return res;
+}
+#if defined(ARCH_64BIT)
+static b32 fd_read_64(
+    FD* file, usize size, void* buf, usize* opt_out_read_size
+) {
+    DWORD size0 = size > UINT32_MAX ? UINT32_MAX : size;
+    DWORD size1 = size > UINT32_MAX ? size - UINT32_MAX : 0;
+
+    usize read_total = 0;
+    DWORD read_size  = 0;
+    b32 res = fd_read_32( file, size0, buf, &read_size );
+    read_total = read_size;
+
+    if( read_size != size0 ) {
+        if( opt_out_read_size ) {
+            *opt_out_read_size = read_total;
+        }
+        return res;
+    }
+    if( !res ) {
+        return false;
+    }
+
+    if( size1 ) {
+        res = fd_read_32( file, size1, (u8*)buf + size0, &read_size );
+        if( !res ) {
+            return false;
+        }
+        read_total += read_size;
+    }
+
+    if( opt_out_read_size ) {
+        *opt_out_read_size = read_total;
+    }
+    return true;
+}
+#endif
+
+b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size ) {
+#if defined(ARCH_64BIT)
+    return fd_write_64( file, size, buf, opt_out_write_size );
+#else
+    return fd_write_32( file, size, buf, (DWORD*)opt_out_write_size );
+#endif
+}
+b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size ) {
+#if defined(ARCH_64BIT)
+    return fd_read_64( file, size, buf, opt_out_read_size );
+#else
+    return fd_read_32( file, size, buf, (DWORD*)opt_out_read_size );
+#endif
+}
+b32 fd_truncate( FD* file ) {
+    return SetEndOfFile( (HANDLE)*file ) != FALSE;
+}
+usize fd_query_size( FD* file ) {
+#if defined(ARCH_64BIT)
+    LARGE_INTEGER li;
+    expect( GetFileSizeEx( (HANDLE)*file, &li ), "failed to get file size!" );
+    return li.QuadPart;
+#else
+    DWORD res = GetFileSize( (HANDLE)*file, 0 );
+    return res;
+#endif
+}
+void fd_seek( FD* file, FileSeek type, isize seek ) {
+    DWORD dwMoveMethod = 0;
+    switch( type ) {
+        case FSEEK_CURRENT: {
+            dwMoveMethod = FILE_CURRENT;
+        } break;
+        case FSEEK_BEGIN: {
+            dwMoveMethod = FILE_BEGIN;
+        } break;
+        case FSEEK_END: {
+            dwMoveMethod = FILE_END;
+        } break;
+    }
+
+#if defined(ARCH_64BIT)
+    LARGE_INTEGER li;
+    li.QuadPart = seek;
+
+    expect(
+        SetFilePointerEx( (HANDLE)*file, li, 0, dwMoveMethod ) != FALSE,
+        "failed to seek file!" );
+#else
+    SetFilePointer( (HANDLE)*file, seek, 0, dwMoveMethod );
+#endif
+}
+usize fd_query_position( FD* file ) {
+    DWORD dwMoveMethod = FILE_CURRENT;
+
+#if defined(ARCH_64BIT)
+    LARGE_INTEGER li;
+    li.QuadPart = 0;
+
+    LARGE_INTEGER res;
+    expect(
+        SetFilePointerEx( (HANDLE)*file, li, &res, dwMoveMethod ) != FALSE,
+        "failed to query file position!" );
+
+    return res.QuadPart;
+#else
+    DWORD res = SetFilePointer( (HANDLE)*file, 0, 0, dwMoveMethod );
+    return res;
+#endif
+
+}
+time_t file_query_time_create( const cstr* path ) {
+    FD fd;
+    expect( fd_open( path, FOPEN_READ, &fd ), "failed to query create time!" );
+
+    FILETIME ft;
+    memory_zero( &ft, sizeof(ft) );
+
+    expect(
+        GetFileTime( (HANDLE)fd, &ft, 0, 0 ) != FALSE,
+        "failed to query create time!" );
+
+    fd_close( &fd );
+
+    return win32_filetime_to_posix( ft );
+}
+time_t file_query_time_modify( const cstr* path ) {
+    FD fd;
+    expect( fd_open( path, FOPEN_READ, &fd ), "failed to query modify time!" );
+
+    FILETIME ft;
+    memory_zero( &ft, sizeof(ft) );
+
+    expect(
+        GetFileTime( (HANDLE)fd, 0, 0, &ft ) != FALSE,
+        "failed to query modify time!" );
+
+    fd_close( &fd );
+
+    return win32_filetime_to_posix( ft );
+}
+
+static b32 file_move_short( const cstr* dst, const cstr* src ) {
+    return MoveFileA( src, dst ) == TRUE;
+}
+static b32 file_move_long( string dst, string src ) {
+    wchar_t* dst_wide = win32_local_path_canon( dst );
+    wchar_t* src_wide = win32_local_path_canon( src );
+
+    b32 res = MoveFileW( src_wide, dst_wide );
+    return res == TRUE;
+}
+
+b32 file_move( const cstr* dst, const cstr* src ) {
+    assertion( dst && src, "null path provided!" );
+    usize dst_len = cstr_len( dst );
+    usize src_len = cstr_len( src );
+
+    if( dst_len >= PATH_MAX || src_len >= PATH_MAX ) {
+        return
+            file_move_long( string_new( dst_len, dst ), string_new( src_len, src ) );
+    } else {
+        return file_move_short( dst, src );
+    }
+}
+
+static b32 file_copy_short( const cstr* dst, const cstr* src ) {
+    return CopyFileA( src, dst, FALSE ) == TRUE;
+}
+static b32 file_copy_long( string dst, string src ) {
+    wchar_t* dst_wide = win32_local_path_canon( dst );
+    wchar_t* src_wide = win32_local_path_canon( src );
+
+    b32 res = CopyFileW( src_wide, dst_wide, FALSE );
+    return res == TRUE;
+}
+
+b32 file_copy( const cstr* dst, const cstr* src ) {
+    assertion( dst && src, "null path provided!" );
+    usize dst_len = cstr_len( dst );
+    usize src_len = cstr_len( src );
+
+    if( dst_len >= PATH_MAX || src_len >= PATH_MAX ) {
+        return
+            file_copy_long( string_new( dst_len, dst ), string_new( src_len, src ) );
+    } else {
+        return file_copy_short( dst, src );
+    }
+}
+
+static b32 file_remove_short( const cstr* path ) {
+    return DeleteFileA( path ) != FALSE;
+}
+static b32 file_remove_long( string path ) {
+    wchar_t* path_wide = win32_local_path_canon( path );
+    return DeleteFileW( path_wide ) != FALSE;
+}
+
+b32 file_remove( const cstr* path ) {
+    usize path_len = cstr_len( path );
+    if( path_len >= MAX_PATH ) {
+        return file_remove_long( string_new( path_len, path ) );
+    } else {
+        return file_remove_short( path );
+    }
 }
 
 atom atomic_add( atom* atomic, atom val ) {
@@ -2538,6 +3117,21 @@ atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch ) {
 
 void fence(void) {
     MemoryBarrier();
+}
+
+f64 timer_milliseconds(void) {
+    return timer_seconds() * 1000.0;
+}
+f64 timer_seconds(void) {
+    LARGE_INTEGER qpf, qpc;
+    QueryPerformanceFrequency( &qpf );
+    QueryPerformanceCounter( &qpc );
+
+    return (f64)qpc.QuadPart / (f64)qpf.QuadPart;
+}
+
+void thread_sleep( u32 ms ) {
+    Sleep( ms );
 }
 
 b32 mutex_create( Mutex* out_mutex ) {
@@ -2602,9 +3196,10 @@ void semaphore_destroy( Semaphore* semaphore ) {
 
 unsigned int win32_thread_proc( void* params ) {
     struct Win32ThreadParams* p = params;
-    global_thread_context = p->id;
+    global_thread_id = p->id;
     
-    p->proc( p->id, p->params );
+    fence();
+    p->proc( p->params );
     fence();
 
     return 0;
@@ -2918,18 +3513,6 @@ b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size )
         *opt_out_write_size = write_size;
     }
     return true;
-}
-b32 fd_write_fmt_va( FD* file, const char* format, va_list va ) {
-    char* b = local_fmt_va( format, va );
-    return fd_write( file, cstr_len( b ), b, 0 );
-}
-b32 fd_write_fmt( FD* file, const char* format, ... ) {
-    va_list va;
-    va_start( va, format );
-    b32 result = fd_write_fmt_va( file, format, va );
-    va_end( va );
-
-    return result;
 }
 b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size ) {
     isize read_size = read( *file, buf, size );
