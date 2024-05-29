@@ -2,16 +2,4 @@
 *.exe
 *.pdb
 *.rdbg
-# *
-# !.gitignore
-# !cbuild.h
-# !README.md
-# !LICENSE
-# !example/
-# !example/src/
-# !example/cbuild.h
-# !example/cbuild.c
-# !example/startup.bat
-# !example/startup.sh
-# !startup.bat
-# !startup.sh
+
