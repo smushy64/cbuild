@@ -4,247 +4,480 @@
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   May 15, 2024
 */
+#define CBUILD_THREAD_COUNT 16
 #include "../cbuild.h" // including the header from root
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/stat.h>
 
-#if defined(_WIN32)
-    #define TARGET "build/program.exe"
-#else
-    #define TARGET "build/program"
-#endif
+static const char* global_program_name = "cbuild";
 
-DynamicString* generate_compile_command( const char* compiler );
-int      compile_target( const char* command_line );
-void     print_help(void);
+typedef enum {
+    MODE_NULL,
+    MODE_BUILD,
+    MODE_RUN,
+    MODE_CLEAN,
+    MODE_HELP,
+} Mode;
+void print_help( Mode mode );
 
-struct CollectSourcesJob {
-    _Bool     success;
-    FindFiles headers;
-    FindFiles sources;
-};
-_Bool rebuild_necessary( struct CollectSourcesJob* csj );
-void  collect_sources( uint32_t thread_id, void* params );
+b32 mode_build( string target, string output, b32 output_time, dstring* path );
+b32 mode_clean( string output );
 
-int main( int argc, char** argv ) {
-    LogLevel level = LOG_LEVEL_INFO;
+int main( int argc, const char** argv ) {
+    global_program_name = argv[0];
 
-    // break arguments into sub string list.
-    StringSlice* args = string_slice_darray_from_arg( argc, argv );
-    // remove the first argument (executable path, not needed for this build 'script').
-    darray_remove( args, 0, 0 );
-
-    _Bool silent = false; {
-        // find --silent argument
-        size_t _argc = darray_len( args );
-        for( size_t i = 0; i < _argc; ++i ) {
-            if( string_slice_cmp( args[i], string_slice_text( "--silent" ) ) ) {
-                // error disables info logs and warnings.
-                level = LOG_LEVEL_ERROR;
-                // remove this argument so further argument processing
-                // doesn't encounter it again.
-                darray_remove( args, i, 0 );
+    b32 silent = false;
+    for( int i = 1; i < argc; ++i ) {
+        const char* arg = argv[i];
+        if( arg[0] == '-' ) {
+            if( cstr_cmp( arg, "--silent" ) ) {
+                silent = true;
                 break;
             }
         }
     }
 
-    // initialize cbuild.
-    // usually you must do this at the very beginning of the file
-    // but in order to silence messages during initialization,
-    // we need to parse the '--silent' argument before initializing.
-    init( level );
+    init( silent ? LOGGER_LEVEL_ERROR : LOGGER_LEVEL_INFO );
 
-    // start checking time
-    double start = time_milliseconds();
+    Mode mode = MODE_NULL;
+    string target =
+#if defined(PLATFORM_WINDOWS)
+        string_text( "program.exe" );
+#else
+        string_text( "program" );
+#endif
+    string output  = string_text( "./build" );
+    b32 print_time = true;
 
-    struct CollectSourcesJob csj;
-    memory_zero( &csj, sizeof(csj) );
+    int start_args = -1;
 
-    // collect project source files on a separate thread
-    // the UINT32_MAX is how many milliseconds to wait
-    // for job_enqueue to complete, MAX means infinite time.
-    job_enqueue( collect_sources, &csj, UINT32_MAX );
+    for( int i = 1; i < argc; ++i ) {
+        string arg = string_from_cstr( argv[i] );
 
-    _Bool run = false;
+        switch( mode ) {
+            case MODE_NULL: {
+                if( string_cmp( arg, string_text( "build" ) ) ) {
+                    mode = MODE_BUILD;
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "run" ) ) ) {
+                    mode = MODE_RUN;
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "clean" ) ) ) {
+                    mode = MODE_CLEAN;
+                    continue;
+                }
+                if(
+                    string_cmp( arg, string_text( "help" ) ) ||
+                    string_cmp( arg, string_text( "--help" ) )
+                ) {
+                    print_help( MODE_HELP );
+                    return 0;
+                }
+                if( string_cmp( arg, string_text( "--silent" ) ) ) {
+                    continue;
+                }
+            } break;
+            case MODE_CLEAN: {
+                if( arg.cc[0] != '-' ) {
+                    break; // break out of switch
+                }
+                string output_arg = string_text( "--out=" );
 
-    // args parsing but for real this time.
-    for( size_t i = 0; i < darray_len( args ); ++i ) {
-        StringSlice current = args[i];
+                if( string_cmp_clamped( arg, output_arg ) ) {
+                    string path = string_adv_by( arg, output_arg.len );
+                    if( !path.len ) {
+                        cb_error( "--out=: no path provided!" );
+                        print_help( mode );
+                        return -1;
+                    }
 
-        if(
-            string_slice_cmp( current, string_slice_text( "-h" ) ) ||
-            string_slice_cmp( current, string_slice_text( "--help" ) )
-        ) {
-            print_help();
-            return 0;
+                    output = path;
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "--silent" ) ) ) {
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "--help" ) ) ) {
+                    print_help( mode );
+                    return 0;
+                }
+            } break;
+            case MODE_BUILD:
+            case MODE_RUN: {
+                if( arg.cc[0] != '-' ) {
+                    break; // break out of switch
+                }
+                if( mode == MODE_RUN ) {
+                    if( string_cmp( arg, string_text( "--" ) ) ) {
+                        start_args = i + 1;
+                        break;
+                    }
+                }
+
+                string output_arg = string_text( "--out=" );
+                string target_arg = string_text( "--target=" );
+
+                if( string_cmp_clamped( arg, output_arg ) ) {
+                    string path = string_adv_by( arg, output_arg.len );
+                    if( !path.len ) {
+                        cb_error( "--out=: no path provided!" );
+                        print_help( mode );
+                        return -1;
+                    }
+
+                    output = path;
+                    continue;
+                }
+                if( string_cmp_clamped( arg, target_arg ) ) {
+                    string path = string_adv_by( arg, target_arg.len );
+                    if( !path.len ) {
+                        cb_error( "--target=: no path provided!" );
+                        print_help( mode );
+                        return -1;
+                    }
+
+                    target = path;
+                    continue;
+                }
+
+                if( string_cmp( arg, string_text( "--notime" ) ) ) {
+                    print_time = false;
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "--silent" ) ) ) {
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "--help" ) ) ) {
+                    print_help( mode );
+                    return 0;
+                }
+            } break;
+            case MODE_HELP: {
+                print_help( MODE_HELP );
+                return 0;
+            } break;
         }
 
-        if( string_slice_cmp( current, string_slice_text( "run" ) ) ) {
-            run = true;
-            continue;
+        if( start_args != -1 ) {
+            break;
         }
-
-        // print an error and exit.
-        // logging functions include:
-        //      cb_info  for logging misc info
-        //      cb_warn  for logging warnings
-        //      cb_error for logging (potentially) fatal errors
-        cb_error( "unrecognized argument: %.*s", current.len, current.cc );
-        print_help();
-        job_wait_all( UINT32_MAX );
-        return 1;
-    }
-
-    // get compiler used to build cbuild with.
-    const char* compiler = cbuild_compiler_string();
-
-    // make sure that compiler is available.
-    if( !program_in_path( compiler ) ) {
-        cb_error( "%s is not in path!", compiler );
-        job_wait_all( UINT32_MAX );
-        return 1;
-    }
-
-    // and now we wait for the collect sources job to complete.
-    // all job related functions insert a compiler and cpu memory barrier so
-    // we don't need to do anything here to ensure proper ordering.
-    job_wait_all( UINT32_MAX );
-
-    if( !csj.success ) {
-        return 1;
-    }
-
-    if( rebuild_necessary( &csj ) ) {
-        // TODO(alicia): check for build dir (cbuild function)
-        mkdir( "build" );
-        DynamicString* command = generate_compile_command( compiler );
-
-        int res = compile_target( command );
-
-        dstring_free( command );
-
-        if( res != 0 ) {
-            cb_error( "failed to compile " TARGET "!" );
-            return 1;
-        } else {
-            cb_info( "successfully built " TARGET "!" );
-        }
-    }
-
-    path_find_files_free( &csj.headers );
-    path_find_files_free( &csj.sources );
-
-    // free our args buffer.
-    // unnecessary at the end of the program but let's be clean about it :)
-    darray_free( args );
-
-    // check how long cbuild took
-    double end = time_milliseconds();
-
-    cb_info( "build took: %.2fms", end - start );
-
-    if( run ) {
-        cb_info( "running " TARGET " . . ." );
-        program_exec( TARGET, 0 );
-    }
-    return 0;
-}
-int compile_target( const char* command_line ) {
-    cb_info( "compiling " TARGET " . . ." );
-    cb_info( "command line: %s", command_line );
-
-    int res = 0;
-    if( !program_exec( command_line, &res ) ) {
-        cb_error( "failed to run command!" );
-
+        cb_error( "unrecognized argument '%s'", arg.cc );
+        print_help( mode );
         return -1;
     }
-    return res;
+
+    switch( mode ) {
+        case MODE_NULL:
+        case MODE_HELP: {
+            print_help( mode );
+            return 0;
+        } break;
+        default: break;
+    }
+
+    dstring* target_path = dstring_concat_multi(
+        2, (string[]){ output, target }, string_text( "/" ) );
+    expect( target_path, "failed to create target path!" );
+
+    switch( mode ) {
+        case MODE_BUILD: {
+            if( !mode_build( target, output, print_time, target_path ) ) {
+                return -1;
+            }
+        } break;
+        case MODE_RUN: {
+            if( !mode_build( target, output, print_time, target_path ) ) {
+                return -1;
+            }
+
+            CommandBuilder builder;
+            memory_zero( &builder, sizeof(builder) );
+            expect(
+                command_builder_new( target_path, &builder ),
+                "failed to create command builder!" );
+
+            if( start_args != -1 ) {
+                for( int i = start_args; i < argc; ++i ) {
+                    const char* arg = argv[i];
+                    usize space = 0;
+                    if( cstr_find( arg, ' ', &space ) ) {
+                        arg = local_fmt( "\"%s\"", arg );
+                    }
+
+                    expect(
+                        command_builder_push( &builder, arg ), "failed to push arg!" );
+                }
+            }
+
+            Command cmd      = command_builder_cmd( &builder );
+            const char* flat = command_flatten_local( &cmd );
+
+            cb_info( "%s", flat );
+
+            PID pid = process_exec( cmd, false, 0, 0, 0 );
+            int res = process_wait( pid );
+
+            cb_info( "program '%s' exited with code %i", target_path, res );
+
+            command_builder_free( &builder );
+        } break;
+        case MODE_CLEAN: {
+            if( !mode_clean( output ) ) {
+                return -1;
+            }
+        } break;
+        case MODE_NULL:
+        case MODE_HELP: unreachable();
+    }
+
+    return 0;
 }
-
-_Bool rebuild_necessary( struct CollectSourcesJob* csj ) {
-    // check if target already exists
-    if( file_path_exists( TARGET ) ) {
-
-        // check if target needs to be rebuilt.
-        FileTimeCmp cmp = file_path_time_cmp_multi_substr(
-            TARGET, csj->headers.count, csj->headers.paths, FILE_TIME_CMP_MODIFY );
-
-        switch( cmp ) {
-            case FILE_TIME_CMP_ERROR: {
-                // womp womp
-                exit(1);
-            } break;
-            case FILE_TIME_CMP_RIGHT_IS_NEWER: return true;
-            default: break;
-        }
-
-        cmp = file_path_time_cmp_multi_substr(
-            TARGET, csj->sources.count,
-            csj->sources.paths, FILE_TIME_CMP_MODIFY );
-
-        switch( cmp ) {
-            case FILE_TIME_CMP_ERROR: {
-                // womp womp
-                exit(1);
-            } break;
-            case FILE_TIME_CMP_RIGHT_IS_NEWER: return true;
-            default: return false;
-        }
-    } else {
+b32 mode_clean( string output ) {
+    if( !path_exists( output.cc ) ) {
+        cb_info( "nothing to clean!" );
         return true;
     }
-}
 
-DynamicString* generate_compile_command( const char* compiler ) {
-#if defined(_MSC_VER)
-    #define REBUILD_TARGET_COMMAND "%s /Fe:%s"
+    cb_info( "removing output path %s . . .", output.cc );
+    if( !path_is_directory( output.cc ) ) {
+        cb_error( "clean: output path '%s' is not a directory!", output.cc );
+        print_help( MODE_CLEAN );
+        return false;
+    }
+
+    if( !dir_remove( output.cc, true ) ) {
+        return false;
+    }
+
+    return true;
+}
+b32 build( string compiler, dstring* path ) {
+    CommandBuilder builder;
+    memory_zero( &builder, sizeof(builder) );
+    if( !command_builder_new( compiler.cc, &builder ) ) {
+        cb_error( "failed to create build command!" );
+        return false;
+    }
+
+    #define cmd_push( builder, arg ) do {\
+        if( !command_builder_push( builder, arg ) ) {\
+            cb_error( "failed to push command argument!" );\
+            command_builder_free( builder );\
+            return false;\
+        }\
+    } while(0)
+
+    cmd_push( &builder, "./src/main.c" );
+#if defined(PLATFORM_WINDOWS)
+    if( string_cmp( compiler, string_text( "cl" ) ) ) {
+        cmd_push( &builder, "-Fe:" );
+    } else {
+        cmd_push( &builder, "-o" );
+    }
 #else
-    #define REBUILD_TARGET_COMMAND "%s -o %s"
+    cmd_push( &builder, "-o" );
 #endif
+    cmd_push( &builder, path );
+    cmd_push( &builder, string_define( "CBUILD_MESSAGE", "hello, from cbuild" ) );
 
-    return dstring_fmt( "%s " REBUILD_TARGET_COMMAND,
-            compiler, "src/main.c", TARGET );
-}
-
-void collect_sources( uint32_t thread_id, void* params ) {
-    unused(thread_id);
-
-    struct CollectSourcesJob* csj = params;
-    csj->success = true;
-
-    // use a glob pattern to search for files.
-    //     *  - matches any characters multiple times
-    //     ?  - matches any one character
-    //     ** - recursively search for directories matching pattern.
-    if( !path_find_files( "./src/**/*.c", &csj->sources ) ) {
-        cb_error( "failed to collect project source files!" );
-        csj->success = false;
-        return;
+    Command cmd = command_builder_cmd( &builder ); {
+        const cstr* local_flat = command_flatten_local( &cmd );
+        cb_info( "compiling with command: %s", local_flat );
     }
 
-    if( !path_find_files( "./src/**/*.h", &csj->headers ) ) {
-        cb_error( "failed to collect project source files!" );
-        csj->success = false;
-        return;
+    PID pid = process_exec( cmd, false, 0, 0, 0 );
+    int res = process_wait( pid );
+
+    if( res != 0 ) {
+        cb_error( "failed to rebuild project!" );
+        return false;
     }
+
+    #undef cmd_push
+    return true;
 }
 
-void print_help(void) {
-    #define println(format, ...) printf( format "\n", ##__VA_ARGS__ )
+struct SplitGlobParams {
+    const WalkDirectory* wd;
+    string  glob;
+    string* list;
+};
 
-    println( "OVERVIEW: CBuild Example.\n" );
-    println( "USAGE:    cbuild [args]\n" );
-    println( "ARGUMENTS: " );
-    println( "    run            run target after compiling." );
-    println( "    --silent       don't print anything but errors to stderr." );
-    println( "    -h or --help   print this message and quit." );
+void job_split_glob( void* params ) {
+    struct SplitGlobParams* p = params;
 
-    #undef println
+    p->list = path_walk_split_glob( p->wd, p->glob );
+}
+
+b32 mode_build( string target, string output, b32 output_time, dstring* path ) {
+    f64 start;
+    if( output_time ) {
+        start = timer_milliseconds();
+    }
+
+    string compiler = cbuild_query_compiler();
+    
+    if( !process_in_path( compiler.cc ) ) {
+        cb_error( "compiler '%s' was not found in path!", compiler.cc );
+#if defined(PLATFORM_WINDOWS)
+        if( string_cmp( compiler, string_text( "cl" ) ) ) {
+            cb_error(
+                "run vcvarsall.bat or run cbuild "
+                "in Developer Command Prompt for Visual Studio?" );
+        }
+#endif
+        return false;
+    }
+
+    if( !path_exists( output.cc ) ) {
+        if( !dir_create( output.cc ) ) {
+            cb_error( "failed to create output directory '%s'!", output.cc );
+            return false;
+        }
+    }
+
+    if( !path_exists( "./src/main.c" ) ) {
+        cb_error( "main file missing!" );
+        return false;
+    }
+
+    b32 needs_rebuild = false;
+
+    if( path_exists( path ) ) {
+        WalkDirectory walk;
+        memory_zero( &walk, sizeof(walk) );
+
+        if( !path_walk_dir( "./src", true, false, &walk ) ) {
+            cb_error(
+                "failed to walk source directory! "
+                "maybe cbuild is not being run from project root?" );
+            return false;
+        }
+
+        struct SplitGlobParams s, h;
+        memory_zero( &s, sizeof(s) );
+        memory_zero( &h, sizeof(s) );
+
+        s.wd   = &walk;
+        s.glob = string_text( "*.c" );
+        h.wd   = &walk;
+        h.glob = string_text( "*.h" );
+
+        fence();
+        job_enqueue( job_split_glob, &s );
+        job_enqueue( job_split_glob, &h );
+
+        time_t path_time = file_query_time_modify( path );
+
+        job_wait_all( MT_WAIT_INFINITE );
+
+        if( !s.list ) {
+            cb_error( "failed to gather sources!" );
+            return false;
+        }
+        if( !h.list ) {
+            cb_error( "failed to gather headers!" );
+            return false;
+        }
+
+        string* sources = s.list;
+        string* headers = s.list;
+
+        for( usize i = 0; i < darray_len( sources ); ++i ) {
+            time_t source_time = file_query_time_modify( sources[i].cc );
+            f64    diff = difftime( path_time, source_time );
+
+            if( diff < 0.0 ) {
+                needs_rebuild = true;
+                goto rebuild_check_end;
+            }
+        }
+
+        for( usize i = 0; i < darray_len( headers ); ++i ) {
+            time_t header_time = file_query_time_modify( headers[i].cc );
+            f64    diff = difftime( path_time, header_time );
+
+            if( diff < 0.0 ) {
+                needs_rebuild = true;
+                goto rebuild_check_end;
+            }
+        }
+
+rebuild_check_end:
+        darray_free( s.list );
+        darray_free( h.list );
+        path_walk_free( &walk );
+    } else {
+        needs_rebuild = true;
+    }
+
+    if( needs_rebuild ) {
+        cb_info( "compiler:   '%s'", compiler.cc );
+        cb_info( "output dir: '%s'", output.cc );
+        cb_info( "target:     '%s'", target.cc );
+        cb_info( "path:       '%s'", path );
+
+        b32 res = build( compiler, path );
+
+        if( res && output_time ) {
+            f64 end = timer_milliseconds();
+            cb_info( "rebuild completed in %fms", end - start );
+        }
+
+        return res;
+    }
+
+    return true;
+}
+
+void print_help( Mode mode ) {
+    printf( "OVERVIEW:  C Build Example\n" );
+    switch( mode ) {
+        case MODE_BUILD: {
+            printf( "USAGE:     %s build [args]\n", global_program_name );
+            printf( "DESCRIPTION:\n" );
+            printf( "  Build program.\n" );
+            printf( "ARGUMENTS: \n" );
+            printf( "  --out=<path>    Set output directory.\n" );
+            printf( "  --target=<path> Set output name.\n" );
+            printf( "  --notime        Do not print how long build took.\n" );
+            printf( "  --silent        Only print error and fatal messages to stderr.\n" );
+            printf( "  --help          Print this message and exit.\n" );
+        } break;
+        case MODE_RUN: {
+            printf( "USAGE:     %s run [args]\n", global_program_name );
+            printf( "DESCRIPTION:\n" );
+            printf( "  Build and then run program.\n" );
+            printf( "ARGUMENTS: \n" );
+            printf( "  --              End cbuild arguments. After this, arguments are for program.\n" );
+            printf( "  --out=<path>    Set output directory.\n" );
+            printf( "  --target=<path> Set output name.\n" );
+            printf( "  --notime        Do not print how long build took.\n" );
+            printf( "  --silent        Only print error and fatal messages to stderr.\n" );
+            printf( "  --help          Print this message and exit.\n" );
+        } break;
+        case MODE_CLEAN: {
+            printf( "USAGE:     %s clean [args]\n", global_program_name );
+            printf( "DESCRIPTION:\n" );
+            printf( "  Clean output path.\n" );
+            printf( "ARGUMENTS: \n" );
+            printf( "  --out=<path>    Set output directory.\n" );
+            printf( "  --silent        Only print error and fatal messages to stderr.\n" );
+            printf( "  --help          Print this message and exit.\n" );
+        } break;
+        case MODE_NULL:
+        case MODE_HELP: {
+            printf( "USAGE:     %s <mode> [args]\n", global_program_name );
+            printf( "MODES:\n" );
+            printf( "  build  Build program and exit.\n" );
+            printf( "  run    Build program and execute it.\n" );
+            printf( "  help   Print this message and exit.\n" );
+            printf( "ARGUMENTS:\n" );
+            printf( "  --silent Only print error and fatal messages to stderr.\n" );
+            printf( "  --help   Print help for given mode.\n" );
+        } break;
+    }
 }
 
 #define CBUILD_IMPLEMENTATION
 #include "../cbuild.h"
-
