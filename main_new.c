@@ -1,8 +1,7 @@
 #undef _CLANGD
 #define CBUILD_ASSERTIONS
 #include "cbuild_new.h"
-#include <stdio.h>
-#include <string.h>
+#include <stdio.h> // IWYU pragma: keep
 
 static const char* name = "test";
 
@@ -32,15 +31,18 @@ int main( int argc, const char** argv ) {
 
     init( level );
 
+    string compiler = cbuild_query_compiler();
+    cb_info( "Compiler: %s", compiler.cc );
+
     f64 start = timer_milliseconds();
 
     WalkDirectory walk;
     memory_zero( &walk, sizeof(walk) );
 
-    path_walk_dir( ".", true, false, &walk );
+    path_walk_dir( "../museum", true, false, &walk );
 
-    string* sources = path_walk_glob( &walk, string_text( "*.c" ) );
-    string* headers = path_walk_glob( &walk, string_text( "*.h" ) );
+    string* sources = path_walk_split_glob( &walk, string_text( "*.c" ) );
+    string* headers = path_walk_split_glob( &walk, string_text( "*.h" ) );
 
     cb_info( "sources: (%zu)", darray_len( sources ) );
     for( usize i = 0; i < darray_len( sources ); ++i ) {
@@ -63,6 +65,5 @@ int main( int argc, const char** argv ) {
 }
 
 #define CBUILD_IMPLEMENTATION
-#define CBUILD_COMPILER_NAME "clang"
 #include "cbuild_new.h"
 

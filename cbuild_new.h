@@ -84,6 +84,14 @@
     #endif
 #endif
 
+#if defined(COMPILER_MSVC)
+    #define make_tls( type )\
+        __declspec( thread ) type
+#else
+    #define make_tls( type )\
+        _Thread_local type
+#endif
+
 typedef uint8_t   u8;
 typedef uint16_t  u16;
 typedef uint32_t  u32;
@@ -405,11 +413,10 @@ b32 path_exists( const cstr* path );
 usize path_chunk_count( string path );
 string* path_chunk_split( string path );
 b32 path_matches_glob( string path, string glob );
-
 b32 path_walk_dir(
     const cstr* dir, b32 recursive,
     b32 include_dirs, WalkDirectory* out_result );
-string* path_walk_glob( const WalkDirectory* wd, string glob );
+string* path_walk_split_glob( const WalkDirectory* wd, string glob );
 void path_walk_free( WalkDirectory* wd );
 
 #define file_null() (0)
@@ -599,6 +606,10 @@ void _init_(
 #include <string.h>
 #include <ctype.h>
 
+#if defined(PLATFORM_WINDOWS)
+    #include <process.h>
+#endif
+
 struct GlobalBuffers {
     atom obtained; // atomic boolean
 
@@ -635,12 +646,12 @@ struct JobQueue {
 
 volatile struct JobQueue* global_queue = NULL;
 
-volatile atom global_is_mt              = false; // boolean
-atom64        global_memory_usage       = 0;
-atom64        global_total_memory_usage = 0;
+atom   global_is_mt              = false; // boolean
+atom64 global_memory_usage       = 0;
+atom64 global_total_memory_usage = 0;
 
 atom              global_thread_id_source = 1; // 0 is main thread
-_Thread_local u32 global_thread_id        = 0;
+make_tls( u32 ) global_thread_id          = 0;
 
 static Mutex       global_logger_mutex = mutex_null();
 static LoggerLevel global_logger_level = LOGGER_LEVEL_INFO;
@@ -658,6 +669,9 @@ volatile struct LocalBuffers* global_local_buffers = NULL;
 void  thread_create( JobFN* func, void* params );
 char* internal_cwd(void);
 char* internal_home(void);
+static b32 path_walk_dir_internal(
+    dstring** path, b32 recursive, b32 include_dirs,
+    usize* out_count, dstring** out_buffer );
 
 static b32 job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
     if( !queue->len ) {
@@ -784,24 +798,26 @@ static b32 validate_file_flags( FileOpenFlags flags ) {
 }
 
 #if !defined(CBUILD_COMPILER_NAME)
-    #if defined(COMPILER_CLANG)
+    #if defined(COMPILER_MSVC)
+        #define CBUILD_COMPILER_NAME "cl"
+    #elif defined(COMPILER_CLANG)
         #define CBUILD_COMPILER_NAME "clang"
     #elif defined(COMPILER_GCC)
         #define CBUILD_COMPILER_NAME "gcc"
-    #elif defined(COMPILER_MSVC)
-        #define CBUILD_COMPILER_NAME "cl"
     #else
         #define CBUILD_COMPILER_NAME "cc"
     #endif
 #endif
 
-#if defined(COMPILER_MSVC)
-    #define CBUILD_COMPILER_OUTPUT_FLAG "-Fe:"
-#else
-    #define CBUILD_COMPILER_OUTPUT_FLAG "-o"
+#if !defined(CBUILD_COMPILER_OUTPUT_FLAG)
+    #if defined(COMPILER_MSVC)
+        #define CBUILD_COMPILER_OUTPUT_FLAG "-Fe:"
+    #else
+        #define CBUILD_COMPILER_OUTPUT_FLAG "-o"
+    #endif
 #endif
 
-#if defined(PLATFORM_POSIX)
+#if !defined(CBUILD_POSIX_FLAGS) && defined(PLATFORM_POSIX)
     #define CBUILD_POSIX_FLAGS "-pthread"
 #endif
 
@@ -865,23 +881,49 @@ void _init_(
 
     f64 start = timer_milliseconds();
 
+#if defined(COMPILER_MSVC)
+    Command rebuild_cmd =
+
+#if defined(CBUILD_ADDITIONAL_FLAGS)
+    command_new(
+        CBUILD_COMPILER_NAME, source_name, CBUILD_COMPILER_OUTPUT_FLAG,
+        executable_name, CBUILD_ADDITIONAL_FLAGS,
+        "-DCBUILD_ADDITIONAL_FLAGS=\"" "\\\"" CBUILD_ADDITIONAL_FLAGS "\\\"" "\"",
+        "-DCBUILD_COMPILER_NAME=\"" "\\\"" CBUILD_COMPILER_NAME "\\\"" "\"",
+        "-DCBUILD_COMPILER_OUTPUT_FLAG=\"" "\\\"" CBUILD_COMPILER_OUTPUT_FLAG "\\\"" "\"", "-nologo" );
+#else
+    command_new(
+        CBUILD_COMPILER_NAME, source_name, CBUILD_COMPILER_OUTPUT_FLAG,
+        executable_name,
+        "-DCBUILD_COMPILER_NAME=\"" "\\\"" CBUILD_COMPILER_NAME "\\\"" "\"",
+        "-DCBUILD_COMPILER_OUTPUT_FLAG=\"" "\\\"" CBUILD_COMPILER_OUTPUT_FLAG "\\\"" "\"", "-nologo" );
+#endif
+
+#else /* MSVC */
+
     Command rebuild_cmd = command_new(
         CBUILD_COMPILER_NAME,
         source_name,
         CBUILD_COMPILER_OUTPUT_FLAG,
         executable_name,
+
 #if defined(PLATFORM_POSIX)
         CBUILD_POSIX_FLAGS,
 #endif
+
 #if defined(CBUILD_ADDITIONAL_FLAGS)
-        ,"-DCBUILD_ADDITIONAL_FLAGS=\"" CBUILD_ADDITIONAL_FLAGS "\"",
+        ,CBUILD_ADDITIONAL_FLAGS,
+        "-DCBUILD_ADDITIONAL_FLAGS=\"" CBUILD_ADDITIONAL_FLAGS "\"",
 #endif
         "-DCBUILD_COMPILER_NAME=\"" CBUILD_COMPILER_NAME "\"",
         "-DCBUILD_COMPILER_OUTPUT_FLAG=\"" CBUILD_COMPILER_OUTPUT_FLAG"\""
 #if defined(PLATFORM_POSIX)
         ,"-DCBUILD_POSIX_FLAGS=\"" CBUILD_POSIX_FLAGS "\""
 #endif
+
     );
+
+#endif /* GCC style */
 
     cb_info(
         "rebuilding with command '%s' . . .",
@@ -908,9 +950,9 @@ void _init_(
     cb_info( "rebuilt in %fms", end - start );
 
 #if defined(PLATFORM_WINDOWS)
-    cb_warn(\
-        "windows does not support replacing current executable, "
-        "cbuild must be re-run" );
+    cb_warn(
+        "windows does not support automatically reloading cbuild, "
+        "please run it again." );
     exit(0);
 #else
     process_exec( global_command_line, false, 0, 0, 0 );
@@ -939,7 +981,7 @@ void* memory_realloc( void* memory, usize old_size, usize new_size ) {
         return NULL;
     }
     usize diff = new_size - old_size;
-    memset( res + old_size, 0, diff );
+    memset( (u8*)res + old_size, 0, diff );
     if( global_is_mt ) {
         atomic_add64( &global_memory_usage, diff );
         atomic_add64( &global_total_memory_usage, diff );
@@ -1829,7 +1871,7 @@ b32 path_matches_glob( string path, string glob ) {
     return glob.len ? false : true;
 
 }
-static b32 path_walk_glob_filter(
+static b32 path_walk_split_glob_filter(
     usize index, usize stride, const void* item, void* params
 ) {
     unused(index, stride);
@@ -1839,12 +1881,89 @@ static b32 path_walk_glob_filter(
 
     return path_matches_glob( path, glob );
 }
-string* path_walk_glob( const WalkDirectory* wd, string glob ) {
+string* path_walk_split_glob( const WalkDirectory* wd, string glob ) {
     assertion( wd && wd->paths, "walk result is null!" );
 
     string* res = darray_from_filter(
-        sizeof(string), wd->count, wd->paths, path_walk_glob_filter, &glob );
+        sizeof(string), wd->count, wd->paths, path_walk_split_glob_filter, &glob );
     return res;
+}
+b32 path_walk_dir(
+    const cstr* dir, b32 recursive,
+    b32 include_dirs, WalkDirectory* out_result
+) {
+    assertion( dir, "no path provided!" );
+    assertion( out_result, "no walk dir result provided!" );
+
+    dstring* path = dstring_from_cstr( dir );
+    if( !path ) {
+        return false;
+    }
+
+    dstring* buffer = dstring_empty( 255 );
+    if( !buffer ) {
+        dstring_free( path );
+        cb_error( "path_walk_dir: failed to allocate buffer!" );
+        return false;
+    }
+
+    usize count = 0;
+    b32 result = path_walk_dir_internal(
+        &path, recursive, include_dirs, &count, &buffer );
+    dstring_free( path );
+
+    if( !result ) {
+        dstring_free( buffer );
+        return false;
+    }
+
+    if( !count ) {
+        dstring_free( buffer );
+        return true;
+    }
+
+    usize total = out_result->count + count;
+    string* paths = darray_empty( sizeof(string), total );
+    if( !paths ) {
+        dstring_free( buffer );
+        return false;
+    }
+
+    if( out_result->buf ) {
+        dstring* concat =
+            dstring_append( out_result->buf, string_from_dstring( buffer ) );
+        dstring_free( buffer );
+        if( !concat ) {
+            return false;
+        }
+    } else {
+        out_result->buf = buffer;
+    }
+
+    out_result->count = total;
+
+    string rem = string_from_dstring( out_result->buf );
+    while( rem.len ) {
+        usize nul = 0;
+        if( string_find( rem, 0, &nul ) ) {
+            string current = rem;
+            current.len    = nul;
+
+            expect( darray_try_push( paths, &current ), "miscalculated path count!" );
+
+            rem = string_adv_by( rem, nul + 1 );
+        } else {
+            expect( darray_try_push( paths, &rem ), "miscalculated path count!" );
+            break;
+        }
+    }
+
+    if( out_result->paths ) {
+        darray_free( out_result->paths );
+    }
+
+    out_result->paths = paths;
+    return true;
 }
 void path_walk_free( WalkDirectory* wd ) {
     if( wd ) {
@@ -2516,7 +2635,11 @@ void logger( LoggerLevel level, const char* format, ... ) {
 #if defined(PLATFORM_WINDOWS)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <process.h>
+#include <limits.h>
+
+#if !defined(PATH_MAX)
+    #define PATH_MAX 260
+#endif
 
 struct Win32ThreadParams {
     JobFN* proc;
@@ -2759,6 +2882,241 @@ b32 path_is_absolute( const cstr* path ) {
     return
         isalpha( path[0] ) &&
         path[1] == ':';
+}
+static b32 path_exists_short( const cstr* path ) {
+    DWORD dwDesiredAccess       = 0;
+    DWORD dwCreationDisposition = OPEN_EXISTING;
+    DWORD dwFlagsAndAttributes  = 0;
+    DWORD dwShareMode           =
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+
+    HANDLE handle = CreateFileA(
+        path, dwDesiredAccess, dwShareMode,
+        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
+    if( handle == INVALID_HANDLE_VALUE ) {
+        return false;
+    } else {
+        CloseHandle( handle );
+        return true;
+    }
+}
+static b32 path_exists_long( string path ) {
+    DWORD dwDesiredAccess       = 0;
+    DWORD dwCreationDisposition = OPEN_EXISTING;
+    DWORD dwFlagsAndAttributes  = 0;
+    DWORD dwShareMode           =
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+
+    wchar_t* wpath = win32_local_path_canon( path );
+
+    HANDLE handle = CreateFileW(
+        wpath, dwDesiredAccess, dwShareMode,
+        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
+    if( handle == INVALID_HANDLE_VALUE ) {
+        return false;
+    } else {
+        CloseHandle( handle );
+        return true;
+    }
+}
+b32 path_exists( const cstr* path ) {
+    assertion( path, "null path!" );
+    usize path_len = cstr_len( path );
+
+    if( path_len >= PATH_MAX ) {
+        return path_exists_long( string_new( path_len, path ) );
+    } else {
+        return path_exists_short( path );
+    }
+}
+static b32 path_walk_dir_internal_long(
+    dstring** path, b32 recursive, b32 include_dirs,
+    usize* out_count, dstring** out_buffer
+) {
+    usize original_len = dstring_len( *path );
+    dstring* _new = dstring_append( *path, string_text( "/*" ) );
+    if( !_new ) {
+        return false;
+    }
+    *path = _new;
+
+    wchar_t* wpath = win32_local_path_canon( string_from_dstring( *path ) );
+
+    WIN32_FIND_DATAW fd;
+    memory_zero( &fd, sizeof( fd ) );
+    HANDLE find_file = FindFirstFileW( wpath, &fd );
+    dstring_truncate( *path, original_len );
+
+    if( find_file == INVALID_HANDLE_VALUE ) {
+        return false;
+    }
+
+    do {
+        if(
+            wcscmp( fd.cFileName, L"." )    == 0 ||
+            wcscmp( fd.cFileName, L".." )   == 0 ||
+            wcscmp( fd.cFileName, L".git" ) == 0
+        ) {
+            continue;
+        }
+
+        _new = dstring_push( *path, '/' );
+        if( !_new ) {
+            FindClose( find_file );
+            return false;
+        }
+        *path = _new;
+
+        usize name_len = wcslen( fd.cFileName );
+        string npath   = win32_local_wide_to_utf8( name_len, fd.cFileName );
+
+        _new = dstring_append( *path, npath );
+        if( !_new ) {
+            FindClose( find_file );
+            return false;
+        }
+        *path = _new;
+
+        if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+            if( include_dirs ) {
+                _new = dstring_append(
+                    *out_buffer, string_new( dstring_len( *path ) + 1 , *path ) );
+                if( !_new ) {
+                    FindClose( find_file );
+                    return false;
+                }
+                *out_buffer = _new;
+                *out_count += 1;
+            }
+
+            if( recursive ) {
+                if( !path_walk_dir_internal_long(
+                    path, recursive, include_dirs, out_count, out_buffer
+                ) ) {
+                    FindClose( find_file );
+                    return false;
+                }
+            }
+
+            dstring_truncate( *path, original_len );
+            continue;
+        }
+
+        _new = dstring_append(
+            *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
+        if( !_new ) {
+            FindClose( find_file );
+            return false;
+        }
+        *out_buffer = _new;
+        *out_count += 1;
+
+        dstring_truncate( *path, original_len );
+    } while( FindNextFileW( find_file, &fd ) != FALSE );
+
+    FindClose( find_file );
+    return true;
+}
+static b32 path_walk_dir_internal_short(
+    dstring** path, b32 recursive, b32 include_dirs,
+    usize* out_count, dstring** out_buffer
+) {
+    usize original_len = dstring_len( *path );
+    if( original_len >= PATH_MAX ) {
+        return path_walk_dir_internal_long(
+            path, recursive, include_dirs, out_count, out_buffer );
+    }
+
+    dstring* _new = dstring_append( *path, string_text( "/*" ) );
+    if( !_new ) {
+        return false;
+    }
+    *path = _new;
+
+    WIN32_FIND_DATAA fd;
+    memory_zero( &fd, sizeof( fd ) );
+    HANDLE find_file = FindFirstFileA( *path, &fd );
+    dstring_truncate( *path, original_len );
+
+    if( find_file == INVALID_HANDLE_VALUE ) {
+        return false;
+    }
+
+    do {
+        if(
+            cstr_cmp( fd.cFileName, "." )  ||
+            cstr_cmp( fd.cFileName, ".." ) ||
+            cstr_cmp( fd.cFileName, ".git" )
+        ) {
+            continue;
+        }
+
+        _new = dstring_push( *path, '/' );
+        if( !_new ) {
+            FindClose( find_file );
+            return false;
+        }
+        *path = _new;
+
+        usize name_len = cstr_len( fd.cFileName );
+        _new = dstring_append( *path, string_new( name_len, fd.cFileName ) );
+        if( !_new ) {
+            FindClose( find_file );
+            return false;
+        }
+        *path = _new;
+
+        if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+            if( include_dirs ) {
+                _new = dstring_append(
+                    *out_buffer, string_new( dstring_len( *path ) + 1 , *path ) );
+                if( !_new ) {
+                    FindClose( find_file );
+                    return false;
+                }
+                *out_buffer = _new;
+                *out_count += 1;
+            }
+
+            if( recursive ) {
+                if( !path_walk_dir_internal_short(
+                    path, recursive, include_dirs, out_count, out_buffer
+                ) ) {
+                    FindClose( find_file );
+                    return false;
+                }
+            }
+
+            dstring_truncate( *path, original_len );
+            continue;
+        }
+
+        _new = dstring_append(
+            *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
+        if( !_new ) {
+            FindClose( find_file );
+            return false;
+        }
+        *out_buffer = _new;
+        *out_count += 1;
+
+        dstring_truncate( *path, original_len );
+    } while( FindNextFileA( find_file, &fd ) != FALSE );
+
+    FindClose( find_file );
+    return true;
+}
+static b32 path_walk_dir_internal(
+    dstring** path, b32 recursive, b32 include_dirs,
+    usize* out_count, dstring** out_buffer
+) {
+    if( dstring_len( *path ) >= PATH_MAX ) {
+        return path_walk_dir_internal_long(
+            path, recursive, include_dirs, out_count, out_buffer );
+    } else {
+        return path_walk_dir_internal_short(
+            path, recursive, include_dirs, out_count, out_buffer );
+    }
 }
 
 static DWORD fd_open_dwaccess( FileOpenFlags flags ) {
@@ -3006,35 +3364,72 @@ usize fd_query_position( FD* file ) {
 #endif
 
 }
-time_t file_query_time_create( const cstr* path ) {
-    FD fd;
-    expect( fd_open( path, FOPEN_READ, &fd ), "failed to query create time!" );
+static void file_query_time_short(
+    const cstr* path, FILETIME* out_create, FILETIME* out_modify
+) {
+    DWORD dwDesiredAccess       = 0;
+    DWORD dwCreationDisposition = OPEN_EXISTING;
+    DWORD dwFlagsAndAttributes  = 0;
+    DWORD dwShareMode           =
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
-    FILETIME ft;
-    memory_zero( &ft, sizeof(ft) );
-
+    HANDLE handle = CreateFileA(
+        path, dwDesiredAccess, dwShareMode,
+        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
+    expect( handle != INVALID_HANDLE_VALUE, "failed to open file!" );
     expect(
-        GetFileTime( (HANDLE)fd, &ft, 0, 0 ) != FALSE,
-        "failed to query create time!" );
+        GetFileTime( handle, out_create, 0, out_modify ),
+        "failed to get file time!" );
 
-    fd_close( &fd );
+    CloseHandle( handle );
+}
+static void file_query_time_long(
+    string path, FILETIME* out_create, FILETIME* out_modify
+) {
+    DWORD dwDesiredAccess       = 0;
+    DWORD dwCreationDisposition = OPEN_EXISTING;
+    DWORD dwFlagsAndAttributes  = 0;
+    DWORD dwShareMode           =
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
-    return win32_filetime_to_posix( ft );
+    wchar_t* wpath = win32_local_path_canon( path );
+
+    HANDLE handle = CreateFileW(
+        wpath, dwDesiredAccess, dwShareMode,
+        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
+
+    expect( handle != INVALID_HANDLE_VALUE, "failed to open file!" );
+    expect(
+        GetFileTime( handle, out_create, 0, out_modify ),
+        "failed to get file time!" );
+
+    CloseHandle( handle );
+}
+time_t file_query_time_create( const cstr* path ) {
+    FILETIME create;
+    memory_zero( &create, sizeof(create) );
+
+    usize path_len = cstr_len( path );
+    if( path_len >= PATH_MAX ) {
+        file_query_time_long( string_new( path_len, path ), &create, 0 );
+    } else {
+        file_query_time_short( path, &create, 0 );
+    }
+
+    return win32_filetime_to_posix( create );
 }
 time_t file_query_time_modify( const cstr* path ) {
-    FD fd;
-    expect( fd_open( path, FOPEN_READ, &fd ), "failed to query modify time!" );
+    FILETIME modify;
+    memory_zero( &modify, sizeof(modify) );
 
-    FILETIME ft;
-    memory_zero( &ft, sizeof(ft) );
+    usize path_len = cstr_len( path );
+    if( path_len >= PATH_MAX ) {
+        file_query_time_long( string_new( path_len, path ), 0, &modify );
+    } else {
+        file_query_time_short( path, 0, &modify );
+    }
 
-    expect(
-        GetFileTime( (HANDLE)fd, 0, 0, &ft ) != FALSE,
-        "failed to query modify time!" );
-
-    fd_close( &fd );
-
-    return win32_filetime_to_posix( ft );
+    return win32_filetime_to_posix( modify );
 }
 
 static b32 file_move_short( const cstr* dst, const cstr* src ) {
@@ -3130,10 +3525,6 @@ f64 timer_seconds(void) {
     return (f64)qpc.QuadPart / (f64)qpf.QuadPart;
 }
 
-void thread_sleep( u32 ms ) {
-    Sleep( ms );
-}
-
 b32 mutex_create( Mutex* out_mutex ) {
     HANDLE handle = CreateMutexA( 0, 0, 0 );
     if( !handle ) {
@@ -3161,7 +3552,7 @@ void mutex_unlock( Mutex* mutex ) {
 }
 void mutex_destroy( Mutex* mutex ) {
     CloseHandle( mutex->handle );
-    *mutex = mutex_null();
+    memory_zero( mutex, sizeof(*mutex) );
 }
 
 b32 semaphore_create( Semaphore* out_semaphore ) {
@@ -3191,7 +3582,127 @@ void semaphore_signal( Semaphore* semaphore ) {
 }
 void semaphore_destroy( Semaphore* semaphore ) {
     CloseHandle( semaphore->handle );
-    *semaphore = semaphore_null();
+    memory_zero( semaphore, sizeof(*semaphore) );
+}
+
+void thread_sleep( u32 ms ) {
+    Sleep( ms );
+}
+
+void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
+    HANDLE read = 0, write = 0;
+    SECURITY_ATTRIBUTES sa;
+    memory_zero( &sa, sizeof(sa) );
+
+    sa.nLength        = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+
+    expect( CreatePipe( &read, &write, &sa, 0 ), "failed to create pipes!" );
+
+    *out_read  = (isize)read;
+    *out_write = (isize)write;
+}
+void pipe_close( Pipe pipe ) {
+    HANDLE handle = (HANDLE)pipe;
+    CloseHandle( handle );
+}
+b32 process_in_path( const cstr* process_name ) {
+    char* cmd = local_fmt( "where.exe %s /Q", process_name );
+    return system( cmd ) == 0;
+}
+PID process_exec(
+    Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
+    WritePipe* opt_stdout, WritePipe* opt_stderr
+) {
+    STARTUPINFOA        startup;
+    PROCESS_INFORMATION info;
+
+    memory_zero( &startup, sizeof(startup) );
+    memory_zero( &info,    sizeof(info) );
+
+    startup.cb         = sizeof(startup);
+    startup.hStdInput  = GetStdHandle( STD_INPUT_HANDLE );
+    startup.hStdOutput = GetStdHandle( STD_OUTPUT_HANDLE );
+    startup.hStdError  = GetStdHandle( STD_ERROR_HANDLE );
+
+    BOOL bInheritHandle = FALSE;
+    if( redirect_void ) {
+        bInheritHandle = TRUE;
+        volatile struct GlobalBuffers* gb = get_global_buffers();
+        startup.hStdInput  = (HANDLE)gb->void_read;
+        startup.hStdOutput = (HANDLE)gb->void_write;
+        startup.hStdError  = (HANDLE)gb->void_write;
+    } else {
+        if( opt_stdin ) {
+            startup.hStdInput = (HANDLE)*opt_stdin;
+            bInheritHandle    = TRUE;
+        }
+        if( opt_stdout ) {
+            startup.hStdOutput = (HANDLE)*opt_stdout;
+            bInheritHandle     = TRUE;
+        }
+        if( opt_stderr ) {
+            startup.hStdError = (HANDLE)*opt_stderr;
+            bInheritHandle    = TRUE;
+        }
+        if( bInheritHandle ) {
+            startup.dwFlags |= STARTF_USESTDHANDLES;
+        }
+    }
+
+    DWORD flags = 0;
+
+    cstr* cmd_line = (cstr*)command_flatten_local( &cmd );
+
+    BOOL res = CreateProcessA(
+        NULL, cmd_line, NULL, NULL, bInheritHandle,
+        flags, NULL, NULL, &startup, &info );
+    expect( res, "failed to launch process '%s'!", cmd.args[0] );
+
+    CloseHandle( info.hThread );
+    return (isize)info.hProcess;
+}
+int process_wait( PID pid ) {
+    DWORD res = WaitForSingleObject( (HANDLE)pid, INFINITE );
+    switch( res ) {
+        case WAIT_OBJECT_0: break;
+        default: {
+            string reason = win32_local_error_message( GetLastError() );
+            panic( "failed to wait for pid! reason: %s", reason.cc );
+            return -1;
+        } break;
+    }
+
+    DWORD exit_code = 0;
+    expect( GetExitCodeProcess( (HANDLE)pid, &exit_code ), "failed to get exit code!" );
+
+    CloseHandle( (HANDLE)pid );
+    return exit_code;
+}
+b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
+    b32 success = true;
+    DWORD res   = WaitForSingleObject( (HANDLE)pid, ms );
+    switch( res ) {
+        case WAIT_OBJECT_0: break;
+        case WAIT_TIMEOUT: {
+            success = false;
+        } break;
+        default: {
+            string reason = win32_local_error_message( GetLastError() );
+            panic( "failed to wait for pid! reason: %s", reason.cc );
+            return -1;
+        } break;
+    }
+
+    DWORD exit_code = 0;
+    expect( GetExitCodeProcess( (HANDLE)pid, &exit_code ), "failed to get exit code!" );
+
+    if( success ) {
+        CloseHandle( (HANDLE)pid );
+    }
+
+    *opt_out_res = exit_code;
+    return success;
 }
 
 unsigned int win32_thread_proc( void* params ) {
@@ -3305,7 +3816,7 @@ b32 path_is_absolute( const cstr* path ) {
 b32 path_exists( const cstr* path ) {
     return access( path, F_OK ) == 0;
 }
-b32 path_walk_dir_internal(
+static b32 path_walk_dir_internal(
     dstring** path, b32 recursive, b32 include_dirs,
     usize* out_count, dstring** out_buffer
 ) {
@@ -3389,82 +3900,6 @@ b32 path_walk_dir_internal(
     }
 
     closedir( dir );
-    return true;
-}
-b32 path_walk_dir(
-    const cstr* dir, b32 recursive,
-    b32 include_dirs, WalkDirectory* out_result
-) {
-    assertion( dir, "no path provided!" );
-    assertion( out_result, "no walk dir result provided!" );
-
-    dstring* path = dstring_from_cstr( dir );
-    if( !path ) {
-        return false;
-    }
-
-    dstring* buffer = dstring_empty( 255 );
-    if( !buffer ) {
-        dstring_free( path );
-        return false;
-    }
-
-    usize count = 0;
-    b32 result = path_walk_dir_internal(
-        &path, recursive, include_dirs, &count, &buffer );
-    dstring_free( path );
-
-    if( !result ) {
-        dstring_free( buffer );
-        return false;
-    }
-
-    if( !count ) {
-        dstring_free( buffer );
-        return true;
-    }
-
-    usize total = out_result->count + count;
-    string* paths = darray_empty( sizeof(string), total );
-    if( !paths ) {
-        dstring_free( buffer );
-        return false;
-    }
-
-    if( out_result->buf ) {
-        dstring* concat =
-            dstring_append( out_result->buf, string_from_dstring( buffer ) );
-        dstring_free( buffer );
-        if( !concat ) {
-            return false;
-        }
-    } else {
-        out_result->buf = buffer;
-    }
-
-    out_result->count = total;
-
-    string rem = string_from_dstring( out_result->buf );
-    while( rem.len ) {
-        usize nul = 0;
-        if( string_find( rem, 0, &nul ) ) {
-            string current = rem;
-            current.len    = nul;
-
-            expect( darray_try_push( paths, &current ), "miscalculated path count!" );
-
-            rem = string_adv_by( rem, nul + 1 );
-        } else {
-            expect( darray_try_push( paths, &rem ), "miscalculated path count!" );
-            break;
-        }
-    }
-
-    if( out_result->paths ) {
-        darray_free( out_result->paths );
-    }
-
-    out_result->paths = paths;
     return true;
 }
 
