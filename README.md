@@ -20,7 +20,7 @@ Inspired by [nobuild](https://github.com/tsoding/nobuild).
 - Include cbuild.h at the top and at the bottom of cbuild.c
 - Define CBUILD_IMPLEMENTATION before second include.
 - Run init() function before anything else in main function.
-- Compile cbuild.c using prefered compiler.
+- Compile cbuild.c using preferred compiler.
 
 Minimal Example:
 ```C
@@ -52,6 +52,17 @@ Note: On Windows, startup.bat assumes you have run vcvarsall.bat or are running
 in Developer Command Prompt for VS *.
 clang is provided as an alternative in the script.
 ```
+## Interactive Example
+
+- Compile example project.
+```sh
+cd example
+cc cbuild.c -o cbuild
+```
+- Run cbuild.
+```sh
+./cbuild
+```
 
 ## Additional Setup
 
@@ -76,6 +87,18 @@ Example:
 - Windows or any POSIX environment.
 - clang, gcc or Visual Studio (cl).
 - (optional) Doxygen.
+
+## Generate Documentation
+
+- Run doxygen in root directory.
+```sh
+doxygen
+```
+- Result will be in ./doxyout/html
+- Open index.html with preferred browser.
+```sh
+firefox ./doxyout/html/index.html
+```
 
 ## Links
 

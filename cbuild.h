@@ -907,11 +907,11 @@ dstring* dstring_append( dstring* str, string append );
 /// @return
 ///     - @c Dynamic String : Append was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-#define dstring_append_text( dstr, literal )\
-    dstring_append( dstr, string_text( literal ) )
+#define dstring_append_text( str, literal )\
+    dstring_append( str, string_text( literal ) )
 /// @brief Prepend string to start of dynamic string.
-/// @param[in] str    Dynamic string to prepend to.
-/// @param     preped String to append.
+/// @param[in] str     Dynamic string to prepend to.
+/// @param     prepend String to append.
 /// @return
 ///     - @c Dynamic String : Prepend was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
@@ -922,16 +922,16 @@ dstring* dstring_prepend( dstring* str, string prepend );
 /// @return
 ///     - @c Dynamic String : Prepend was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-#define dstring_prepend_cstr( dstr, prepend )\
-    dstring_prepend( dstr, string_from_cstr( prepend ) )
+#define dstring_prepend_cstr( str, prepend )\
+    dstring_prepend( str, string_from_cstr( prepend ) )
 /// @brief Prepend string literal to end of dynamic string.
 /// @param[in] str     (dstring*)       Dynamic string to prepend to.
 /// @param     literal (string litearl) String literal to prepend.
 /// @return
 ///     - @c Dynamic String : Prepend was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-#define dstring_prepend_text( dstr, literal )\
-    dstring_prepend( dstr, string_text( literal ) )
+#define dstring_prepend_text( str, literal )\
+    dstring_prepend( str, string_text( literal ) )
 /// @brief Insert string inside dynamic string.
 /// @param[in] str    Dynamic string to insert in.
 /// @param     insert String to insert.
@@ -950,9 +950,9 @@ dstring* dstring_insert( dstring* str, string insert, usize at );
 #define dstring_insert_cstr( str, insert, at )\
     dstring_insert( str, string_from_cstr( insert ), at )
 /// @brief Insert string literal inside dynamic string.
-/// @param[in] str    Dynamic string to insert in.
-/// @param     insert String to insert.
-/// @param     at     Index to insert at. Must be <= @c str.len.
+/// @param[in] str     Dynamic string to insert in.
+/// @param     literal (string literal) String to insert.
+/// @param     at      Index to insert at. Must be <= @c str.len.
 /// @return
 ///     - @c Dynamic String : Insert was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
@@ -1003,7 +1003,6 @@ b32 dstring_remove_range( dstring* str, usize from_inclusive, usize to_exclusive
 /// Returns empty string if max == 0.
 /// @param[in] str Dynamic string to truncate.
 /// @param     max Maximum length to truncate to.
-/// @return Truncated dynamic string.
 void dstring_truncate( dstring* str, usize max );
 /// @brief Subtract from dynamic string length.
 /// @details
@@ -1011,7 +1010,6 @@ void dstring_truncate( dstring* str, usize max );
 /// Returns empty string if amount >= str.len.
 /// @param[in] str    Dynamic string to trim.
 /// @param     amount Number of characters to trim from the end.
-/// @return Trimmed dynamic string.
 void dstring_trim( dstring* str, usize amount );
 /// @brief Set length of dynamic string to zero and zero out memory.
 /// @note This does not free the string!
