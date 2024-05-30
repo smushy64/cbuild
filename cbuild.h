@@ -335,12 +335,21 @@ static inline void _0( int _, ... ) {(void)_;}
 /// @param macro (any defined) Macro whose value will be stringified.
 /// @return String literal.
 #define macro_value_to_string( macro ) macro_to_string( macro )
-/// @brief Create command line argument that defines string literal macro.
-/// @param id   (string literal) Name of macro.
-/// @param text (string literal) String literal to define macro to.
-/// @return String literal.
-#define string_define( id, text )\
-    "-D" id "=\"\\\"" text "\\\"\""
+#if defined(PLATFORM_WINDOWS)
+    /// @brief Create command line argument that defines string literal macro.
+    /// @param id   (string literal) Name of macro.
+    /// @param text (string literal) String literal to define macro to.
+    /// @return String literal.
+    #define string_define( id, text )\
+        "-D" id "=\"\\\"" text "\\\"\""
+#else
+    /// @brief Create command line argument that defines string literal macro.
+    /// @param id   (string literal) Name of macro.
+    /// @param text (string literal) String literal to define macro to.
+    /// @return String literal.
+    #define string_define( id, text )\
+        "-D" id "=\"" text "\""
+#endif
 /// @brief Calculate length of static array.
 /// @param array (any[]) Static array to calculate length of.
 /// @return (usize) Length of @c array.
@@ -5359,11 +5368,66 @@ static const char* generate_semaphore_name(void) {
     return (const char*)local_fmt( "cbuild_sem%u", val );
 }
 
+void* memory_alloc( usize size ) {
+    void* res = malloc( size );
+    if( !res ) {
+        return NULL;
+    }
+    memset( res, 0, size );
+    if( global_is_mt ) {
+        atomic_add64( &global_memory_usage, size );
+        atomic_add64( &global_total_memory_usage, size );
+    } else {
+        global_memory_usage       += size;
+        global_total_memory_usage += size;
+    }
+    return res;
+}
+void* memory_realloc( void* memory, usize old_size, usize new_size ) {
+    assertion( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
+    void* res = realloc( memory, new_size );
+    if( !res ) {
+        return NULL;
+    }
+    usize diff = new_size - old_size;
+    memset( res + old_size, 0, diff );
+    if( global_is_mt ) {
+        atomic_add64( &global_memory_usage, diff );
+        atomic_add64( &global_total_memory_usage, diff );
+    } else {
+        global_memory_usage       += diff;
+        global_total_memory_usage += diff;
+    }
+    return res;
+}
+void memory_free( void* memory, usize size ) {
+    if( !memory ) {
+        cb_warn( "attempted to free null pointer!" );
+        return;
+    }
+    free( memory );
+    atom64 neg = size;
+    neg = -neg;
+    if( global_is_mt ) {
+        atomic_add64( &global_memory_usage, neg );
+    } else {
+        global_memory_usage += neg;
+    }
+}
 b32 path_is_absolute( const cstr* path ) {
     return *path == '/';
 }
 b32 path_exists( const cstr* path ) {
     return access( path, F_OK ) == 0;
+}
+b32 path_is_directory( const cstr* path ) {
+    struct stat s;
+    int res = stat( path, &s );
+    if( res == -1 ) {
+        return false;
+    }
+
+    return S_ISDIR( s.st_mode );
 }
 static b32 path_walk_dir_internal(
     dstring** path, b32 recursive, b32 include_dirs,
@@ -5598,6 +5662,20 @@ b32 file_copy( const cstr* dst, const cstr* src ) {
 }
 b32 file_remove( const cstr* path ) {
     int res = remove( path );
+    return res == 0;
+}
+b32 dir_create( const cstr* path ) {
+    int res = mkdir( path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH );
+    if( res == 0 ) {
+        return true;
+    }
+    switch( errno ) {
+        case EEXIST: return true;
+        default:     return false;
+    }
+}
+static b32 dir_remove_internal( const cstr* path ) {
+    int res = rmdir( path );
     return res == 0;
 }
 

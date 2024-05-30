@@ -3,9 +3,10 @@
  * @brief  README for cbuild command line utility
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   May 15, 2024
+ * @mainpage
 -->
 
-Cbuild
+C Build
 ========
 
 Single-header library for building C projects.
@@ -14,41 +15,67 @@ Inspired by [nobuild](https://github.com/tsoding/nobuild).
 
 ## How-To
 
-Download cbuild.h and include it once at the top
-and again at the bottom with CBUILD_IMPLEMENTATION defined.
-The library expects that you only use one source file but if you use
-multiple, only define CBUILD_IMPLEMENTATION once.
+- Download cbuild.h.
+- Create a cbuild.c file in project root.
+- Include cbuild.h at the top and at the bottom of cbuild.c
+- Define CBUILD_IMPLEMENTATION before second include.
+- Run init() function before anything else in main function.
+- Compile cbuild.c using prefered compiler.
 
-If you are on windows download startup.bat, otherwise download startup.sh.
-After you have a main function that calls init( __log_level__ ), run the startup
-script to initialize cbuild. If you wish to use a different compiler,
-edit the startup script with your compiler or define COMPILER before
-CBUILD_IMPLEMENTATION with your prefered compiler and rebuild (run cbuild.exe again).
-When distributing, include either (or both) startup files and source code,
-please don't include the compiled binary.
+Minimal Example:
+```C
+#include "cbuild.h"
+
+int main( int argc, const char** argv ) {
+    init( LOGGER_LEVEL_INFO );
+    /*
+     * Build code goes here.
+    */
+    return 0;
+}
+
+#define CBUILD_IMPLEMENTATION
+#include "cbuild.h"
+```
+```sh
+cc cbuild.c -o cbuild
+./cbuild
+```
+
+Documentation can be generated using doxygen README.md and provided Doxygen file.
+
+The `startup.bat` and `startup.sh` scripts are included to easily
+generate cbuild program.
 
 ```
-Note: If running startup on windows, make sure to vcvarsall or use
-Developer Command Prompt for Visual Studio to get cl enviroment setup
-before running the script. The environment also needs to be set everytime cbuild is run.
+Note: On Windows, startup.bat assumes you have run vcvarsall.bat or are running
+in Developer Command Prompt for VS *.
+clang is provided as an alternative in the script.
 ```
 
-This library provides cross-platform functions/structures for
-string manipulation, timing, path searching, checking for executables,
-a simple job system and atomics for
-multithreading and functions for asynchronously running processes.
+## Additional Setup
 
-Use the included memory functions (memory_[alloc, realloc, free])
-for keeping track of memory usage.
+At the top of cbuild.c:
 
-Includes doxygen documentation so if it's installed,
-documentation for cbuild can be generated.
+Define `CBUILD_THREAD_COUNT` with a number from 2-16 to
+change how many threads are created by job system.
 
-Check the example directory for more info.
+Define `CBUILD_ASSERTIONS` to enable debug assertions.
+
+Define `CBUILD_ADDTIONAL_FLAGS` with additional compiler flags
+thatare used to compile cbuild.
+
+Example:
+```C
+// flags for enabling debug symbols
+#define CBUILD_ADDITIONAL_FLAGS "-g", "-O0"
+```
 
 ## Requirements
 
-- clang, gcc or Visual Studio (cl)
+- Windows or any POSIX environment.
+- clang, gcc or Visual Studio (cl).
+- (optional) Doxygen.
 
 ## Links
 

@@ -4,6 +4,7 @@
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   May 15, 2024
 */
+#undef _CLANGD
 #define CBUILD_THREAD_COUNT 16
 #include "../cbuild.h" // including the header from root
 
@@ -19,7 +20,9 @@ typedef enum {
 } Mode;
 void print_help( Mode mode );
 
-b32 mode_build( string target, string output, b32 output_time, dstring* path );
+b32 mode_build(
+    string target, string output,
+    b32 output_time, b32 dry_run, dstring* path );
 b32 mode_clean( string output );
 
 int main( int argc, const char** argv ) {
@@ -47,6 +50,7 @@ int main( int argc, const char** argv ) {
 #endif
     string output  = string_text( "./build" );
     b32 print_time = true;
+    b32 dry_run    = false;
 
     int start_args = -1;
 
@@ -116,6 +120,11 @@ int main( int argc, const char** argv ) {
                     if( string_cmp( arg, string_text( "--" ) ) ) {
                         start_args = i + 1;
                         break;
+                    }
+                } else { // MODE_BUILD
+                    if( string_cmp( arg, string_text( "--dryrun" ) ) ) {
+                        dry_run = true;
+                        continue;
                     }
                 }
 
@@ -196,12 +205,12 @@ int main( int argc, const char** argv ) {
 
     switch( mode ) {
         case MODE_BUILD: {
-            if( !mode_build( target, output, print_time, target_path ) ) {
+            if( !mode_build( target, output, print_time, dry_run, target_path ) ) {
                 return -1;
             }
         } break;
         case MODE_RUN: {
-            if( !mode_build( target, output, print_time, target_path ) ) {
+            if( !mode_build( target, output, print_time, false, target_path ) ) {
                 return -1;
             }
 
@@ -214,10 +223,12 @@ int main( int argc, const char** argv ) {
             if( start_args != -1 ) {
                 for( int i = start_args; i < argc; ++i ) {
                     const char* arg = argv[i];
-                    usize space = 0;
-                    if( cstr_find( arg, ' ', &space ) ) {
+
+#if defined(PLATFORM_WINDOWS)
+                    if( cstr_find( arg, ' ', 0 ) ) {
                         arg = local_fmt( "\"%s\"", arg );
                     }
+#endif /* PLATFORM_WINDOWS */
 
                     expect(
                         command_builder_push( &builder, arg ), "failed to push arg!" );
@@ -267,39 +278,41 @@ b32 mode_clean( string output ) {
 
     return true;
 }
-b32 build( string compiler, dstring* path ) {
-    CommandBuilder builder;
-    memory_zero( &builder, sizeof(builder) );
-    if( !command_builder_new( compiler.cc, &builder ) ) {
-        cb_error( "failed to create build command!" );
-        return false;
-    }
+static CommandBuilder builder;
+static b32            builder_ready = false;
+Command get_build_command( string compiler, const cstr* output_path ) {
+    if( !builder_ready ) {
+        memory_zero( &builder, sizeof(builder) );
+        if( !command_builder_new( compiler.cc, &builder ) ) {
+            panic( "failed to create command builder!" );
+        }
 
-    #define cmd_push( builder, arg ) do {\
-        if( !command_builder_push( builder, arg ) ) {\
-            cb_error( "failed to push command argument!" );\
-            command_builder_free( builder );\
-            return false;\
-        }\
-    } while(0)
+        #define cmd_push( builder, arg ) do {\
+            if( !command_builder_push( builder, arg ) ) {\
+                panic( "failed to push command argument!" );\
+            }\
+        } while(0)
 
-    cmd_push( &builder, "./src/main.c" );
+        cmd_push( &builder, "./src/main.c" );
 #if defined(PLATFORM_WINDOWS)
-    if( string_cmp( compiler, string_text( "cl" ) ) ) {
-        cmd_push( &builder, "-Fe:" );
-    } else {
-        cmd_push( &builder, "-o" );
-    }
+        if( string_cmp( compiler, string_text( "cl" ) ) ) {
+            cmd_push( &builder, "-Fe:" );
+        } else {
+            cmd_push( &builder, "-o" );
+        }
 #else
-    cmd_push( &builder, "-o" );
+        cmd_push( &builder, "-o" );
 #endif
-    cmd_push( &builder, path );
-    cmd_push( &builder, string_define( "CBUILD_MESSAGE", "hello, from cbuild" ) );
+        cmd_push( &builder, output_path );
+        cmd_push( &builder, string_define( "CBUILD_MESSAGE", "hello, from cbuild" ) );
 
-    Command cmd = command_builder_cmd( &builder ); {
-        const cstr* local_flat = command_flatten_local( &cmd );
-        cb_info( "compiling with command: %s", local_flat );
+        builder_ready = true;
     }
+
+    return command_builder_cmd( &builder );
+}
+b32 build( string compiler, dstring* path ) {
+    Command cmd = get_build_command( compiler, path );
 
     PID pid = process_exec( cmd, false, 0, 0, 0 );
     int res = process_wait( pid );
@@ -322,16 +335,30 @@ struct SplitGlobParams {
 void job_split_glob( void* params ) {
     struct SplitGlobParams* p = params;
 
-    p->list = path_walk_split_glob( p->wd, p->glob );
+    p->list = path_walk_glob_filter( p->wd, p->glob );
 }
 
-b32 mode_build( string target, string output, b32 output_time, dstring* path ) {
+b32 mode_build(
+    string target, string output, b32 output_time, b32 dry_run, dstring* path
+) {
+    string compiler = cbuild_query_compiler();
+
+    if( dry_run ) {
+        cb_info( "compiler:   '%s'", compiler.cc );
+        cb_info( "output dir: '%s'", output.cc );
+        cb_info( "target:     '%s'", target.cc );
+        cb_info( "path:       '%s'", path );
+        Command cmd = get_build_command( compiler, path );
+
+        const char* flat = command_flatten_local( &cmd );
+        cb_info( "build command: %s", flat );
+        return true;
+    }
+
     f64 start;
     if( output_time ) {
         start = timer_milliseconds();
     }
-
-    string compiler = cbuild_query_compiler();
     
     if( !process_in_path( compiler.cc ) ) {
         cb_error( "compiler '%s' was not found in path!", compiler.cc );
@@ -454,6 +481,7 @@ void print_help( Mode mode ) {
             printf( "DESCRIPTION:\n" );
             printf( "  Build program and exit.\n" );
             printf( "ARGUMENTS: \n" );
+            printf( "  --dryrun        Only print configuration.\n" );
             printf( "  --out=<path>    Set output directory.\n" );
             printf( "  --target=<path> Set output name.\n" );
             printf( "  --notime        Do not print how long build took.\n" );
