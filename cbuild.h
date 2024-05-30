@@ -8,9 +8,9 @@
  * Include to get API, include again (ONCE) with CBUILD_IMPLEMENTATION
  * defined to define implementation.
  *
- * Additional options can be defined before first include.
+ * Options can be defined before first include.
  *
- * Additional options:
+ * Options:
  * - define CBUILD_THREAD_COUNT with number between 2 and 16 to set how many
  *   threads cbuild is allowed to initialize.
  * - define CBUILD_ASSERTIONS to get debug assertions in implementation and
@@ -382,24 +382,40 @@ static inline void _0( int _, ... ) {(void)_;}
 /// @param logger_level Level to set logger to.
 #define init( logger_level )\
     _init_( logger_level, argv[0], __FILE__, argc, (const char**)argv )
+/// @brief Rebuild cbuild.
+/// @param[in] cbuild_source_file_name Filename of source file (__FILE__).
+/// @param[in] cbuild_executable_name  Name of cbuild executable (argv[0]).
+/// @param     reload                  Reloads cbuild after rebuilding. Only supported on POSIX platforms.
+_Noreturn void cbuild_rebuild(
+    const cstr* cbuild_source_file_name,
+    const cstr* cbuild_executable_name, b32 reload );
 
 /// @brief Allocate memory on the heap. Always returns zeroed memory.
+/// @warning
+/// Do not free with free(), use memory_free() instead!
+/// Do not reallocate with realloc(), use memory_realloc() instead!
 /// @param size Size in bytes of memory to allocate.
 /// @return
 ///     - Pointer : Allocation succeeded, pointer to start of buffer.
 ///     - NULL    : Allocation failed.
 void* memory_alloc( usize size );
 /// @brief Reallocate memory on the heap. Always returns zeroed memory.
-/// @param memory   Pointer to block of memory to reallocate.
-/// @param old_size Size in bytes of memory to reallocate.
-/// @param new_size New size of memory to reallocate. Must be > @c old_size.
+/// @warning
+/// Do not free with free(), use memory_free() instead!
+/// Do not reallocate with realloc(), use memory_realloc() instead!
+/// @param[in] memory   Pointer to block of memory to reallocate.
+/// @param     old_size Size in bytes of memory to reallocate.
+/// @param     new_size New size of memory to reallocate. Must be > @c old_size.
 /// @return
 ///     - Pointer : Allocation succeeded, pointer to start of buffer.
 ///     - NULL    : Allocation failed.
 void* memory_realloc( void* memory, usize old_size, usize new_size );
 /// @brief Free memory allocated on the heap.
-/// @param memory Pointer to block of memory to free.
-/// @param size   Size in bytes of block of memory.
+/// @warning
+/// Only free pointers from memory_alloc() or memory_realloc()!
+/// Do not use with pointer from malloc()!
+/// @param[in] memory Pointer to block of memory to free.
+/// @param     size   Size in bytes of block of memory.
 void  memory_free( void* memory, usize size );
 /// @brief Query how many bytes are currently allocated.
 /// @return Bytes allocated.
@@ -408,296 +424,1436 @@ usize memory_query_usage(void);
 /// @return Bytes allocated in total.
 usize memory_query_total_usage(void);
 /// @brief Copy value across block of memory.
-/// @param memory     Block to modify, must be >= @c value_size in size.
-/// @param value_size Size of value to stamp.
-/// @param value      Pointer to value to stamp.
-/// @param size       Total size of @c memory in bytes.
+/// @param[in] memory     Block to modify, must be >= @c value_size in size.
+/// @param     value_size Size of value to stamp.
+/// @param[in] value      Pointer to value to stamp.
+/// @param     size       Total size of @c memory in bytes.
 void memory_stamp( void* memory, usize value_size, const void* value, usize size );
 /// @brief Set bytes in block of memory to a value.
-/// @param memory 
+/// @param[in] memory Block to modify.
+/// @param     value  Value to set bytes to.
+/// @param     size   Size of @c memory in bytes.
 void memory_set( void* memory, i8 value, usize size );
+/// @brief Set bytes in block of memory to zero.
+/// @param[in] memory Block to modify.
+/// @param     size   Size of @c memory in bytes.
 void memory_zero( void* memory, usize size );
+/// @brief Copy bytes from one block of memory to another.
+/// @details
+/// @c dst and @c src cannot be overlapping.
+/// Use memory_move() instead for overlapping memory.
+/// @param[in] dst  Pointer to destination.
+/// @param[in] src  Pointer to source.
+/// @param     size Size of @c dst and @c src.
 void memory_copy( void* restrict dst, const void* restrict src, usize size );
+/// @brief Copy bytes from one block of memory to another.
+/// @details
+/// @c dst and @c src can be overlapping.
+/// @param[in] dst  Pointer to destination.
+/// @param[in] src  Pointer to source.
+/// @param     size Size of @c dst and @c src.
 void memory_move( void* dst, const void* src, usize size );
-b32  memory_cmp( const void* a, const void* b, usize size );
+/// @brief Compare bytes from two blocks of memory for equality.
+/// @param[in] a, b Pointer to blocks of memory to compare.
+/// @param     size Size of @c dst and @c src.
+/// @return
+///     - @c True  : @c a and @c b are equal.
+///     - @c False : @c a and @c b are not equal.
+b32 memory_cmp( const void* a, const void* b, usize size );
 
+/// @brief Check if character is in set.
+/// @param c   Character to check for.
+/// @param set Set of characters to check against.
+/// @return
+///     - @c True  : @c c is in @c set.
+///     - @c False : @c c is not in @c set.
 b32 char_in_set( char c, string set );
 
+/// @brief Calculate length of null-terminated string.
+/// @param[in] string Pointer to character buffer.
+/// @return Length of @c string.
 usize cstr_len( const cstr* string );
+/// @brief Calculate UTF-8 length of null-terminated string.
+/// @note
+/// Does not check if @c string is a valid UTF-8 string!
+/// @param[in] string Pointer to character buffer.
+/// @return UTF-8 length of @c string.
 usize cstr_len_utf8( const cstr* string );
+/// @brief Compare two null-terminated strings for equality.
+/// @param[in] a, b Strings to compare.
+/// @return
+///     - @c True  : Strings @c a and @c b are equal.
+///     - @c False : Strings @c a and @c b are not equal.
 b32 cstr_cmp( const cstr* a, const cstr* b );
+/// @brief Search for character in null-terminated string.
+/// @param[in]  string        String to search in.
+/// @param      c             ASCII character to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c c if it was found.
+/// @return
+///     - @c True  : @c c was found in @c string.
+///     - @c False : @c c was not found in @c string.
 b32 cstr_find( const cstr* string, char c, usize* opt_out_index );
+/// @brief Search for character in null-terminated string from end of string.
+/// @param[in]  string        String to search in.
+/// @param      c             ASCII character to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c c if it was found.
+/// @return
+///     - @c True  : @c c was found in @c string.
+///     - @c False : @c c was not found in @c string.
 b32 cstr_find_rev( const cstr* string, char c, usize* opt_out_index );
+/// @brief Search for a set of characters in null-terminated string.
+/// @param[in]  string        String to search in.
+/// @param[in]  set           Set of ASCII characters to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of first character in set found.
+/// @return
+///     - @c True  : Character in @c set was found in @c string.
+///     - @c False : Character in @c set was not found in @c string.
 b32 cstr_find_set( const cstr* string, const cstr* set, usize* opt_out_index );
+/// @brief Search for a set of characters in null-terminated string from end of string.
+/// @param[in]  string        String to search in.
+/// @param[in]  set           Set of ASCII characters to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of first character in set found.
+/// @return
+///     - @c True  : Character in @c set was found in @c string.
+///     - @c False : Character in @c set was not found in @c string.
 b32 cstr_find_set_rev( const cstr* string, const cstr* set, usize* opt_out_index );
+/// @brief Search for substring in null-terminated string.
+/// @param[in]  string        String to search in.
+/// @param[in]  substr        String to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c substr if it was found.
+/// @return
+///     - @c True  : @c substr was found in @c string.
+///     - @c False : @c substr was not found in @c string.
 b32 cstr_find_cstr( const cstr* string, const cstr* substr, usize* opt_out_index );
+/// @brief Search for substring in null-terminated string from end of string.
+/// @param[in]  string        String to search in.
+/// @param[in]  substr        String to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c substr if it was found.
+/// @return
+///     - @c True  : @c substr was found in @c string.
+///     - @c False : @c substr was not found in @c string.
 b32 cstr_find_cstr_rev( const cstr* string, const cstr* substr, usize* opt_out_index );
 
+/// @brief Create an empty string.
+/// @return Empty @c string.
 #define string_empty()\
     (string){ .cc=0, .len=0 }
+/// @brief Create a new string from length and buffer.
+/// @param     length (usize) Length of string buffer.
+/// @param[in] buf    (const char*) Pointer to start of buffer.
+/// @return New @c string.
 #define string_new( length, buf )\
     (string){ .cc=buf, .len=length }
+/// @brief Create a new string from string literal.
+/// @param literal (string literal) Literal to make string out of.
+/// @return New @c string.
 #define string_text( literal )\
     string_new( sizeof(literal) - 1, literal )
+/// @brief Create a new string from null-terminated string.
+/// @param s (const cstr*) Null-terminated to make string out of.
+/// @return New @c string.
 #define string_from_cstr( s )\
     string_new( cstr_len( s ), s )
+/// @brief Create a new string from dynamic string.
+/// @param d (const dstring*) Dynamic string to make string out of.
+/// @return New @c string.
 #define string_from_dstring( d )\
     string_new( dstring_len( d ), d )
+/// @brief Check if string is empty.
+/// @param str String to check.
+/// @return
+///     - @c True  : @c str is empty.
+///     - @c False : @c str is not empty.
 b32 string_is_empty( string str );
+/// @brief Check if string is null-terminated.
+/// @param str String to check.
+/// @return
+///     - @c True  : @c str is null-terminated.
+///     - @c False : @c str is not null-terminated.
 b32 string_is_null_terminated( string str );
+/// @brief Compare two strings for equality.
+/// First compares string lengths, then compares contents.
+/// @param a, b Strings to compare.
+/// @return
+///     - @c True  : Strings @c a and @c b are equal.
+///     - @c False : Strings @c a and @c b are not equal.
 b32 string_cmp( string a, string b );
+/// @brief Compare two strings for equality.
+/// Uses shortest string length to compare instead of comparing lengths first.
+/// @param a, b Strings to compare.
+/// @return
+///     - @c True  : Strings @c a and @c b are equal.
+///     - @c False : Strings @c a and @c b are not equal.
 b32 string_cmp_clamped( string a, string b );
+/// @brief Search for character in string.
+/// @param      str           String to search in.
+/// @param      c             ASCII character to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c c if it was found.
+/// @return
+///     - @c True  : @c c was found in @c string.
+///     - @c False : @c c was not found in @c string.
 b32 string_find( string str, char c, usize* opt_out_index );
+/// @brief Search for character in string from end of string.
+/// @param      str           String to search in.
+/// @param      c             ASCII character to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c c if it was found.
+/// @return
+///     - @c True  : @c c was found in @c string.
+///     - @c False : @c c was not found in @c string.
 b32 string_find_rev( string str, char c, usize* opt_out_index );
+/// @brief Search for a set of characters in string.
+/// @param      str           String to search in.
+/// @param      set           Set of ASCII characters to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of first character in set found.
+/// @return
+///     - @c True  : Character in @c set was found in @c string.
+///     - @c False : Character in @c set was not found in @c string.
 b32 string_find_set( string str, string set, usize* opt_out_index );
+/// @brief Search for a set of characters in string from end of string.
+/// @param      str           String to search in.
+/// @param      set           Set of ASCII characters to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of first character in set found.
+/// @return
+///     - @c True  : Character in @c set was found in @c string.
+///     - @c False : Character in @c set was not found in @c string.
 b32 string_find_set_rev( string str, string set, usize* opt_out_index );
+/// @brief Search for substring in string.
+/// @param      str           String to search in.
+/// @param      substr        String to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c substr if it was found.
+/// @return
+///     - @c True  : @c substr was found in @c string.
+///     - @c False : @c substr was not found in @c string.
 b32 string_find_string( string str, string substr, usize* opt_out_index );
+/// @brief Search for substring in string from end of string.
+/// @param      str           String to search in.
+/// @param      substr        String to search for.
+/// @param[out] opt_out_index (optional) Pointer to store index of @c substr if it was found.
+/// @return
+///     - @c True  : @c substr was found in @c string.
+///     - @c False : @c substr was not found in @c string.
 b32 string_find_string_rev( string str, string substr, usize* opt_out_index );
+/// @brief Get pointer to first character in string.
+/// @param str String to get character from.
+/// @return
+///     - @c Pointer : @c str is not empty.
+///     - @c NULL    : @c str is empty.
 char* string_first( string str );
+/// @brief Get pointer to last character in string.
+/// @param str String to get character from.
+/// @return
+///     - @c Pointer : @c str is not empty.
+///     - @c NULL    : @c str is empty.
 char* string_last( string str );
+/// @brief Advance string forward by one character.
+/// @param str String to advance.
+/// @return
+///     - @c string       : String one character forward.
+///     - @c empty string : String has no more characters.
 string string_adv( string str );
+/// @brief Advance string forward by given number of characters.
+/// @param str    String to advance.
+/// @param stride Number of characters to advance by.
+/// @return
+///     - @c string       : String @c stride number of characters forward.
+///     - @c empty string : String has no more characters or stride >= @c str.len.
 string string_adv_by( string str, usize stride );
+/// @brief Shorten string length to maximum.
+/// @details
+/// Does nothing if max > str.len.
+/// Returns empty string if max == 0.
+/// @param str String to truncate.
+/// @param max Maximum length to truncate to.
+/// @return Truncated string.
 string string_truncate( string str, usize max );
+/// @brief Subtract from string length.
+/// @details
+/// Does nothing if amount == 0. 
+/// Returns empty string if amount >= str.len.
+/// @param str    String to trim.
+/// @param amount Number of characters to trim from the end.
+/// @return Trimmed string.
 string string_trim( string str, usize amount );
+/// @brief Remove leading whitespace characters from string.
+/// @param str String to remove from.
+/// @return @c str without leading whitespace.
 string string_remove_ws_lead( string str );
+/// @brief Remove trailing whitespace characters from string.
+/// @param str String to remove from.
+/// @return @c str without trailing whitespace.
 string string_remove_ws_trail( string str );
+/// @brief Remove leading and trailing whitespace characters from string.
+/// @param str String to remove from.
+/// @return @c str without leading or trailing whitespace.
 string string_remove_ws_surround( string str );
+/// @brief Split string in two from given index.
+/// @warning
+/// expect() 's that @c at is <= @c str.len!
+/// @param      src           String to split.
+/// @param      at            Index to split at.
+/// @param      keep_split    True to keep index in right side, false to remove it.
+/// @param[out] opt_out_left  (optional) Pointer to write left side to.
+/// @param[out] opt_out_right (optional) Pointer to write right side to.
 void string_split_at(
     string src, usize at, b32 keep_split,
     string* opt_out_left, string* opt_out_right );
+/// @brief Split string at first instance of character.
+/// @param      src           String to split.
+/// @param      c             Character to split at.
+/// @param      keep_split    True to keep character in right side, false to remove it.
+/// @param[out] opt_out_left  (optional) Pointer to write left side to.
+/// @param[out] opt_out_right (optional) Pointer to write right side to.
+/// @return
+///     - @c True  : Character @c c was found in @c src and string was split.
+///     - @c False : Character @c c was not found in @c src.
 b32 string_split_char(
     string src, char c, b32 keep_split,
     string* opt_out_left, string* opt_out_right );
+/// @brief Split string by delimiter. Allocates dynamic array.
+/// @param src        String to split.
+/// @param delim      Delimiter to split by.
+/// @param keep_delim True if delimiter should be kept in splits.
+/// @return
+///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
+///     - @c NULL : Failed to allocate dynamic array of splits.
 string* string_split_delim( string src, string delim, b32 keep_delim );
+/// @brief Split string by delimiter. Allocates dynamic array.
+/// @param src        String to split.
+/// @param delim      Delimiter character to split by.
+/// @param keep_delim True if delimiter should be kept in splits.
+/// @return
+///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
+///     - @c NULL : Failed to allocate dynamic array of splits.
 #define string_split_delim_char( src, delim, keep_delim )\
     string_split_delim( src, string_new( 1, (char[]){ delim } ), keep_delim )
+/// @brief Split string by delimiter. Allocates dynamic array.
+/// @param     src        String to split.
+/// @param     delim      Delimiter to split by.
+/// @param     keep_delim True if delimiter should be kept in splits.
+/// @param[in] filter     Function to further process splits.
+/// @param[in] params     (optional) Parameters for filtering function.
+/// @return
+///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
+///     - @c NULL : Failed to allocate dynamic array of splits.
 string* string_split_delim_ex(
     string src, string delim, b32 keep_delim,
     StringSplitDelimFilterFN* filter, void* params );
+/// @brief Split string by delimiter. Allocates dynamic array.
+/// @param     src        String to split.
+/// @param     delim      Delimiter character to split by.
+/// @param     keep_delim True if delimiter should be kept in splits.
+/// @param[in] filter     Function to further process splits.
+/// @param[in] params     (optional) Parameters for filtering function.
+/// @return
+///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
+///     - @c NULL : Failed to allocate dynamic array of splits.
 #define string_split_delim_char_ex( src, delim, keep_delim, filter, params )\
     string_split_delim_ex( src, string_new( 1, (char[]){ delim } ),\
         keep_delim, filter, params )
+/// @brief Calculate UTF-8 length of string.
+/// @note
+/// Does not check if @c string is a valid UTF-8 string!
+/// @param str String to get UTF-8 length of.
+/// @return UTF-8 length of @c str.
 usize string_len_utf8( string str );
 
+/// @brief Allocate an empty dynamic string with given capacity.
+/// @param cap Capacity to allocate.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_empty( usize cap );
+/// @brief Create new dynamic string from string buffer.
+/// @details
+/// Allocates appropriately sized dynamic string and
+/// copies characters from @c str into it.
+/// Dynamic strings are always null-terminated.
+/// @param     len Length of string buffer.
+/// @param[in] str Pointer to start of string buffer.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_new( usize len, const char* str );
+/// @brief Create a new dynamic string from null-terminated string.
+/// @details
+/// Allocates appropriately sized dynamic string and
+/// copies characters from @c str into it.
+/// Dynamic strings are always null-terminated.
+/// @param[in] str (const cstr*) Pointer to null-terminated string.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 #define dstring_from_cstr( str ) dstring_new( cstr_len( str ), str )
+/// @brief Create a new dynamic string from string.
+/// @details
+/// Allocates appropriately sized dynamic string and
+/// copies characters from @c str into it.
+/// Dynamic strings are always null-terminated.
+/// @param str (string) String.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 #define dstring_from_string( str ) dstring_new( str.len, str.cc )
+/// @brief Create a new dynamic string from string.
+/// @details
+/// Allocates appropriately sized dynamic string and
+/// copies characters from @c str into it.
+/// This function only exists so that string pointers
+/// do not have to be dereferenced.
+/// Dynamic strings are always null-terminated.
+/// @param[in] str (string) Pointer to string.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 #define dstring_from_string_ptr( str ) dstring_new( (str)->len, (str)->cc )
+/// @brief Create a new dynamic string from string literal.
+/// @details
+/// Allocates appropriately sized dynamic string and
+/// copies characters from @c literal into it.
+/// @param literal (string literal) Literal.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 #define dstring_text( literal ) dstring_new( sizeof(literal)-1, literal )
+/// @brief Create string from dynamic string.
+/// @param dstr (dstring*) Dynamic string to create string from.
+/// @return (string) String.
 #define dstring_to_string( dstr ) string_from_dstring( dstr )
+/// @brief Create a formatted dynamic string.
+/// @param[in] format Format string literal.
+/// @param     va     Variadic list of formatting arguments.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_fmt_va( const cstr* format, va_list va );
+/// @brief Create a formatted dynamic string.
+/// @param[in] format Format string literal.
+/// @param     ...    Format arguments.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_fmt( const cstr* format, ... );
+/// @brief Attempt to reallocate dynamic string buffer.
+/// @param[in] str    Dynamic string to reallocate.
+/// @param     amount Additional capacity to reallocate. Gets added to existing capacity.
+/// @return 
+///     - @c Dynamic String : Buffer was successfully reallocated.
+///     - @c NULL : Failed to reallocate dynamic string.
 dstring* dstring_grow( dstring* str, usize amount );
-dstring* dstring_clone( dstring* src );
+/// @brief Create a new dynamic string from existing dynamic string.
+/// @param[in] src Dynamic string to clone.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
+dstring* dstring_clone( const dstring* src );
+/// @brief Create dynamic string by concatenating two strings.
+/// @param lhs, rhs Strings to concatenate.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_concat( string lhs, string rhs );
+/// @brief Create dynamic string by concatenating two null-terminated strings.
+/// @param[in] lhs, rhs (const cstr*) Strings to concatenate.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 #define dstring_concat_cstr( lhs, rhs )\
     dstring_concat( string_from_cstr( lhs ), string_from_cstr( rhs ) )
+/// @brief Create dynamic string by concatenating multiple strings.
+/// @param     count         Number of strings to concatenate.
+/// @param[in] strings       Pointer to strings to concatenate.
+/// @param     opt_separator (optional) String to use to separate @c strings.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_concat_multi(
-    usize count, string* strings, string opt_separator );
+    usize count, const string* strings, string opt_separator );
+/// @brief Create dynamic string by concatenating multiple null-terminated strings.
+/// @param     count         Number of strings to concatenate.
+/// @param[in] strings       Pointer to strings to concatenate.
+/// @param[in] opt_separator (optional) String to use to separate @c strings.
+/// @return
+///     - @c Dynamic String : Buffer was successfully allocated.
+///     - @c NULL : Failed to allocate dynamic string.
 dstring* dstring_concat_multi_cstr(
     usize count, const cstr** strings, const cstr* opt_separator );
+/// @brief Append string to end of dynamic string.
+/// @param[in] str    Dynamic string to append to.
+/// @param     append String to append.
+/// @return
+///     - @c Dynamic String : Append was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 dstring* dstring_append( dstring* str, string append );
-#define dstring_append_cstr( dstr, append )\
-    dstring_append( dstr, string_from_cstr( append ) )
+/// @brief Append null-terminated string to end of dynamic string.
+/// @param[in] str    Dynamic string to append to.
+/// @param[in] append Null-terminated string to append.
+/// @return
+///     - @c Dynamic String : Append was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
+#define dstring_append_cstr( str, append )\
+    dstring_append( str, string_from_cstr( append ) )
+/// @brief Append string literal to end of dynamic string.
+/// @param[in] str     (dstring*)       Dynamic string to append to.
+/// @param     literal (string litearl) String literal to append.
+/// @return
+///     - @c Dynamic String : Append was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 #define dstring_append_text( dstr, literal )\
     dstring_append( dstr, string_text( literal ) )
+/// @brief Prepend string to start of dynamic string.
+/// @param[in] str    Dynamic string to prepend to.
+/// @param     preped String to append.
+/// @return
+///     - @c Dynamic String : Prepend was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 dstring* dstring_prepend( dstring* str, string prepend );
+/// @brief Prepend null-terminated string to end of dynamic string.
+/// @param[in] str     Dynamic string to prepend to.
+/// @param[in] prepend Null-terminated string to prepend.
+/// @return
+///     - @c Dynamic String : Prepend was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 #define dstring_prepend_cstr( dstr, prepend )\
     dstring_prepend( dstr, string_from_cstr( prepend ) )
+/// @brief Prepend string literal to end of dynamic string.
+/// @param[in] str     (dstring*)       Dynamic string to prepend to.
+/// @param     literal (string litearl) String literal to prepend.
+/// @return
+///     - @c Dynamic String : Prepend was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 #define dstring_prepend_text( dstr, literal )\
     dstring_prepend( dstr, string_text( literal ) )
+/// @brief Insert string inside dynamic string.
+/// @param[in] str    Dynamic string to insert in.
+/// @param     insert String to insert.
+/// @param     at     Index to insert at. Must be <= @c str.len.
+/// @return
+///     - @c Dynamic String : Insert was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 dstring* dstring_insert( dstring* str, string insert, usize at );
-#define dstring_insert_cstr( dstr, cstr, at )\
-    dstring_insert( dstr, string_from_cstr( cstr ), at )
-#define dstring_insert_text( dstr, literal, at )\
-    dstring_insert( dstr, string_text( literal ), at )
+/// @brief Insert null-terminated string inside dynamic string.
+/// @param[in] str    Dynamic string to insert in.
+/// @param[in] insert String to insert.
+/// @param     at     Index to insert at. Must be <= @c str.len.
+/// @return
+///     - @c Dynamic String : Insert was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
+#define dstring_insert_cstr( str, insert, at )\
+    dstring_insert( str, string_from_cstr( insert ), at )
+/// @brief Insert string literal inside dynamic string.
+/// @param[in] str    Dynamic string to insert in.
+/// @param     insert String to insert.
+/// @param     at     Index to insert at. Must be <= @c str.len.
+/// @return
+///     - @c Dynamic String : Insert was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
+#define dstring_insert_text( str, literal, at )\
+    dstring_insert( str, string_text( literal ), at )
+/// @brief Append character to end of dynamic string.
+/// @param[in] str Dynamic string to push into.
+/// @param     c   Character to push.
+/// @return
+///     - @c Dynamic String : Push was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 dstring* dstring_push( dstring* str, char c );
+/// @brief Emplace character inside of dynamic string.
+/// @param[in] str Dynamic string to emplace into.
+/// @param     c   Character to emplace.
+/// @param     at  Index to emplace at.
+/// @return
+///     - @c Dynamic String : Push was successful.
+///     - @c NULL : Failed to reallocate dynamic string.
 dstring* dstring_emplace( dstring* str, char c, usize at );
+/// @brief Pop last character from dynamic string, if available.
+/// @param[in]  str       Dynamic string to pop character from.
+/// @param[out] opt_out_c (optional) Pointer to write popped character to.
+/// @return
+///     - @c True  : @c str has a character to pop.
+///     - @c False : @c str is empty.
 b32 dstring_pop( dstring* str, char* opt_out_c );
+/// @brief Remove character from dynamic string.
+/// @param[in] str   Dynamic string to remove character from.
+/// @param     index Index of character to remove.
+/// @return
+///     - @c True  : @c index was in bounds of @c str and was removed.
+///     - @c False : @c index was out of bounds.
 b32 dstring_remove( dstring* str, usize index );
+/// @brief Remove range of characters from dynamic string.
+/// @details
+/// With assertions on, asserts that from < to.
+/// @param[in] str            Dynamic string to remove characters from.
+/// @param     from_inclusive Start of range, inclusive.
+/// @param     to_exclusive   End of range, exclusive. (can be == length).
+/// @return
+///     - @c True  : Range was in bounds of @c str and was removed.
+///     - @c False : Range was out of bounds.
 b32 dstring_remove_range( dstring* str, usize from_inclusive, usize to_exclusive );
-void dstring_truncate( dstring* darray, usize max );
-void dstring_trim( dstring* darray, usize amount );
+/// @brief Shorten dynamic string length to maximum.
+/// @details
+/// Does nothing if max > str.len.
+/// Returns empty string if max == 0.
+/// @param[in] str Dynamic string to truncate.
+/// @param     max Maximum length to truncate to.
+/// @return Truncated dynamic string.
+void dstring_truncate( dstring* str, usize max );
+/// @brief Subtract from dynamic string length.
+/// @details
+/// Does nothing if amount == 0. 
+/// Returns empty string if amount >= str.len.
+/// @param[in] str    Dynamic string to trim.
+/// @param     amount Number of characters to trim from the end.
+/// @return Trimmed dynamic string.
+void dstring_trim( dstring* str, usize amount );
+/// @brief Set length of dynamic string to zero and zero out memory.
+/// @note This does not free the string!
+/// @param[in] str Dynamic string to clear.
 void dstring_clear( dstring* str );
+/// @brief Calculate remaining capacity in dynamic string.
+/// @param[in] str Dynamic string.
+/// @return Remaining capacity. Does not include null byte.
 usize dstring_remaining( const dstring* str );
+/// @brief Get length of dynamic string.
+/// @param[in] str Dynamic string.
+/// @return Length not including null byte.
 usize dstring_len( const dstring* str );
+/// @brief Get capacity of dynamic string.
+/// @param[in] str Dynamic string.
+/// @return Total capacity, includes null byte.
 usize dstring_cap( const dstring* str );
+/// @brief Get total heap memory usage of dynamic string.
+/// @param[in] str Dynamic string.
+/// @return Total memory usage.
 usize dstring_total_size( const dstring* str );
+/// @brief Check if dynamic string is empty.
+/// @param[in] str Dynamic string.
+/// @return
+///     - @c True  : Length is zero.
+///     - @c False : Length is not zero.
 b32 dstring_is_empty( const dstring* str );
+/// @brief Check if dynamic string is full.
+/// @param[in] str Dynamic string.
+/// @return
+///     - @c True  : Length equals capacity - 1.
+///     - @c False : Dynamic string has remaining capacity.
 b32 dstring_is_full( const dstring* str );
+/// @brief Get mutable pointer to start of dynamic string buffer.
+/// @details
+/// Used internally.
+/// Returns NULL if @c str is NULL.
+/// @param str Dynamic string.
+/// @return Start of dynamic string.
 void* dstring_head( dstring* str );
+/// @brief Get pointer to start of dynamic string buffer.
+/// @details
+/// Used internally.
+/// Returns NULL if @c str is NULL.
+/// @param str Dynamic string.
+/// @return Start of dynamic string.
 const void* dstring_head_const( const dstring* str );
+/// @brief Free a dynamic string.
+/// @details
+/// Use this function instead of memory_free() as string pointer
+/// is not the pointer allocated from system.
+/// @param[in] str Dynamic string.
 void dstring_free( dstring* str );
 
+/// @brief Allocate an empty dynamic array.
+/// @param stride Size of items in dynamic array.
+/// @param cap    Number of items dynamic array should be able to hold.
+/// @return
+///     - @c Pointer : Pointer to start of dynamic array.
+///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_empty( usize stride, usize cap );
+/// @brief Create dynamic array from existing array.
+/// @param     stride Size of items in array.
+/// @param     len    Length of array.
+/// @param[in] buf    Pointer to start of array.
+/// @return
+///     - @c Pointer : Pointer to start of dynamic array.
+///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_from_array( usize stride, usize len, const void* buf );
+/// @brief Calculate memory requirement for dynamic array.
+/// @details
+/// Used to create dynamic array with fixed memory size.
+/// @param stride Size of items in dynamic array.
+/// @param cap    Number of items dynamic array should be able to hold.
+/// @return Required size of dynamic array buffer.
 usize darray_static_memory_requirement( usize stride, usize cap );
+/// @brief Create a dynamic array from static memory. (non reallocating)
+/// @note
+/// Returned pointer is not the same as @c buf!
+/// Do not free this array with darray_free(),
+/// use result of darray_head() or @c buf to free.
+/// @param     stride Size of items in dynamic array.
+/// @param     cap    Number of items dynamic array can hold.
+/// @param[in] buf    Start of buffer. Must be able to hold result from darray_static_memory_requirement().
+/// @return Start of dynamic array buffer.
 void* darray_static( usize stride, usize cap, void* buf );
+/// @brief Create a dynamic array from item literals.
+/// @param type (type) Type of items.
+/// @param ...  (any of type @c type) Items to fill array with.
+/// @return
+///     - @c Pointer : Pointer to start of dynamic array.
+///     - @c NULL    : Failed to allocate dynamic array.
 #define darray_literal( type, ... )\
     darray_from_array( sizeof(type),\
         sizeof((type[]){ __VA_ARGS__ }) / sizeof(type), (type[]){ __VA_ARGS__ } )
+/// @brief Concatenate two arrays into one darray.
+/// @note
+/// Arrays provided should hold the same type of data.
+/// @param     stride  Size of items in @c lhs and @c rhs.
+/// @param     lhs_len Length of @c lhs.
+/// @param[in] lhs     Pointer to start of left hand array.
+/// @param     rhs_len Length of @c rhs.
+/// @param[in] rhs     Pointer to start of right hand array.
+/// @return
+///     - @c Pointer : Pointer to start of dynamic array.
+///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_join( usize stride,
     usize lhs_len, const void* lhs, usize rhs_len, const void* rhs );
+/// @brief Create dynamic array from filtered array.
+/// @param     stride        Size of items in @c src.
+/// @param     len           Length of @c src.
+/// @param[in] src           Pointer to start of array to be filtered.
+/// @param[in] filter        Pointer to filter function.
+/// @param[in] filter_params (optional) Parameters to filter function.
+/// @return
+///     - @c Pointer : Pointer to start of dynamic array.
+///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_from_filter(
     usize stride, usize len, const void* src,
     DarrayFilterFN* filter, void* filter_params );
+/// @brief Grow dynamic array by @c amount number of items.
+/// @param[in] darray Dynamic array to grow.
+/// @param     amount Number of items to grow by.
+/// @return
+///     - @c Pointer : Reallocated dynamic array capable of holding cap + @c amount.
+///     - @c NULL    : Failed to reallocate dynamic array.
 void* darray_grow( void* darray, usize amount );
+/// @brief Create new dynamic array from existing dynamic array.
+/// @param[in] darray Dynamic array to clone.
+/// @return
+///     - @c Pointer : Pointer to start of dynamic array.
+///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_clone( const void* darray );
+/// @brief Set dynamic array length to zero and zero out existing items.
+/// @param[in] darray Dynamic array to clear.
 void darray_clear( void* darray );
+/// @brief Set length of dynamic array.
+/// @details
+/// Fallible:
+/// - If @c len is > darray.cap, reallocates dynamic array.
+///
+/// Guaranteed to succeed:
+/// - If @c len is > darray.len and < darray.cap, sets new length and zeroes new items.
+/// - If @c len < darray.len, same as calling darray_truncate().
+/// @param[in] darray Dynamic array.
+/// @param     len    New length.
+/// @return
+///     - @c Pointer : Pointer to dynamic array.
+///     - @c NULL    : Failed to reallocate dynamic array.
 void* darray_set_len( void* darray, usize len );
+/// @brief Set maximum length of dynamic array.
+/// @details
+/// If @c max >= darray.len, returns without modifying array.
+/// Otherwise, truncates length and zeroes out max to length.
+/// @param[in] darray Dynamic array to modify.
+/// @param     max    Maximum length of dynamic array.
 void darray_truncate( void* darray, usize max );
+/// @brief Subtract from dynamic array length.
+/// @details
+/// If @c amount is >= darray.len, same as clearing darray.
+/// @param[in] darray Dynamic array to modify.
+/// @param     amount Number of items to substract from length.
 void darray_trim( void* darray, usize amount );
+/// @brief Attempt to push new item to end of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param[in] item   Pointer to item to push.
+/// @return
+///     - @c True  : Had capacity to push new item.
+///     - @c False : Dynamic array is full.
 b32 darray_try_push( void* darray, const void* item );
+/// @brief Attempt to emplace new item inside of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param[in] item   Pointer to item to emplace.
+/// @param     at     Index to emplace at.
+/// @return
+///     - @c True  : Had capacity to emplace new item.
+///     - @c False : Dynamic array is full.
 b32 darray_try_emplace( void* darray, const void* item, usize at );
-b32 darray_try_insert( void* darray, usize count, const void* items, usize at );
+/// @brief Attempt to append array to end of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param     count  Number of items in @c items.
+/// @param[in] items  Pointer to start of array to append.
+/// @return
+///     - @c True  : Had capacity to append array.
+///     - @c False : Dynamic array is full.
 b32 darray_try_append( void* darray, usize count, const void* items );
+/// @brief Attempt to insert array inside of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param     count  Number of items in @c items.
+/// @param[in] items  Pointer to start of array to insert.
+/// @param     at     Index to insert at.
+/// @return
+///     - @c True  : Had capacity to insert array.
+///     - @c False : Dynamic array is full.
+b32 darray_try_insert( void* darray, usize count, const void* items, usize at );
+/// @brief Pop last item from dynamic array.
+/// @param[in]  darray       Dynamic array to pop from.
+/// @param[out] opt_out_item (optional) Pointer to write last item to.
+/// @return
+///     - @c True  : Popped last item.
+///     - @c False : Dynamic array is empty.
 b32 darray_pop( void* darray, void* opt_out_item );
+/// @brief Push new item to end of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param[in] item   Pointer to item to push.
+/// @return
+///     - @c Pointer : Pushed successfully.
+///     - @c NULL    : Failed to reallocate dynamic array.
 void* darray_push( void* darray, const void* item );
+/// @brief Emplace new item inside of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param[in] item   Pointer to item to emplace.
+/// @param     at     Index to emplace at.
+/// @return
+///     - @c Pointer : Emplaced successfully.
+///     - @c NULL    : Failed to reallocate dynamic array.
 void* darray_emplace( void* darray, const void* item, usize at );
-void* darray_insert( void* darray, usize count, const void* items, usize at );
+/// @brief Append array to end of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param     count  Number of items in @c items.
+/// @param[in] items  Pointer to start of array to append.
+/// @return
+///     - @c Pointer : Appended successfully.
+///     - @c NULL    : Failed to reallocate dynamic array.
 void* darray_append( void* darray, usize count, const void* items );
+/// @brief Insert array inside of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param     count  Number of items in @c items.
+/// @param[in] items  Pointer to start of array to insert.
+/// @param     at     Index to insert at.
+/// @return
+///     - @c Pointer : Inserted successfully.
+///     - @c NULL    : Failed to reallocate dynamic array.
+void* darray_insert( void* darray, usize count, const void* items, usize at );
+/// @brief Remove item from dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param     index  Index of item to remove.
+/// @return
+///     - @c True  : Removed item.
+///     - @c False : Dynamic array was empty.
 b32 darray_remove( void* darray, usize index );
+/// @brief Remove range of items from dynamic array.
+/// @param[in] darray Dynamic array.
+/// @param     from_inclusive Start of range, inclusive.
+/// @param     to_exclusive   End of range, exclusive. (can be == length).
+/// @return
+///     - @c True  : Range was in bounds of @c darray and was removed.
+///     - @c False : Range was out of bounds.
 b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive );
+/// @brief Calculate remaining capacity in dynamic array.
+/// @param[in] darray Dynamic array.
+/// @return Remaining capacity.
 usize darray_remaining( const void* darray );
+/// @brief Get length of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @return Length of dynamic array.
 usize darray_len( const void* darray );
+/// @brief Get capacity of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @return Capacity of dynamic array.
 usize darray_cap( const void* darray );
+/// @brief Get size of items in dynamic array.
+/// @param[in] darray Dynamic array.
+/// @return Size of items in bytes.
 usize darray_stride( const void* darray );
+/// @brief Get total heap memory usage of dynamic array.
+/// @param[in] darray Dynamic array.
+/// @return Total memory usage.
 usize darray_total_size( const void* darray );
+/// @brief Check if dynamic array is empty.
+/// @param[in] darray Dynamic array.
+/// @return
+///     - @c True  : Dynamic array is empty.
+///     - @c False : Dynamic array has items in it.
+b32 darray_is_empty( const void* darray );
+/// @brief Check if dynamic array is full.
+/// @param[in] darray Dynamic array.
+/// @return
+///     - @c True  : Dynamic array is full.
+///     - @c False : Dynamic array has capacity available.
+b32 darray_is_full( const void* darray );
+/// @brief Get mutable pointer to start of dynamic array buffer.
+/// @details
+/// Used internally.
+/// Returns NULL if @c darray is NULL.
+/// @param[in] darray Dynamic array.
+/// @return Start of dynamic array buffer.
 void* darray_head( void* darray );
+/// @brief Get pointer to start of dynamic array buffer.
+/// @details
+/// Used internally.
+/// Returns NULL if @c darray is NULL.
+/// @param[in] darray Dynamic array.
+/// @return Start of dynamic array buffer.
 const void* darray_head_const( const void* darray );
+/// @brief Free a dynamic array.
+/// @details
+/// Use this function instead of memory_free().
+/// @param[in] darray Dynamic array.
 void darray_free( void* darray );
 
+/// @brief Get read-only string containing current working directory.
+/// @return Read-only string containing current working directory.
 string path_cwd(void);
+/// @brief Get read-only string containing home directory.
+/// @return Read-only string containing home directory.
 string path_home(void);
+/// @brief Check if path is absolute.
+/// @param[in] path Path to check.
+/// @return
+///     - @c True  : @c path is an absolute path.
+///     - @c False : @c path is a relative path.
 b32 path_is_absolute( const cstr* path );
+/// @brief Check if path points to a file/directory.
+/// @details
+/// Untested: if it returns false for files that require elevated permissions.
+/// @param[in] path Path to check.
+/// @return
+///     - @c True  : @c path points to real file/directory.
+///     - @c False : @c path does not point to file/directory.
 b32 path_exists( const cstr* path );
+/// @brief Check if path points to directory.
+/// @param[in] path Path to check.
+/// @return
+///     - @c True  : @c path points to existing directory.
+///     - @c False : @c path points to something else.
+///     - @c False : @c path does not point to existing directory.
 b32 path_is_directory( const cstr* path );
+/// @brief Count number of path chunks in path.
+/// @param path Path to count.
+/// @return Number of chunks.
 usize path_chunk_count( string path );
+/// @brief Split path into chunks.
+/// @param path Path to split.
+/// @return
+///     - Dynamic array of chunks. Free with darray_free()
+///     - NULL : Failed to allocate chunks array.
 string* path_chunk_split( string path );
+/// @brief Check if path matches glob pattern.
+/// @details
+/// This is a very simple glob pattern.
+/// It only supports:
+///
+/// - * : One or more any characters.
+/// - ? : One of any character.
+/// @param path Path to check.
+/// @param glob Glob pattern.
+/// @return
+///     - @c True  : @c path matches @c glob.
+///     - @c False : @c path does not match @c glob.
 b32 path_matches_glob( string path, string glob );
+/// @brief Walk a directory, collecting all files/directories.
+/// @details
+/// If @c out_result is empty, allocates new buffers for it.
+/// Otherwise, appends results to end of @c out_result.
+/// @param[in]      dir          Path to directory to walk.
+/// @param          recursive    If function should keep searching in subdirectories.
+/// @param          include_dirs If function should include directory names in final list.
+/// @param[in, out] out_result   Result of directory walk.
+/// @return
+///     - @c True  : Successfully walked directory and wrote results to @c out_result.
+///     - @c False : Failed to open @c dir.
+///     - @c False : Failed to allocate results.
 b32 path_walk_dir(
     const cstr* dir, b32 recursive,
     b32 include_dirs, WalkDirectory* out_result );
-string* path_walk_split_glob( const WalkDirectory* wd, string glob );
+/// @brief Create list of filtered paths from path_walk_dir() result.
+/// @param[in] wd   path_walk_dir() result to filter.
+/// @param     glob Glob pattern to check for.
+/// @return
+///     - Dynamic array of paths that match pattern.
+///     - NULL : Failed to allocate result.
+string* path_walk_glob_filter( const WalkDirectory* wd, string glob );
+/// @brief Free result of path_walk_dir().
+/// @param[in] wd Walk directory result to free.
 void path_walk_free( WalkDirectory* wd );
 
+/// @brief Create a null file descriptor.
+/// @return Null file descriptor.
 #define file_null() (0)
+/// @brief Open a file.
+/// @param[in]  path     Path of file to open. Length must be <= 4096.
+/// @param      flags    Flags to open with.
+/// @param[out] out_file File descriptor if successful.
+/// @return
+///     - @c True  : File was opened successfully.
+///     - @c False : Failed to open file. Check log for more details.
 b32 fd_open( const cstr* path, FileOpenFlags flags, FD* out_file );
+/// @brief Close a file descriptor.
+/// @param[in] file Pointer to file descriptor to close.
 void fd_close( FD* file );
+/// @brief Write to file.
+/// @param[in]  file               File descriptor to write to.
+/// @param      size               Size of buffer to write.
+/// @param[in]  buf                Pointer to buffer to write.
+/// @param[out] opt_out_write_size (optional) Pointer to write number of bytes written.
+/// @return
+///     - @c True  : Successfully wrote to file.
+///     - @c False : Failed to write file.
 b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size );
+/// @brief Write formatted string to file.
+/// @param[in] file   File descriptor to write to.
+/// @param[in] format Format string literal.
+/// @param     va     Variadic list of format arguments.
+/// @return
+///     - @c True  : Successfully wrote to file.
+///     - @c False : Failed to write file.
 b32 fd_write_fmt_va( FD* file, const char* format, va_list va );
+/// @brief Write formatted string to file.
+/// @param[in] file   File descriptor to write to.
+/// @param[in] format Format string literal.
+/// @param     ...    Format arguments.
+/// @return
+///     - @c True  : Successfully wrote to file.
+///     - @c False : Failed to write file.
 b32 fd_write_fmt( FD* file, const char* format, ... );
+/// @brief Read bytes from file.
+/// @param[in]  file              File descriptor to read from.
+/// @param      size              Size of read buffer.
+/// @param[out] buf               Pointer to buffer.
+/// @param[out] opt_out_read_size (optional) Pointer to write number of bytes read.
+/// @return
+///     - @c True  : Successfully read from file.
+///     - @c False : Failed to read file.
 b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size );
+/// @brief Set file size to current position.
+/// @param[in] file File descriptor.
+/// @return
+///     - @c True  : Successfully set file size.
+///     - @c False : Failed to set file size.
 b32 fd_truncate( FD* file );
+/// @brief Query file size.
+/// @param[in] file File descriptor.
+/// @return Size of @c file.
 usize fd_query_size( FD* file );
+/// @brief Seek to file position.
+/// @param[in] file File descriptor.
+/// @param     type Type of seek.
+/// @param     seek Bytes to seek. Can be negative to seek in reverse.
 void fd_seek( FD* file, FileSeek type, isize seek );
+/// @brief Query current seek position.
+/// @param[in] file File descriptor.
+/// @return Bytes from start of file.
 usize fd_query_position( FD* file );
+/// @brief Query creation time of file at given path.
+/// @param[in] path Null-terminated path to file. Length must be <= 4096.
+/// @return Creation time in POSIX time.
 time_t file_query_time_create( const cstr* path );
+/// @brief Query last time modified of file at given path.
+/// @param[in] path Null-terminated path to file. Length must be <= 4096.
+/// @return Last time modified in POSIX time.
 time_t file_query_time_modify( const cstr* path );
+/// @brief Move file from one path to another.
+/// @param[in] dst Null-terminated destination path. Length must be <= 4096.
+/// @param[in] src Null-terminated source path. Length must be <= 4096.
+/// @return
+///     - @c True  : Successfully moved file.
+///     - @c False : Failed to move file.
 b32 file_move( const cstr* dst, const cstr* src );
+/// @brief Copy file from one path to another.
+/// @param[in] dst Null-terminated destination path. Length must be <= 4096.
+/// @param[in] src Null-terminated source path. Length must be <= 4096.
+/// @return
+///     - @c True  : Successfully copied file.
+///     - @c False : Failed to copie file.
 b32 file_copy( const cstr* dst, const cstr* src );
+/// @brief Remove file from system.
+/// @param[in] path Null-terminated path. Length must be <= 4096.
+/// @return
+///     - @c True  : Successfully removed file.
+///     - @c False : Failed to remove file.
 b32 file_remove( const cstr* path );
-
+/// @brief Create directory.
+/// @param[in] path Path to create directory at.
+/// @return
+///     - @c True  : Directory created successfully or it already exists.
+///     - @c False : Failed to create directory.
 b32 dir_create( const cstr* path );
+/// @brief Remove directory.
+/// @param[in] path      Path to directory to remove.
+/// @param     recursive If directory contains items.
+/// @return
+///     - @c True  : Directory removed successfully.
+///     - @c False : Failed to remove directory.
+///     - @c False : Attempted to remove directory that is not empty without @c recursive.
 b32 dir_remove( const cstr* path, b32 recursive );
 
+/// @brief Atomically add to atomic integer.
+/// @param[in, out] atomic Pointer to atomic to add to.
+/// @param          val    Value to add to @c atomic.
+/// @return Value of @c atomic before add.
 atom   atomic_add( atom* atomic, atom val );
+/// @brief Atomically add to atomic integer.
+/// @param[in, out] atom Pointer to atomic to add to.
+/// @param          val    Value to add to @c atom.
+/// @return Value of @c atom before add.
 atom64 atomic_add64( atom64* atom, atom64 val );
+/// @brief Compare atomic to value and if they match, exchange with new value.
+/// @param[in, out] atomic Pointer to atomic to modify.
+/// @param          comp   Value to compare agains @c atomic.
+/// @param          exch   Value to exchange with @c atomic if comparison succeeds.
+/// @return Value of @c atom before exchange.
 atom   atomic_compare_swap( atom* atomic, atom comp, atom exch );
+/// @brief Compare atomic to value and if they match, exchange with new value.
+/// @param[in, out] atom Pointer to atomic to modify.
+/// @param          comp Value to compare agains @c atom.
+/// @param          exch Value to exchange with @c atom if comparison succeeds.
+/// @return Value of @c atom before exchange.
 atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch );
-void   fence(void);
+/// @brief Insert a full memory barrier.
+/// @details
+/// Inserts a compiler and instruction memory barrier to ensure memory ordering.
+void fence(void);
 
 #if defined(COMPILER_MSVC)
+    /// @brief Create an unintialized mutex.
+    /// @return Unintialized mutex.
     #define mutex_null() {0}
 #else
+    /// @brief Create an unintialized mutex.
+    /// @return Unintialized mutex.
     #define mutex_null() (Mutex){ .handle=NULL }
 #endif
-b32  mutex_create( Mutex* out_mutex );
-b32  mutex_is_valid( Mutex* mutex );
+/// @brief Create a mutex.
+/// @param[out] out_mutex Pointer to write new mutex to.
+/// @return
+///     - @c True  : Created mutex successfully.
+///     - @c False : Failed to create mutex (Windows only).
+b32 mutex_create( Mutex* out_mutex );
+/// @brief Check if mutex was initialized.
+/// @param[in] mutex Pointer to mutex to check.
+/// @return
+///     - @c True : Mutex was initialized.
+///     - @c False : Mutex has not yet been initialized (Windows only).
+b32 mutex_is_valid( const Mutex* mutex );
+/// @brief Lock mutex.
+/// @details
+/// Waits indefinitely for mutex lock.
+/// @param[in] mutex Mutex to lock.
 void mutex_lock( Mutex* mutex );
-b32  mutex_lock_timed( Mutex* mutex, u32 ms );
+/// @brief Lock mutex, wait for only a limited time.
+/// @param[in] mutex Mutex to lock.
+/// @param     ms    Maximum milliseconds to wait for lock.
+/// @return
+///     - @c True  : Locked mutex before timeout.
+///     - @c False : Timed out.
+b32 mutex_lock_timed( Mutex* mutex, u32 ms );
+/// @brief Unlock locked mutex. Does nothing if mutex is already unlocked.
+/// @param[in] mutex Mutex to unlock.
 void mutex_unlock( Mutex* mutex );
+/// @brief Destroy mutex.
+/// @param[in] mutex Mutex to destroy.
 void mutex_destroy( Mutex* mutex );
 
 #if defined(COMPILER_MSVC)
+    /// @brief Create an uninitialized semaphore.
+    /// @return Unintialized semaphore.
     #define semaphore_null() {0}
 #else
+    /// @brief Create an uninitialized semaphore.
+    /// @return Unintialized semaphore.
     #define semaphore_null() (Semaphore){ .handle=NULL }
 #endif
-b32  semaphore_create( Semaphore* out_semaphore );
-b32  semaphore_is_valid( Semaphore* semaphore );
+/// @brief Create a semaphore.
+/// @param[out] out_semaphore Pointer to write semaphore to.
+/// @return
+///     - @c True  : Created semaphore successfully.
+///     - @c False : Failed to create semaphore.
+b32 semaphore_create( Semaphore* out_semaphore );
+/// @brief Check if semaphore has already been initialized.
+/// @param[in] semaphore Semaphore to check.
+/// @return
+///     - @c True  : Semaphore is initialized.
+///     - @c False : Semaphore has not been initialized.
+b32 semaphore_is_valid( const Semaphore* semaphore );
+/// @brief Wait indefinitely for semaphore to be signaled.
+/// @param[in] semaphore Semaphore to wait for.
 void semaphore_wait( Semaphore* semaphore );
-b32  semaphore_wait_timed( Semaphore* sem, u32 ms );
+/// @brief Wait for semaphore to be signaled.
+/// @param[in] semaphore Semaphore to wait for.
+/// @param     ms        Maximum milliseconds to wait for signal.
+/// @return
+///     - @c True  : Semaphore was signaled in time.
+///     - @c False : Timed out.
+b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms );
+/// @brief Signal a semaphore.
+/// @param[in] semaphore Semaphore to signal.
 void semaphore_signal( Semaphore* semaphore );
+/// @brief Destroy a semaphore.
+/// @param[in] semaphore Semaphore to destroy.
 void semaphore_destroy( Semaphore* semaphore );
-
+/// @brief Sleep the current thread for given milliseconds.
+/// @param ms Milliseconds to sleep for.
 void thread_sleep( u32 ms );
 
+/// @brief Enqueue a new job.
+/// @param[in] job    Pointer to job function to enqueue.
+/// @param[in] params (optional) Parameters for job function.
+/// @return
+///     - @c True  : Was able to enqueue job.
+///     - @c False : Job queue is full, use job_enqueue_timed() instead to wait for empty spot.
 b32 job_enqueue( JobFN* job, void* params );
+/// @brief Wait for job queue to enqueue.
+/// @param[in] job    Pointer to job function to enqueue.
+/// @param[in] params (optional) Parameters for job function.
+/// @param     ms     Maximum milliseconds to wait, use MT_WAIT_INFINITE to wait indefinitely.
+/// @return
+///     - @c True  : Was able to enqueue in time.
+///     - @c False : Timed out.
 b32 job_enqueue_timed( JobFN* job, void* params, u32 ms );
+/// @brief Wait for next job to complete.
+/// @param ms Milliseconds to wait for, use MT_WAIT_INFINITE to wait indefinitely.
+/// @return
+///      - @c True  : Next job completed in time or queue was empty.
+///      - @c False : Timed out.
 b32 job_wait_next( u32 ms );
+/// @brief Wait for all jobs to complete.
+/// @param ms Milliseconds to wait for, use MT_WAIT_INFINITE to wait indefinitely.
+/// @return
+///      - @c True  : Jobs completed in time or queue was empty.
+///      - @c False : Timed out.
 b32 job_wait_all( u32 ms );
 
+/// @brief Get the current thread's monotonic id.
+/// @return Current thread id. (0 is main thread)
 u32 thread_id(void);
 
 #if defined(COMPILER_MSVC)
+    /// @brief Create empty command.
+    /// @return Empty command.
     #define command_null() {0}
 #else
+    /// @brief Create empty command.
+    /// @return Empty command.
     #define command_null() (Command){ .args=0, .count=0 }
 #endif
+/// @brief Create new command.
+/// @param ... Null-terminated strings of arguments. First argument must be path to process to execute.
+/// @return New command.
 #define command_new( ... )\
     (Command){ .args=(const char*[]){ __VA_ARGS__, 0 },\
         .count=sizeof((const char*[]){ __VA_ARGS__ }) / sizeof(const char*) }
-#define command_flatten_dstring( command )\
-    dstring_concat_multi_cstr( (command)->count, (command)->args, " " )
+/// @brief Convert command to dynamic string.
+/// @param[in] command Command to convert.
+/// @return
+///     - Dynamic string, free with dstring_free().
+///     - NULL : Failed to allocate result.
+dstring* command_flatten_dstring( const Command* command );
+/// @brief Convert command to null-terminated local string.
+/// @param[in] command Command to convert.
+/// @return Local string containing commmand line.
 const cstr* command_flatten_local( const Command* command );
+
+/// @brief Create a new command builder.
+/// @param[in]  path        Path to process.
+/// @param[out] out_builder Pointer to write new command builder to.
+/// @return
+///     - @c True  : Successfully created new command builder.
+///     - @c False : Failed to allocate command builder.
 b32 command_builder_new( const cstr* path, CommandBuilder* out_builder );
+/// @brief Push new argument to end of command builder.
+/// @param[in] builder Command builder to push to.
+/// @param[in] arg     Null-terminated argument to push.
+/// @return
+///     - @c True  : Pushed new argument.
+///     - @c False : Failed to reallocate @c builder buffers.
 b32 command_builder_push( CommandBuilder* builder, const cstr* arg );
+/// @brief Create command from builder. Command is invalidated when @c builder is modified.
+/// @param[in] builder Command builder.
+/// @return Command. Do not use after @c builder is modified (push or free).
 Command command_builder_cmd( CommandBuilder* builder );
+/// @brief Free command builder buffers.
+/// @param[in] builder Builder to free.
 void command_builder_free( CommandBuilder* builder );
 
 #if defined(PLATFORM_WINDOWS)
+    /// @brief Create null pipe.
+    /// @return Null pipe.
     #define pipe_null() (0)
 #else
+    /// @brief Create null pipe.
+    /// @return Null pipe.
     #define pipe_null() (-1)
 #endif
+/// @brief Open read and write pipes.
+/// @param[out] out_read  Pointer to write read end of pipe to.
+/// @param[out] out_write Pointer to write write end of pipe to.
 void pipe_open( ReadPipe* out_read, WritePipe* out_write );
+/// @brief Read from read end of pipe.
+/// @param[in]  read_pipe         Pointer to read end of pipe.
+/// @param      size              Size of buffer to read to.
+/// @param[in]  buf               Buffer to write read result to.
+/// @param[out] opt_out_read_size (optional) Pointer to write number of bytes read.
+/// @return
+///     - @c True  : Successfully read from pipe.
+///     - @c False : Failed to read from pipe.
 #define pipe_read( read_pipe, size, buf, opt_out_read_size )\
     fd_read( read_pipe, size, buf, opt_out_read_size )
+/// @brief Write to write end of pipe.
+/// @param[in]  write_pipe         Pointer to write end of pipe.
+/// @param      size               Size of buffer to write.
+/// @param[in]  buf                Buffer to write to pipe.
+/// @param[out] opt_out_write_size (optional) Pointer to write number of bytes written.
+/// @return
+///     - @c True  : Successfully wrote to pipe.
+///     - @c False : Failed to write to pipe.
 #define pipe_write( write_pipe, size, buf, opt_out_write_size )\
     fd_write( write_pipe, size, buf, opt_out_write_size )
+/// @brief Close pipe.
+/// @param pipe Pipe to close (ReadPipe or WritePipe).
 void pipe_close( Pipe pipe );
 
+/// @brief Create null process ID.
+/// @return Null process ID.
 #define pid_null() (0)
+/// @brief Check if process is in path.
+/// @param[in] process_name Name of process to check for.
+/// @return
+///     - @c True  : Process is in path.
+///     - @c False : Process is not in path.
 b32 process_in_path( const cstr* process_name );
+/// @brief Execute a process command.
+/// @param cmd Command to execute.
+/// @param redirect_void If output should just be redirected to void.
+/// @param[in] opt_stdin  (optional) Pointer to read stdin pipe.
+/// @param[in] opt_stdout (optional) Pointer to write stdout pipe.
+/// @param[in] opt_stderr (optional) Pointer to write stderr pipe.
+/// @return ID of process executed.
+/// Process ID must be discarded using process_discard(),
+/// process_wait() or successful process_wait_timed().
 PID process_exec(
     Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
     WritePipe* opt_stdout, WritePipe* opt_stderr );
+/// @brief Wait indefinitely for process to complete.
+/// @details
+/// This function discards @c pid.
+/// @param pid ID of process to wait for.
+/// @return
+///     - >= 0 : Process exited normally, return code from process.
+///     - <  0 : Process did not exit normally.
 int process_wait( PID pid );
+/// @brief Wait for process to complete.
+/// @details
+/// If return code is >= 0 that means process exited normally.
+/// If return code is < 0 that means process did not exit normally.
+/// If process completes in time, this function discards @c pid.
+/// @param      pid         ID of process to wait for.
+/// @param[out] opt_out_res (optional) Pointer to write return code to.
+/// @param      ms          Max milliseconds to wait for.
+/// @return
+///     - @c True  : Process completed in time.
+///     - @c False : Timed out.
 b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms );
+/// @brief Discard process ID.
+/// @details
+/// While not necessary on POSIX, pid should always
+/// be discard with process_wait(), proces_wait_timed() or this function.
+/// @param pid Process ID to discard.
+void process_discard( PID pid );
 
+/// @brief Get current time in milliseconds.
+/// @return Time in milliseconds.
 f64 timer_milliseconds(void);
+/// @brief Get current time in seconds.
+/// @return Time in seconds.
 f64 timer_seconds(void);
 
+/// @brief Get pointer to next local byte buffer.
+/// @details
+/// cbuild allocates CBUILD_LOCAL_BUFFER_COUNT * CBUILD_THREAD_COUNT
+/// number of buffers of size CBUILD_LOCAL_BUFFER_CAPACITY
+/// when either init() or this function is first called.
+/// Local buffers should not be freed.
+/// Local buffers should be used immediately to prevent
+/// other functions from overwriting the currently obtained
+/// local buffer.
+/// @return Pointer to next local byte buffer.
 u8* local_byte_buffer(void);
+/// @brief Write formatted string to local buffer.
+/// @details
+/// cbuild allocates CBUILD_LOCAL_BUFFER_COUNT * CBUILD_THREAD_COUNT
+/// number of buffers of size CBUILD_LOCAL_BUFFER_CAPACITY
+/// when either init() or this function is first called.
+/// Local buffers should not be freed.
+/// Local buffers should be used immediately to prevent
+/// other functions from overwriting the currently obtained
+/// local buffer.
+/// @param[in] format Format string literal.
+/// @param     va     Variadic list of format arguments.
+/// @return Pointer to start of formatted local buffer.
 char* local_fmt_va( const char* format, va_list va );
+/// @brief Write formatted string to local buffer.
+/// @details
+/// cbuild allocates CBUILD_LOCAL_BUFFER_COUNT * CBUILD_THREAD_COUNT
+/// number of buffers of size CBUILD_LOCAL_BUFFER_CAPACITY
+/// when either init() or this function is first called.
+/// Local buffers should not be freed.
+/// Local buffers should be used immediately to prevent
+/// other functions from overwriting the currently obtained
+/// local buffer.
+/// @param[in] format Format string literal.
+/// @param     ...    Format arguments.
+/// @return Pointer to start of formatted local buffer.
 char* local_fmt( const char* format, ... );
 
+/// @brief Set logging level.
+/// @warning
+/// This function is not MT-safe so only
+/// call it before using jobs system.
+/// @param level Level to set logger to.
 void logger_set_level( LoggerLevel level );
+/// @brief Get current logging level.
+/// @return Current logging level.
 LoggerLevel logger_get_level(void);
+/// @brief Write formatted logging message.
+/// @param     level  Logger level of message.
+/// @param[in] format Format string literal.
+/// @param     va     Variadic list of format arguments.
 void logger_va( LoggerLevel level, const char* format, va_list va );
+/// @brief Write formatted logging message.
+/// @param     level  Logger level of message.
+/// @param[in] format Format string literal.
+/// @param     ...    Format arguments.
 void logger( LoggerLevel level, const char* format, ... );
 
+/// @brief Query name of compiler used to compile this instance of cbuild.
+/// @details
+/// This name corresponds to the command used to compiler cbuild.
+/// @return String containing name of compiler.
 string cbuild_query_compiler(void);
+/// @brief Query command line arguments used in this instance of cbuild.
+/// @return Pointer to command.
 const Command* cbuild_query_command_line(void);
 
+/// @brief Log an info level message to stdout.
+/// @param ... (format and format arguments) Message to log.
 #define cb_info( ... )  logger( LOGGER_LEVEL_INFO, __VA_ARGS__ )
+/// @brief Log a warning level message to stdout.
+/// @param ... (format and format arguments) Message to log.
 #define cb_warn( ... )  logger( LOGGER_LEVEL_WARNING, __VA_ARGS__ )
+/// @brief Log an error level message to stderr.
+/// @param ... (format and format arguments) Message to log.
 #define cb_error( ... ) logger( LOGGER_LEVEL_ERROR, __VA_ARGS__ )
+/// @brief Log a fatal level message to stderr.
+/// @param ... (format and format arguments) Message to log.
 #define cb_fatal( ... ) logger( LOGGER_LEVEL_FATAL, __VA_ARGS__ )
 
 #if defined(CBUILD_ASSERTIONS)
+    /// @brief Check if condition is true. Panic if it's not. (Noreturn on fail)
+    /// @param condition (boolean expression) Condition to check.
+    /// @param ...       (format and format arguments) Message to log upon failed condition.
     #define assertion( condition, ... ) do {\
         if( !(condition) ) {\
             fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): assertion '"#condition"' failed! message: ", thread_id(), __LINE__, __FUNCTION__ );\
@@ -709,9 +1865,13 @@ const Command* cbuild_query_command_line(void);
         }\
     } while(0)
 #else
+    /// @brief Check if condition is true. Panic if it's not. (Noreturn on fail)
+    /// @param ... (anything) Assertion is disabled so any arguments go to unused() macro.
     #define assertion( ... ) unused( __VA_ARGS__ )
 #endif
 
+/// @brief Insert a panic with message. (Noreturn)
+/// @param ... (format and format arguments) Message to log.
 #define panic( ... ) do {\
     fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): panic! message: ", thread_id(), __LINE__, __FUNCTION__ );\
     fprintf( stderr, __VA_ARGS__ );\
@@ -721,6 +1881,11 @@ const Command* cbuild_query_command_line(void);
     __insert_panic();\
 } while(0)
 
+/// @brief Assert something that should always be checked. (Noreturn on fail)
+/// @details
+/// Crashes program rather than inserting exit(-1) on fail.
+/// @param condition (boolean expression) Condition to check.
+/// @param ...       (format and format arguments) Message to log upon failed condition.
 #define expect_crash( condition, ... ) do {\
     if( !(condition) ) {\
         fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): expected '"#condition"'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
@@ -732,6 +1897,9 @@ const Command* cbuild_query_command_line(void);
     }\
 } while(0)
 
+/// @brief Assert something that should always be checked. (Noreturn on fail)
+/// @param condition (boolean expression) Condition to check.
+/// @param ...       (format and format arguments) Message to log upon failed condition.
 #define expect( condition, ... ) do {\
     if( !(condition) ) {\
         fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): expected '"#condition"'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
@@ -743,6 +1911,7 @@ const Command* cbuild_query_command_line(void);
     }\
 } while(0)
 
+/// @brief Mark control path as unimplemented. (Noreturn)
 #define unimplemented() do {\
     fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): unimplemented path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
     fflush( stderr );\
@@ -750,6 +1919,7 @@ const Command* cbuild_query_command_line(void);
     __insert_panic();\
 } while(0)
 
+/// @brief Mark control path as unreachable (hopefully). (Noreturn)
 #define unreachable() do {\
     fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): reached unreachable path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
     fflush( stderr );\
@@ -1021,13 +2191,6 @@ void _init_(
     expect( path_exists( source_name ),
         "cbuild MUST be run from its source code directory!" );
 
-    dstring* old_name = dstring_fmt( "%s.old", executable_name );
-    expect( old_name, "failed to create old executable name!" );
-
-    if( path_exists( old_name ) ) {
-        file_remove( old_name );
-    }
-
     b32 rebuild = false;
     if( path_exists( executable_name ) ) {
         time_t executable_modify = file_query_time_modify( executable_name );
@@ -1043,11 +2206,23 @@ void _init_(
     }
 
     if( !rebuild ) {
+        const char* old_name = local_fmt( "%s.old", executable_name );
+        if( path_exists( old_name ) ) {
+            file_remove( old_name );
+        }
         return;
     }
     // rebuild
 
-    cb_info( "changes detected in cbuild script, rebuilding . . ." );
+    cb_info( "changes detected in cbuild source, rebuilding . . ." );
+    cbuild_rebuild( source_name, executable_name, true );
+}
+_Noreturn void cbuild_rebuild(
+    const cstr* cbuild_source_file_name,
+    const cstr* cbuild_executable_name,
+    b32 reload
+) {
+    const char* old_name = local_fmt( "%s.old", cbuild_executable_name );
 
     f64 start = timer_milliseconds();
 
@@ -1056,16 +2231,16 @@ void _init_(
 
 #if defined(CBUILD_ADDITIONAL_FLAGS)
     command_new(
-        CBUILD_COMPILER_NAME, source_name, CBUILD_COMPILER_OUTPUT_FLAG,
-        executable_name, CBUILD_ADDITIONAL_FLAGS,
+        CBUILD_COMPILER_NAME, cbuild_source_file_name, CBUILD_COMPILER_OUTPUT_FLAG,
+        cbuild_executable_name, CBUILD_ADDITIONAL_FLAGS,
         string_define( "CBUILD_ADDITIONAL_FLAGS", CBUILD_ADDTIONAL_FLAGS ),
         string_define( "CBUILD_COMPILER_NAME", CBUILD_COMPILER_NAME ),
         string_define( "CBUILD_COMPILER_OUTPUT_FLAG", CBUILD_COMPILER_OUTPUT_FLAG ),
         "-nologo" );
 #else
     command_new(
-        CBUILD_COMPILER_NAME, source_name, CBUILD_COMPILER_OUTPUT_FLAG,
-        executable_name,
+        CBUILD_COMPILER_NAME, cbuild_source_file_name, CBUILD_COMPILER_OUTPUT_FLAG,
+        cbuild_executable_name,
         string_define( "CBUILD_COMPILER_NAME", CBUILD_COMPILER_NAME ),
         string_define( "CBUILD_COMPILER_OUTPUT_FLAG", CBUILD_COMPILER_OUTPUT_FLAG ),
         "-nologo" );
@@ -1076,9 +2251,9 @@ void _init_(
 
     Command rebuild_cmd = command_new(
         CBUILD_COMPILER_NAME,
-        source_name,
+        cbuild_source_file_name,
         CBUILD_COMPILER_OUTPUT_FLAG,
-        executable_name,
+        cbuild_executable_name,
 
 #if defined(PLATFORM_POSIX)
         CBUILD_POSIX_FLAGS,
@@ -1098,15 +2273,14 @@ void _init_(
 
 #endif /* GCC style */
 
-    cb_info(
-        "rebuilding with command '%s' . . .",
-        command_flatten_local( &rebuild_cmd ) );
+    cb_info( "rebuilding with command:" );
+    cb_info( "%s", command_flatten_local( &rebuild_cmd ) );
 
     if( path_exists( old_name ) ) {
         expect( file_remove( old_name ), "could not remove old executable!" );
     }
 
-    expect( file_move( old_name, executable_name ), "could not rename executable!" );
+    expect( file_move( old_name, cbuild_executable_name ), "could not rename executable!" );
 
     fence();
 
@@ -1114,13 +2288,17 @@ void _init_(
     int res = process_wait( pid );
     if( res != 0 ) {
         cb_fatal( "failed to rebuild!" );
-        file_move( executable_name, old_name );
+        file_move( cbuild_executable_name, old_name );
 
         exit(-1);
     }
 
     f64 end = timer_milliseconds();
     cb_info( "rebuilt in %fms", end - start );
+
+    if( !reload ) {
+        exit(0);
+    }
 
 #if defined(PLATFORM_WINDOWS)
     printf(
@@ -1135,6 +2313,7 @@ void _init_(
     exit(0);
 #endif
 }
+
 usize memory_query_usage(void) {
     return global_memory_usage;
 }
@@ -1647,7 +2826,7 @@ dstring* dstring_grow( dstring* str, usize amount ) {
     res->cap += amount;
     return res->buf;
 }
-dstring* dstring_clone( dstring* src ) {
+dstring* dstring_clone( const dstring* src ) {
     return dstring_from_string( string_from_dstring( src ) );
 }
 dstring* dstring_concat( string lhs, string rhs ) {
@@ -1662,7 +2841,9 @@ dstring* dstring_concat( string lhs, string rhs ) {
 
     return res->buf;
 }
-dstring* dstring_concat_multi( usize count, string* strings, string opt_separator ) {
+dstring* dstring_concat_multi(
+    usize count, const string* strings, string opt_separator
+) {
     expect( count, "did not provide any strings!" );
     usize total_size = (count - 1) * opt_separator.len;
     for( usize i = 0; i < count; ++i ) {
@@ -2001,7 +3182,7 @@ b32 path_matches_glob( string path, string glob ) {
     return glob.len ? false : true;
 
 }
-static b32 path_walk_split_glob_filter(
+static b32 path_walk_glob_filter_filter(
     usize index, usize stride, const void* item, void* params
 ) {
     unused(index, stride);
@@ -2011,12 +3192,12 @@ static b32 path_walk_split_glob_filter(
 
     return path_matches_glob( path, glob );
 }
-string* path_walk_split_glob( const WalkDirectory* wd, string glob ) {
+string* path_walk_glob_filter( const WalkDirectory* wd, string glob ) {
     assertion( wd && wd->paths, "walk result is null!" );
 
     string* res = darray_from_filter(
         sizeof(string), wd->count, wd->paths,
-        path_walk_split_glob_filter, &glob );
+        path_walk_glob_filter_filter, &glob );
     return res;
 }
 b32 path_walk_dir(
@@ -2499,6 +3680,12 @@ usize darray_total_size( const void* darray ) {
         sizeof(struct DynamicArray) +
         (darray_cap( darray ) * darray_stride( darray ));
 }
+b32 darray_is_empty( const void* darray ) {
+    return darray_len( darray ) == 0;
+}
+b32 darray_is_full( const void* darray ) {
+    return darray_len( darray ) == darray_cap( darray );
+}
 void* darray_head( void* darray ) {
     if( !darray ) {
         return NULL;
@@ -2602,6 +3789,47 @@ u32 thread_id(void) {
     return global_thread_id;
 }
 
+dstring* command_flatten_dstring( const Command* command ) {
+    usize total_len = 1;
+    for( usize i = 0; i < command->count; ++i ) {
+        total_len += cstr_len( command->args[i] ) + 3; // to account for potential "" and space
+    }
+    dstring* res = dstring_empty( total_len );
+    if( !res ) {
+        return NULL;
+    }
+
+    for( usize i = 0; i < command->count; ++i ) {
+        const cstr* current = command->args[i];
+        if( !current ) {
+            continue;
+        }
+
+        usize current_len = cstr_len( current );
+        if( !current_len ) {
+            continue;
+        }
+
+        b32 contains_space = false;
+        string arg = string_new( current_len, current );
+        if( string_find( arg, ' ', 0 ) ) {
+            expect( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
+            contains_space = true;
+        }
+
+        expect( dstring_append( res, arg ) == res, "miscalculated total_len!" );
+
+        if( contains_space ) {
+            expect( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
+        }
+
+        if( i + 1 != command->count ) {
+            expect( dstring_push( res, ' ' ) == res, "miscalculated total_len!" );
+        }
+    }
+
+    return res;
+}
 const cstr* command_flatten_local( const Command* command ) {
     char* buf = (char*)local_byte_buffer();
     usize len = 0;
@@ -2613,8 +3841,23 @@ const cstr* command_flatten_local( const Command* command ) {
         }
 
         usize current_len = cstr_len( current );
+        if( !current_len ) {
+            continue;
+        }
+
+        b32 contains_space = false;
+        if( cstr_find( current, ' ', 0 ) ) {
+            buf[len++] = '"';
+            contains_space = true;
+        }
+
         memory_copy( buf + len, current, current_len );
         len += current_len;
+
+        if( contains_space ) {
+            buf[len++] = '"';
+        }
+
         if( i + 1 != command->count ) {
             buf[len++] = ' ';
         }
@@ -2840,51 +4083,70 @@ static time_t win32_filetime_to_posix( FILETIME ft ) {
     return res;
 }
 static wchar_t* win32_local_utf8_to_wide( string utf8 ) {
-    assertion( utf8.cc && utf8.len < CBUILD_LOCAL_WIDE_CAPACITY, "invalid string!" );
+    assertion( utf8.cc, "null pointer!" );
+    assertion(
+        utf8.len < CBUILD_LOCAL_WIDE_CAPACITY,
+        "attempted to convert a utf8 string longer than %u!",
+        CBUILD_LOCAL_WIDE_CAPACITY );
 
     wchar_t* buf = (wchar_t*)local_byte_buffer();
+    wchar_t* dst = buf;
 
-    wchar_t* copy_dst = buf;
-    string rem = utf8;
-    while( rem.len ) {
-        // TODO(alicia): this should check for valid utf8 bound
-        usize max_convert = rem.len;
-        if( rem.len > INT32_MAX ) {
-            rem.len = INT32_MAX;
+    const char* src = utf8.cc;
+    usize rem       = utf8.len;
+
+    while( rem ) {
+        usize max_convert = rem;
+        if( max_convert >= INT32_MAX ) {
+            max_convert = INT32_MAX;
         }
+        // TODO(alicia): utf8 bounds checking!
 
-        MultiByteToWideChar( CP_UTF8, 0, rem.cc, max_convert, copy_dst, max_convert );
+        int written = MultiByteToWideChar(
+            CP_UTF8, 0, src, max_convert, dst, max_convert );
+        expect( written, "failed to convert utf8 string!" );
 
-        copy_dst += max_convert;
-        rem       = string_adv_by( rem, max_convert );
+        src += max_convert;
+        dst += written;
+        rem -= max_convert;
     }
 
     return buf;
 }
 static string win32_local_wide_to_utf8( usize len, wchar_t* wide ) {
-    assertion( wide && len < CBUILD_LOCAL_WIDE_CAPACITY, "invalid string!" );
+    assertion( wide, "null pointer!" );
+    assertion(
+        len < CBUILD_LOCAL_WIDE_CAPACITY,
+        "attempted to convert a wide string longer than %u!",
+        CBUILD_LOCAL_WIDE_CAPACITY );
 
     char* buf = (char*)local_byte_buffer();
+    char* dst = buf;
 
-    char* copy_dst = buf;
-    usize rem      = len;
-
+    wchar_t* src = wide;
+    usize rem    = len;
     while( rem ) {
-        // TODO(alicia): check for valid windows unicode bounds?
-        // is that even a thing
         usize max_convert = rem;
-        if( max_convert > INT32_MAX ) {
+        if( max_convert >= INT32_MAX ) {
             max_convert = INT32_MAX;
         }
+        // bounds checking
+        const char* last_codepoint = (const char*)(src + (max_convert - 1));
+        if( last_codepoint[0] & 0b10000000 ) {
+            max_convert--;
+            assertion( max_convert, "invalid wide string!" );
+        }
+        
+        int written = WideCharToMultiByte(
+            CP_UTF8, 0, src, max_convert, dst, max_convert, 0, 0 );
+        expect( written, "failed to convert wide string!" );
 
-        WideCharToMultiByte(
-            CP_UTF8, 0, wide, max_convert, copy_dst, max_convert, 0, 0 );
-
-        copy_dst += max_convert;
-        rem      -= max_convert;
+        src += max_convert;
+        dst += written;
+        rem -= max_convert;
     }
 
-    return string_new( len, buf );
+    return string_new( dst - buf, buf );
 }
 static string win32_local_error_message( DWORD error_code ) {
     char* buf = (char*)local_byte_buffer();
@@ -3817,7 +5079,7 @@ b32 mutex_create( Mutex* out_mutex ) {
     out_mutex->handle = (void*)handle;
     return true;
 }
-b32 mutex_is_valid( Mutex* mutex ) {
+b32 mutex_is_valid( const Mutex* mutex ) {
     return mutex->handle != NULL;
 }
 void mutex_lock( Mutex* mutex ) {
@@ -3847,7 +5109,7 @@ b32 semaphore_create( Semaphore* out_semaphore ) {
     out_semaphore->handle = handle;
     return true;
 }
-b32 semaphore_is_valid( Semaphore* semaphore ) {
+b32 semaphore_is_valid( const Semaphore* semaphore ) {
     return semaphore->handle != NULL;
 }
 void semaphore_wait( Semaphore* semaphore ) {
@@ -3987,6 +5249,9 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
 
     *opt_out_res = exit_code;
     return success;
+}
+void process_discard( PID pid ) {
+    CloseHandle( (HANDLE)pid );
 }
 
 unsigned int win32_thread_proc( void* params ) {
@@ -4363,7 +5628,8 @@ b32 mutex_create( Mutex* out_mutex ) {
     mtx->value = 0;
     return true;
 }
-b32 mutex_is_valid( Mutex* mutex ) {
+b32 mutex_is_valid( const Mutex* mutex ) {
+    unused( mutex );
     return true;
 }
 void mutex_lock( Mutex* mutex ) {
@@ -4430,7 +5696,7 @@ b32 semaphore_create( Semaphore* out_semaphore ) {
     out_semaphore->handle = s;
     return true;
 }
-b32 semaphore_is_valid( Semaphore* semaphore ) {
+b32 semaphore_is_valid( const Semaphore* semaphore ) {
     return semaphore->handle != NULL;
 }
 void semaphore_wait( Semaphore* semaphore ) {
@@ -4559,6 +5825,9 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
     }
 
     return false;
+}
+void process_discard( PID pid ) {
+    unused(pid); // this is not necessary on POSIX
 }
 
 f64 timer_milliseconds(void) {
