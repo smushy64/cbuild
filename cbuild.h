@@ -18,6 +18,7 @@
  *   to be unused( ... )
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   May 28, 2024
+ * @copyright MIT License.
 */
 // IWYU pragma: begin_exports
 #include <stdint.h>
