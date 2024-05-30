@@ -12,6 +12,7 @@ static const char* global_program_name = "cbuild";
 typedef enum {
     MODE_NULL,
     MODE_BUILD,
+    MODE_REBUILD,
     MODE_RUN,
     MODE_CLEAN,
     MODE_HELP,
@@ -64,6 +65,10 @@ int main( int argc, const char** argv ) {
                 }
                 if( string_cmp( arg, string_text( "clean" ) ) ) {
                     mode = MODE_CLEAN;
+                    continue;
+                }
+                if( string_cmp( arg, string_text( "rebuild" ) ) ) {
+                    mode = MODE_REBUILD;
                     continue;
                 }
                 if(
@@ -156,6 +161,12 @@ int main( int argc, const char** argv ) {
                 print_help( MODE_HELP );
                 return 0;
             } break;
+            case MODE_REBUILD: {
+                if( string_cmp( arg, string_text( "--help" ) ) ) {
+                    print_help( MODE_REBUILD );
+                    return 0;
+                }
+            };
         }
 
         if( start_args != -1 ) {
@@ -170,6 +181,10 @@ int main( int argc, const char** argv ) {
         case MODE_NULL:
         case MODE_HELP: {
             print_help( mode );
+            return 0;
+        } break;
+        case MODE_REBUILD: {
+            cbuild_rebuild( __FILE__, argv[0], false );
             return 0;
         } break;
         default: break;
@@ -226,6 +241,7 @@ int main( int argc, const char** argv ) {
                 return -1;
             }
         } break;
+        case MODE_REBUILD:
         case MODE_NULL:
         case MODE_HELP: unreachable();
     }
@@ -436,7 +452,7 @@ void print_help( Mode mode ) {
         case MODE_BUILD: {
             printf( "USAGE:     %s build [args]\n", global_program_name );
             printf( "DESCRIPTION:\n" );
-            printf( "  Build program.\n" );
+            printf( "  Build program and exit.\n" );
             printf( "ARGUMENTS: \n" );
             printf( "  --out=<path>    Set output directory.\n" );
             printf( "  --target=<path> Set output name.\n" );
@@ -447,9 +463,9 @@ void print_help( Mode mode ) {
         case MODE_RUN: {
             printf( "USAGE:     %s run [args]\n", global_program_name );
             printf( "DESCRIPTION:\n" );
-            printf( "  Build and then run program.\n" );
+            printf( "  Build program and execute it.\n" );
             printf( "ARGUMENTS: \n" );
-            printf( "  --              End cbuild arguments. After this, arguments are for program.\n" );
+            printf( "  --              End cbuild arguments. After this, arguments are passed to compiled program.\n" );
             printf( "  --out=<path>    Set output directory.\n" );
             printf( "  --target=<path> Set output name.\n" );
             printf( "  --notime        Do not print how long build took.\n" );
@@ -459,19 +475,26 @@ void print_help( Mode mode ) {
         case MODE_CLEAN: {
             printf( "USAGE:     %s clean [args]\n", global_program_name );
             printf( "DESCRIPTION:\n" );
-            printf( "  Clean output path.\n" );
+            printf( "  Clean output directory.\n" );
             printf( "ARGUMENTS: \n" );
             printf( "  --out=<path>    Set output directory.\n" );
             printf( "  --silent        Only print error and fatal messages to stderr.\n" );
             printf( "  --help          Print this message and exit.\n" );
         } break;
+        case MODE_REBUILD: {
+            printf( "USAGE:     %s rebuild [args]\n", global_program_name );
+            printf( "DESCRIPTION:\n" );
+            printf( "  Force cbuild to rebuild itself and exit.\n" );
+        } break;
         case MODE_NULL:
         case MODE_HELP: {
             printf( "USAGE:     %s <mode> [args]\n", global_program_name );
             printf( "MODES:\n" );
-            printf( "  build  Build program and exit.\n" );
-            printf( "  run    Build program and execute it.\n" );
-            printf( "  help   Print this message and exit.\n" );
+            printf( "  build   Build program and exit.\n" );
+            printf( "  run     Build program and execute it.\n" );
+            printf( "  rebuild Force cbuild to rebuild itself and exit.\n" );
+            printf( "  clean   Clean output directory.\n" );
+            printf( "  help    Print this message and exit.\n" );
             printf( "ARGUMENTS:\n" );
             printf( "  --silent Only print error and fatal messages to stderr.\n" );
             printf( "  --help   Print help for given mode.\n" );
