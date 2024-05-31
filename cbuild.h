@@ -29,19 +29,21 @@
 #include <stdio.h>
 // IWYU pragma: end_exports
 
-#if defined(__clang__)
-    /// @brief Current compiler is clang (LLVM).
-    #define COMPILER_CLANG 1
-#elif defined(__GNUC__)
-    /// @brief Current compiler is GCC.
-    #define COMPILER_GCC 1
-#elif defined(_MSC_VER)
-    /// @brief Current compiler is Microsoft Visual C++.
-    #define COMPILER_MSVC 1
-#else
-    /// @brief Current compiler is unknown.
-    #define COMPILER_UNKNOWN 1
-#endif
+#if !(defined(COMPILER_CLANG) || defined(COMPILER_GCC) || defined(COMPILER_MSVC) || defined(COMPILER_UNKNOWN))
+    #if defined(__clang__)
+        /// @brief Current compiler is clang (LLVM).
+        #define COMPILER_CLANG
+    #elif defined(__GNUC__)
+        /// @brief Current compiler is GCC.
+        #define COMPILER_GCC
+    #elif defined(_MSC_VER)
+        /// @brief Current compiler is Microsoft Visual C++.
+        #define COMPILER_MSVC
+    #else
+        /// @brief Current compiler is unknown.
+        #define COMPILER_UNKNOWN
+    #endif
+#endif /* If no compiler is defined */
 
 #if defined(_WIN32)
     /// @brief Current platform is Windows.
@@ -321,11 +323,13 @@ static inline void _0( int _, ... ) {(void)_;}
     /// @brief Insert a debugger break statement.
     #define insert_break()         __debugbreak()
     #define __insert_crash()       __debugbreak()
+    #define does_not_return()      __declspec( noreturn )
 #else
     #define __insert_unreachable() __builtin_unreachable()
     /// @brief Insert a debugger break statement.
     #define insert_break()         __builtin_debugtrap()
     #define __insert_crash()       __builtin_trap()
+    #define does_not_return()      _Noreturn
 #endif
 
 /// @brief Stringify macro name.
@@ -336,21 +340,6 @@ static inline void _0( int _, ... ) {(void)_;}
 /// @param macro (any defined) Macro whose value will be stringified.
 /// @return String literal.
 #define macro_value_to_string( macro ) macro_to_string( macro )
-#if defined(PLATFORM_WINDOWS)
-    /// @brief Create command line argument that defines string literal macro.
-    /// @param id   (string literal) Name of macro.
-    /// @param text (string literal) String literal to define macro to.
-    /// @return String literal.
-    #define string_define( id, text )\
-        "-D" id "=\"\\\"" text "\\\"\""
-#else
-    /// @brief Create command line argument that defines string literal macro.
-    /// @param id   (string literal) Name of macro.
-    /// @param text (string literal) String literal to define macro to.
-    /// @return String literal.
-    #define string_define( id, text )\
-        "-D" id "=\"" text "\""
-#endif
 /// @brief Calculate length of static array.
 /// @param array (any[]) Static array to calculate length of.
 /// @return (usize) Length of @c array.
@@ -396,7 +385,7 @@ static inline void _0( int _, ... ) {(void)_;}
 /// @param[in] cbuild_source_file_name Filename of source file (__FILE__).
 /// @param[in] cbuild_executable_name  Name of cbuild executable (argv[0]).
 /// @param     reload                  Reloads cbuild after rebuilding. Only supported on POSIX platforms.
-_Noreturn void cbuild_rebuild(
+does_not_return() void cbuild_rebuild(
     const cstr* cbuild_source_file_name,
     const cstr* cbuild_executable_name, b32 reload );
 
@@ -2225,7 +2214,7 @@ void _init_(
     cb_info( "changes detected in cbuild source, rebuilding . . ." );
     cbuild_rebuild( source_name, executable_name, true );
 }
-_Noreturn void cbuild_rebuild(
+does_not_return() void cbuild_rebuild(
     const cstr* cbuild_source_file_name,
     const cstr* cbuild_executable_name,
     b32 reload
@@ -2234,61 +2223,57 @@ _Noreturn void cbuild_rebuild(
 
     f64 start = timer_milliseconds();
 
+    #if !defined(CBUILD_ADDITIONAL_FLAGS)
+        #define CBUILD_ADDITIONAL_FLAGS 0
+    #endif
+    #if !defined(CBUILD_POSIX_FLAGS)
+        #define CBUILD_POSIX_FLAGS 0
+    #endif
+
+    const char* posix_flags[] = { CBUILD_POSIX_FLAGS };
+    const char* additional[]  = { CBUILD_ADDITIONAL_FLAGS };
+    usize arg_count = 0;
+    const char* args[6 + static_array_len( additional ) + static_array_len( posix_flags )];
+    memory_zero( (void*)args, sizeof(args) );
+
+    args[arg_count++] = CBUILD_COMPILER_NAME;
+    args[arg_count++] = cbuild_source_file_name;
+    args[arg_count++] = CBUILD_COMPILER_OUTPUT_FLAG;
+    args[arg_count++] = cbuild_executable_name;
+
 #if defined(COMPILER_MSVC)
-    Command rebuild_cmd =
-
-#if defined(CBUILD_ADDITIONAL_FLAGS)
-    command_new(
-        CBUILD_COMPILER_NAME, cbuild_source_file_name, CBUILD_COMPILER_OUTPUT_FLAG,
-        cbuild_executable_name, CBUILD_ADDITIONAL_FLAGS,
-        string_define( "CBUILD_ADDITIONAL_FLAGS", CBUILD_ADDTIONAL_FLAGS ),
-        string_define( "CBUILD_COMPILER_NAME", CBUILD_COMPILER_NAME ),
-        string_define( "CBUILD_COMPILER_OUTPUT_FLAG", CBUILD_COMPILER_OUTPUT_FLAG ),
-        "-nologo" );
-#else
-    command_new(
-        CBUILD_COMPILER_NAME, cbuild_source_file_name, CBUILD_COMPILER_OUTPUT_FLAG,
-        cbuild_executable_name,
-        string_define( "CBUILD_COMPILER_NAME", CBUILD_COMPILER_NAME ),
-        string_define( "CBUILD_COMPILER_OUTPUT_FLAG", CBUILD_COMPILER_OUTPUT_FLAG ),
-        "-nologo" );
+    args[arg_count++] = "-nologo";
 #endif
 
-#else /* MSVC */
+    for( int i = 0; i < static_array_len( additional ); ++i ) {
+        const char* a = additional[i];
+        if( a ) {
+            args[arg_count++] = additional[i];
+        }
+    }
+    for( int i = 0; i < static_array_len( posix_flags ); ++i ) {
+        const char* a = posix_flags[i];
+        if( a ) {
+            args[arg_count++] = posix_flags[i];
+        }
+    }
 
-
-    Command rebuild_cmd = command_new(
-        CBUILD_COMPILER_NAME,
-        cbuild_source_file_name,
-        CBUILD_COMPILER_OUTPUT_FLAG,
-        cbuild_executable_name,
-
-#if defined(PLATFORM_POSIX)
-        CBUILD_POSIX_FLAGS,
-#endif
-
-#if defined(CBUILD_ADDITIONAL_FLAGS)
-        ,CBUILD_ADDITIONAL_FLAGS,
-        string_define( "CBUILD_ADDITIONAL_FLAGS", CBUILD_ADDITIONAL_FLAGS ),
-#endif
-        string_define( "CBUILD_COMPILER_NAME", CBUILD_COMPILER_NAME ),
-        string_define( "CBUILD_COMPILER_OUTPUT_FLAG", CBUILD_COMPILER_OUTPUT_FLAG )
-#if defined(PLATFORM_POSIX)
-        ,string_define( "CBUILD_POSIX_FLAGS", CBUILD_POSIX_FLAGS )
-#endif
-
-    );
-
-#endif /* GCC style */
+    Command rebuild_cmd;
+    rebuild_cmd.count = arg_count;
+    rebuild_cmd.args  = args;
 
     cb_info( "rebuilding with command:" );
     cb_info( "%s", command_flatten_local( &rebuild_cmd ) );
 
     if( path_exists( old_name ) ) {
-        expect( file_remove( old_name ), "could not remove old executable!" );
+        expect(
+            file_remove( old_name ),
+            "could not remove old executable!" );
     }
 
-    expect( file_move( old_name, cbuild_executable_name ), "could not rename executable!" );
+    expect(
+        file_move( old_name, cbuild_executable_name ),
+        "could not rename executable!" );
 
     fence();
 
@@ -2300,6 +2285,23 @@ _Noreturn void cbuild_rebuild(
 
         exit(-1);
     }
+
+#if defined(COMPILER_MSVC)
+    /* attempt to remove annoying .obj file generated by msvc */ {
+        string exe = string_from_cstr( cbuild_executable_name );
+        char* local = (char*)local_byte_buffer();
+        memory_copy( local, exe.cc, exe.len );
+        usize dot = 0;
+        if( string_find_rev( exe, '.', &dot ) ) {
+            local[++dot] = 'o';
+            local[++dot] = 'b';
+            local[++dot] = 'j';
+            if( path_exists( local ) ) {
+                file_remove( local );
+            }
+        }
+    }
+#endif
 
     f64 end = timer_milliseconds();
     cb_info( "rebuilt in %fms", end - start );

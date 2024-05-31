@@ -304,7 +304,7 @@ Command get_build_command( string compiler, const cstr* output_path ) {
         cmd_push( &builder, "-o" );
 #endif
         cmd_push( &builder, output_path );
-        cmd_push( &builder, string_define( "CBUILD_MESSAGE", "hello, from cbuild" ) );
+        cmd_push( &builder, "-DCBUILD_MESSAGE=\"" "hello, from cbuild" "\"" );
 
         builder_ready = true;
     }
