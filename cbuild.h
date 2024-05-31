@@ -2219,7 +2219,6 @@ does_not_return() void cbuild_rebuild(
     const cstr* cbuild_executable_name,
     b32 reload
 ) {
-    const char* old_name = local_fmt( "%s.old", cbuild_executable_name );
 
     f64 start = timer_milliseconds();
 
@@ -2265,6 +2264,7 @@ does_not_return() void cbuild_rebuild(
     cb_info( "rebuilding with command:" );
     cb_info( "%s", command_flatten_local( &rebuild_cmd ) );
 
+    const char* old_name = local_fmt( "%s.old", cbuild_executable_name );
     if( path_exists( old_name ) ) {
         expect(
             file_remove( old_name ),
@@ -2283,7 +2283,7 @@ does_not_return() void cbuild_rebuild(
         cb_fatal( "failed to rebuild!" );
         file_move( cbuild_executable_name, old_name );
 
-        exit(-1);
+        exit(127);
     }
 
 #if defined(COMPILER_MSVC)
