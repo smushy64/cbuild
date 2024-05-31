@@ -4,7 +4,6 @@
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   May 15, 2024
 */
-#undef _CLANGD
 #define CBUILD_THREAD_COUNT 16
 #include "../cbuild.h" // including the header from root
 

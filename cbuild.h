@@ -2171,14 +2171,14 @@ void _init_(
 ) {
     logger_set_level( logger_level );
 
-    usize arguments_size   = sizeof(usize) * (argc + 1);
-    const char** arguments = memory_alloc( arguments_size );
-    expect( arguments, "failed to allocate argv buffer!" );
-
-    memory_copy( arguments, argv, arguments_size - sizeof(usize) );
+    const char** heap_args = darray_from_array( sizeof(const char*), argc, argv ); {
+        expect( heap_args, "failed to allocate arguments!" );
+        const char* nul = 0;
+        heap_args = darray_push( heap_args, &nul );
+    }
 
     global_command_line.count = argc;
-    global_command_line.args  = arguments;
+    global_command_line.args  = heap_args;
 
     (void)get_local_buffers();
     (void)get_global_buffers();
