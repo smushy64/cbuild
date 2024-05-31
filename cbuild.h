@@ -3634,6 +3634,7 @@ void* darray_append( void* darray, usize count, const void* items ) {
     return res->buf;
 }
 b32 darray_remove( void* darray, usize index ) {
+
     struct DynamicArray* head = darray_head( darray );
     if( !head->len || index > head->len ) {
         cb_warn(
@@ -3641,11 +3642,15 @@ b32 darray_remove( void* darray, usize index ) {
             "len: %zu index: %zu", head->len, index );
         return false;
     }
+    if( index == (head->len - 1) ) {
+        return darray_pop( darray, 0 );
+    }
 
-    memory_move(
-        head->buf + (head->stride * index),
-        head->buf + (head->stride * (index + 1)),
-        (head->stride * (head->len + 1) - index ) );
+    void* item_to_remove = head->buf + (head->stride * index);
+    void* item_next      = (u8*)item_to_remove + head->stride;
+    usize move_size      = (head->buf + (head->stride * head->cap)) - (u8*)item_next;
+
+    memory_move( item_to_remove, item_next, move_size );
     head->len--;
     memory_zero( head->buf + (head->stride * head->len), head->stride );
 
@@ -3663,13 +3668,10 @@ b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive 
         return false;
     }
 
-    usize span = to_exclusive - from_inclusive;
-
-    memory_move(
-        head->buf + (head->stride * from_inclusive),
-        head->buf + (head->stride * to_exclusive),
-        head->stride * ((head->len + 1) - span) );
-    head->len -= span;
+    // TODO(alicia): reimplement this properly
+    for( usize i = from_inclusive; i < to_exclusive; ++i ) {
+        darray_remove( darray, from_inclusive );
+    }
 
     return true;
 }
@@ -4076,6 +4078,15 @@ struct Win32ThreadParams {
 
 static struct Win32ThreadParams global_win32_thread_params[CBUILD_THREAD_COUNT];
 
+static HANDLE global_win32_process_heap = NULL;
+
+static HANDLE get_process_heap(void) {
+    if( !global_win32_process_heap ) {
+        global_win32_process_heap = GetProcessHeap();
+        expect( global_win32_process_heap, "failed to get process heap!" );
+    }
+    return global_win32_process_heap;
+}
 static time_t win32_filetime_to_posix( FILETIME ft ) {
     #define WIN32_TICKS_PER_SECOND (10000000)
     #define WIN32_TO_POSIX_DIFF    (11644473600ULL)
@@ -4319,7 +4330,7 @@ static wchar_t* win32_local_path_canon( string path ) {
 }
 
 void* memory_alloc( usize size ) {
-    void* res = HeapAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, size );
+    void* res = HeapAlloc( get_process_heap(), HEAP_ZERO_MEMORY, size );
     if( !res ) {
         return NULL;
     }
@@ -4334,7 +4345,7 @@ void* memory_alloc( usize size ) {
 }
 void* memory_realloc( void* memory, usize old_size, usize new_size ) {
     assertion( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
-    void* res = HeapReAlloc( GetProcessHeap(), HEAP_ZERO_MEMORY, memory, new_size );
+    void* res = HeapReAlloc( get_process_heap(), HEAP_ZERO_MEMORY, memory, new_size );
     if( !res ) {
         return NULL;
     }
@@ -4353,7 +4364,7 @@ void memory_free( void* memory, usize size ) {
         cb_warn( "attempted to free null pointer!" );
         return;
     }
-    HeapFree( GetProcessHeap(), HEAP_ZERO_MEMORY, memory );
+    HeapFree( get_process_heap(), 0, memory );
     atom64 neg = size;
     neg = -neg;
     if( global_is_mt ) {
