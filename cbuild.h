@@ -1727,12 +1727,13 @@ b32 process_in_path( const cstr* process_name );
 /// @param[in] opt_stdin  (optional) Pointer to read stdin pipe.
 /// @param[in] opt_stdout (optional) Pointer to write stdout pipe.
 /// @param[in] opt_stderr (optional) Pointer to write stderr pipe.
+/// @param[in] opt_cwd    (optional) Change current working directory for command.
 /// @return ID of process executed.
 /// Process ID must be discarded using process_discard(),
 /// process_wait() or successful process_wait_timed().
 PID process_exec(
     Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
-    WritePipe* opt_stdout, WritePipe* opt_stderr );
+    WritePipe* opt_stdout, WritePipe* opt_stderr, const cstr* opt_cwd );
 /// @brief Wait indefinitely for process to complete.
 /// @details
 /// This function discards @c pid.
@@ -2277,7 +2278,7 @@ does_not_return() void cbuild_rebuild(
 
     fence();
 
-    PID pid = process_exec( rebuild_cmd, false, 0, 0, 0 );
+    PID pid = process_exec( rebuild_cmd, false, 0, 0, 0, 0 );
     int res = process_wait( pid );
     if( res != 0 ) {
         cb_fatal( "failed to rebuild!" );
@@ -5179,7 +5180,7 @@ b32 process_in_path( const cstr* process_name ) {
 }
 PID process_exec(
     Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
-    WritePipe* opt_stdout, WritePipe* opt_stderr
+    WritePipe* opt_stdout, WritePipe* opt_stderr, const cstr* opt_cwd
 ) {
     STARTUPINFOA        startup;
     PROCESS_INFORMATION info;
@@ -5223,7 +5224,7 @@ PID process_exec(
 
     BOOL res = CreateProcessA(
         NULL, cmd_line, NULL, NULL, bInheritHandle,
-        flags, NULL, NULL, &startup, &info );
+        flags, NULL, opt_cwd, &startup, &info );
     expect( res, "failed to launch process '%s'!", cmd.args[0] );
 
     CloseHandle( info.hThread );
@@ -5831,14 +5832,14 @@ void pipe_close( Pipe pipe ) {
 b32 process_in_path( const cstr* process_name ) {
     Command cmd = command_new( "which", process_name );
 
-    PID pid = process_exec( cmd, true, 0, 0, 0 );
+    PID pid = process_exec( cmd, true, 0, 0, 0, 0 );
     int res = process_wait( pid );
 
     return res == 0;
 }
 PID process_exec(
     Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
-    WritePipe* opt_stdout, WritePipe* opt_stderr
+    WritePipe* opt_stdout, WritePipe* opt_stderr, const cstr* opt_cwd
 ) {
     ReadPipe   stdin_;
     WritePipe stdout_;
@@ -5863,6 +5864,10 @@ PID process_exec(
     }
 
     // thread where process will run
+
+    if( opt_cwd ) {
+        chdir( opt_cwd );
+    }
 
     expect_crash( dup2( stdin_ , STDIN_FILENO  ) >= 0, "failed to setup stdin!" );
     expect_crash( dup2( stdout_, STDOUT_FILENO ) >= 0, "failed to setup stdout!" );
