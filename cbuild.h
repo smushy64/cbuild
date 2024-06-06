@@ -2804,18 +2804,18 @@ dstring* dstring_fmt_va( const cstr* format, va_list va ) {
     va_list va2;
     va_copy( va2, va );
 
-    int size = vsnprintf( 0, 0, format, va2 );
-
+    int msg_len = vsnprintf( 0, 0, format, va2 );
     va_end( va2 );
 
-    dstring* res = dstring_empty( size + 2 );
+    struct DynamicString* res = dstring_head( dstring_empty( msg_len + 8 ) );
     if( !res ) {
         return NULL;
     }
 
-    vsnprintf( res, size + 2, format, va );
+    vsnprintf( res->buf, res->cap, format, va );
+    res->len = msg_len;
 
-    return res;
+    return res->buf;
 }
 dstring* dstring_fmt( const cstr* format, ... ) {
     va_list va;
