@@ -239,7 +239,7 @@ int main( int argc, const char** argv ) {
 
             cb_info( "%s", flat );
 
-            PID pid = process_exec( cmd, false, 0, 0, 0 );
+            PID pid = process_exec( cmd, false, 0, 0, 0, 0 );
             int res = process_wait( pid );
 
             cb_info( "program '%s' exited with code %i", target_path, res );
@@ -313,7 +313,7 @@ Command get_build_command( string compiler, const cstr* output_path ) {
 b32 build( string compiler, dstring* path ) {
     Command cmd = get_build_command( compiler, path );
 
-    PID pid = process_exec( cmd, false, 0, 0, 0 );
+    PID pid = process_exec( cmd, false, 0, 0, 0, 0 );
     int res = process_wait( pid );
 
     if( res != 0 ) {
