@@ -4660,7 +4660,7 @@ static DWORD fd_open_dwaccess( FileOpenFlags flags ) {
     return res;
 }
 static DWORD fd_open_dwcreationdisposition( FileOpenFlags flags ) {
-    DWORD res = CREATE_ALWAYS;
+    DWORD res = OPEN_EXISTING;
     if( flags & FOPEN_CREATE ) {
         res = CREATE_ALWAYS;
     } else if( flags & FOPEN_TRUNCATE ) {
