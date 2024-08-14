@@ -2164,12 +2164,14 @@ const Command* cbuild_query_command_line(void) {
     return &global_command_line;
 }
 
+void _platform_init_(void);
 void _init_(
     LoggerLevel logger_level,
     const cstr* executable_name,
     const cstr* source_name,
     int argc, const char** argv
 ) {
+    _platform_init_();
     logger_set_level( logger_level );
 
     const char** heap_args = darray_from_array( sizeof(const char*), argc, argv ); {
@@ -4081,6 +4083,10 @@ static struct Win32ThreadParams global_win32_thread_params[CBUILD_THREAD_COUNT];
 
 static HANDLE global_win32_process_heap = NULL;
 
+void _platform_init_(void) {
+    SetConsoleCP( CP_UTF8 );
+    SetConsoleOutputCP( CP_UTF8 );
+}
 static HANDLE get_process_heap(void) {
     if( !global_win32_process_heap ) {
         global_win32_process_heap = GetProcessHeap();
@@ -4383,19 +4389,9 @@ b32 path_is_absolute( const cstr* path ) {
         isalpha( path[0] ) &&
         path[1] == ':';
 }
-static DWORD path_attributes_short( const cstr* path ) {
-    return GetFileAttributesA( path );
-}
-static DWORD path_attributes_long( string path ) {
+static DWORD path_attributes( string path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     return GetFileAttributesW( wpath );
-}
-static DWORD path_attributes( string path ) {
-    if( path.len >= PATH_MAX ) {
-        return path_attributes_long( path );
-    } else {
-        return path_attributes_short( path.cc );
-    }
 }
 b32 path_is_directory( const cstr* path ) {
     string spath = string_from_cstr( path );
@@ -4407,53 +4403,6 @@ b32 path_is_directory( const cstr* path ) {
         return attr & FILE_ATTRIBUTE_DIRECTORY;
     }
 }
-#if 0
-static b32 path_exists_short( string path ) {
-    DWORD attr = path_attributes( path );
-    return attr != INVALID_FILE_ATTRIBUTES;
-
-    if( attr == INVALID_FILE_ATTRIBUTES ) {
-        return false;
-    } else {
-        return true;
-    }
-
-    DWORD dwDesiredAccess       = 0;
-    DWORD dwCreationDisposition = OPEN_EXISTING;
-    DWORD dwFlagsAndAttributes  = 0;
-    DWORD dwShareMode           =
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-
-    HANDLE handle = CreateFileA(
-        path.cc, dwDesiredAccess, dwShareMode,
-        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
-    if( handle == INVALID_HANDLE_VALUE ) {
-        return false;
-    } else {
-        CloseHandle( handle );
-        return true;
-    }
-}
-static b32 path_exists_long( string path ) {
-    DWORD dwDesiredAccess       = 0;
-    DWORD dwCreationDisposition = OPEN_EXISTING;
-    DWORD dwFlagsAndAttributes  = 0;
-    DWORD dwShareMode           =
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-
-    wchar_t* wpath = win32_local_path_canon( path );
-
-    HANDLE handle = CreateFileW(
-        wpath, dwDesiredAccess, dwShareMode,
-        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
-    if( handle == INVALID_HANDLE_VALUE ) {
-        return false;
-    } else {
-        CloseHandle( handle );
-        return true;
-    }
-}
-#endif
 b32 path_exists( const cstr* path ) {
     assertion( path, "null path!" );
     string spath = string_from_cstr( path );
@@ -4547,106 +4496,12 @@ static b32 path_walk_dir_internal_long(
     FindClose( find_file );
     return true;
 }
-static b32 path_walk_dir_internal_short(
-    dstring** path, b32 recursive, b32 include_dirs,
-    usize* out_count, dstring** out_buffer
-) {
-    usize original_len = dstring_len( *path );
-    if( (original_len + 2) >= PATH_MAX ) { // to account for the /*
-        return path_walk_dir_internal_long(
-            path, recursive, include_dirs, out_count, out_buffer );
-    }
-
-    dstring* _new = dstring_append( *path, string_text( "/*" ) );
-    if( !_new ) {
-        return false;
-    }
-    *path = _new;
-
-    WIN32_FIND_DATAA fd;
-    memory_zero( &fd, sizeof( fd ) );
-    HANDLE find_file = FindFirstFileA( *path, &fd );
-    dstring_truncate( *path, original_len );
-
-    if( find_file == INVALID_HANDLE_VALUE ) {
-        return false;
-    }
-
-    do {
-        if(
-            cstr_cmp( fd.cFileName, "." )  ||
-            cstr_cmp( fd.cFileName, ".." ) ||
-            cstr_cmp( fd.cFileName, ".git" )
-        ) {
-            continue;
-        }
-
-        _new = dstring_push( *path, '/' );
-        if( !_new ) {
-            FindClose( find_file );
-            return false;
-        }
-        *path = _new;
-
-        usize name_len = cstr_len( fd.cFileName );
-        _new = dstring_append( *path, string_new( name_len, fd.cFileName ) );
-        if( !_new ) {
-            FindClose( find_file );
-            return false;
-        }
-        *path = _new;
-
-        if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
-            if( include_dirs ) {
-                _new = dstring_append(
-                    *out_buffer, string_new( dstring_len( *path ) + 1 , *path ) );
-                if( !_new ) {
-                    FindClose( find_file );
-                    return false;
-                }
-                *out_buffer = _new;
-                *out_count += 1;
-            }
-
-            if( recursive ) {
-                if( !path_walk_dir_internal_short(
-                    path, recursive, include_dirs, out_count, out_buffer
-                ) ) {
-                    FindClose( find_file );
-                    return false;
-                }
-            }
-
-            dstring_truncate( *path, original_len );
-            continue;
-        }
-
-        _new = dstring_append(
-            *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
-        if( !_new ) {
-            FindClose( find_file );
-            return false;
-        }
-        *out_buffer = _new;
-        *out_count += 1;
-
-        dstring_truncate( *path, original_len );
-    } while( FindNextFileA( find_file, &fd ) != FALSE );
-
-    FindClose( find_file );
-    return true;
-}
 static b32 path_walk_dir_internal(
     dstring** path, b32 recursive, b32 include_dirs,
     usize* out_count, dstring** out_buffer
 ) {
-    if( dstring_len( *path ) >= PATH_MAX ) {
-        return path_walk_dir_internal_long(
-            path, recursive, include_dirs, out_count, out_buffer );
-    } else {
-        return path_walk_dir_internal_short(
-            path, recursive, include_dirs, out_count, out_buffer );
-    }
+    return path_walk_dir_internal_long(
+        path, recursive, include_dirs, out_count, out_buffer );
 }
 
 static DWORD fd_open_dwaccess( FileOpenFlags flags ) {
@@ -4667,27 +4522,6 @@ static DWORD fd_open_dwcreationdisposition( FileOpenFlags flags ) {
         res = TRUNCATE_EXISTING;
     }
     return res;
-}
-static b32 fd_open_short( string path, FileOpenFlags flags, FD* out_file ) {
-    DWORD dwDesiredAccess       = fd_open_dwaccess( flags );
-    DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
-    DWORD dwCreationDisposition = fd_open_dwcreationdisposition( flags );
-    DWORD dwFlagsAndAttributes  = 0;
-
-    HANDLE handle = CreateFileA(
-        path.cc, dwDesiredAccess, dwShareMode, 0,
-        dwCreationDisposition, dwFlagsAndAttributes, 0 );
-    if( handle == INVALID_HANDLE_VALUE ) {
-        DWORD error_code = GetLastError();
-        string msg = win32_local_error_message( error_code );
-
-        cb_error(
-            "failed to open '%s'! reason: (0x%X) %s", path.cc, error_code, msg.cc );
-        return false;
-    }
-
-    *out_file = (usize)handle;
-    return true;
 }
 static b32 fd_open_long( string path, FileOpenFlags flags, FD* out_file ) {
     DWORD dwDesiredAccess       = fd_open_dwaccess( flags );
@@ -4718,11 +4552,7 @@ b32 fd_open( const cstr* path, FileOpenFlags flags, FD* out_file ) {
         return false;
     }
     string path_str = string_from_cstr( path );
-    if( path_str.len >= PATH_MAX ) {
-        return fd_open_long( path_str, flags, out_file );
-    } else {
-        return fd_open_short( path_str, flags, out_file );
-    }
+    return fd_open_long( path_str, flags, out_file );
 }
 void fd_close( FD* file ) {
     CloseHandle( (HANDLE)*file );
@@ -4894,25 +4724,6 @@ usize fd_query_position( FD* file ) {
 #endif
 
 }
-static void file_query_time_short(
-    const cstr* path, FILETIME* out_create, FILETIME* out_modify
-) {
-    DWORD dwDesiredAccess       = 0;
-    DWORD dwCreationDisposition = OPEN_EXISTING;
-    DWORD dwFlagsAndAttributes  = 0;
-    DWORD dwShareMode           =
-        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-
-    HANDLE handle = CreateFileA(
-        path, dwDesiredAccess, dwShareMode,
-        NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
-    expect( handle != INVALID_HANDLE_VALUE, "failed to open file!" );
-    expect(
-        GetFileTime( handle, out_create, 0, out_modify ),
-        "failed to get file time!" );
-
-    CloseHandle( handle );
-}
 static void file_query_time_long(
     string path, FILETIME* out_create, FILETIME* out_modify
 ) {
@@ -4940,11 +4751,7 @@ time_t file_query_time_create( const cstr* path ) {
     memory_zero( &create, sizeof(create) );
 
     usize path_len = cstr_len( path );
-    if( path_len >= PATH_MAX ) {
-        file_query_time_long( string_new( path_len, path ), &create, 0 );
-    } else {
-        file_query_time_short( path, &create, 0 );
-    }
+    file_query_time_long( string_new( path_len, path ), &create, 0 );
 
     return win32_filetime_to_posix( create );
 }
@@ -4953,18 +4760,10 @@ time_t file_query_time_modify( const cstr* path ) {
     memory_zero( &modify, sizeof(modify) );
 
     usize path_len = cstr_len( path );
-    if( path_len >= PATH_MAX ) {
-        file_query_time_long( string_new( path_len, path ), 0, &modify );
-    } else {
-        file_query_time_short( path, 0, &modify );
-    }
-
+    file_query_time_long( string_new( path_len, path ), 0, &modify );
     return win32_filetime_to_posix( modify );
 }
 
-static b32 file_move_short( const cstr* dst, const cstr* src ) {
-    return MoveFileA( src, dst ) == TRUE;
-}
 static b32 file_move_long( string dst, string src ) {
     wchar_t* dst_wide = win32_local_path_canon( dst );
     wchar_t* src_wide = win32_local_path_canon( src );
@@ -4978,17 +4777,10 @@ b32 file_move( const cstr* dst, const cstr* src ) {
     usize dst_len = cstr_len( dst );
     usize src_len = cstr_len( src );
 
-    if( dst_len >= PATH_MAX || src_len >= PATH_MAX ) {
-        return
-            file_move_long( string_new( dst_len, dst ), string_new( src_len, src ) );
-    } else {
-        return file_move_short( dst, src );
-    }
+    return
+        file_move_long( string_new( dst_len, dst ), string_new( src_len, src ) );
 }
 
-static b32 file_copy_short( const cstr* dst, const cstr* src ) {
-    return CopyFileA( src, dst, FALSE ) == TRUE;
-}
 static b32 file_copy_long( string dst, string src ) {
     wchar_t* dst_wide = win32_local_path_canon( dst );
     wchar_t* src_wide = win32_local_path_canon( src );
@@ -5002,15 +4794,8 @@ b32 file_copy( const cstr* dst, const cstr* src ) {
     usize dst_len = cstr_len( dst );
     usize src_len = cstr_len( src );
 
-    if( dst_len >= PATH_MAX || src_len >= PATH_MAX ) {
-        return
-            file_copy_long( string_new( dst_len, dst ), string_new( src_len, src ) );
-    } else {
-        return file_copy_short( dst, src );
-    }
-}
-static b32 file_remove_short( const cstr* path ) {
-    return DeleteFileA( path ) != FALSE;
+    return
+        file_copy_long( string_new( dst_len, dst ), string_new( src_len, src ) );
 }
 static b32 file_remove_long( string path ) {
     wchar_t* path_wide = win32_local_path_canon( path );
@@ -5018,19 +4803,7 @@ static b32 file_remove_long( string path ) {
 }
 b32 file_remove( const cstr* path ) {
     usize path_len = cstr_len( path );
-    if( path_len >= MAX_PATH ) {
-        return file_remove_long( string_new( path_len, path ) );
-    } else {
-        return file_remove_short( path );
-    }
-}
-static b32 dir_create_short( const cstr* path ) {
-    if( CreateDirectoryA( path, 0 ) ) {
-        return true;
-    } else {
-        DWORD res = GetLastError();
-        return res == ERROR_ALREADY_EXISTS;
-    }
+    return file_remove_long( string_new( path_len, path ) );
 }
 static b32 dir_create_long( string path ) {
     wchar_t* wpath = win32_local_path_canon( path );
@@ -5043,14 +4816,7 @@ static b32 dir_create_long( string path ) {
 }
 b32 dir_create( const cstr* path ) {
     usize len = cstr_len( path );
-    if( len >= PATH_MAX ) {
-        return dir_create_long( string_new( len, path ) );
-    } else {
-        return dir_create_short( path );
-    }
-}
-static b32 dir_remove_internal_short( const cstr* path ) {
-    return RemoveDirectoryA( path );
+    return dir_create_long( string_new( len, path ) );
 }
 static b32 dir_remove_internal_long( string path ) {
     wchar_t* wpath = win32_local_path_canon( path );
@@ -5058,11 +4824,7 @@ static b32 dir_remove_internal_long( string path ) {
 }
 static b32 dir_remove_internal( const cstr* path ) {
     usize len = cstr_len( path );
-    if( len >= PATH_MAX ) {
-        return dir_remove_internal_long( string_new( len, path ) );
-    } else {
-        return dir_remove_internal_short( path );
-    }
+    return dir_remove_internal_long( string_new( len, path ) );
 }
 
 atom atomic_add( atom* atomic, atom val ) {
@@ -5242,7 +5004,8 @@ int process_wait( PID pid ) {
     }
 
     DWORD exit_code = 0;
-    expect( GetExitCodeProcess( (HANDLE)pid, &exit_code ), "failed to get exit code!" );
+    expect( GetExitCodeProcess(
+        (HANDLE)pid, &exit_code ), "failed to get exit code!" );
 
     CloseHandle( (HANDLE)pid );
     return exit_code;
@@ -5263,7 +5026,8 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
     }
 
     DWORD exit_code = 0;
-    expect( GetExitCodeProcess( (HANDLE)pid, &exit_code ), "failed to get exit code!" );
+    expect( GetExitCodeProcess(
+        (HANDLE)pid, &exit_code ), "failed to get exit code!" );
 
     if( success ) {
         CloseHandle( (HANDLE)pid );
@@ -5366,6 +5130,10 @@ struct PosixThreadParams {
     u32    id;
 };
 static struct PosixThreadParams global_posix_thread_params[CBUILD_THREAD_COUNT];
+
+void _platform_init_(void) {
+    return;
+}
 
 static struct timespec ms_to_timespec( u32 ms ) {
     struct timespec ts;
