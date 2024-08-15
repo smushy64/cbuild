@@ -5033,7 +5033,7 @@ PID process_exec(
     wchar_t* wide_cwd = NULL;
     if( opt_cwd ) {
         wide_cwd = win32_local_path_canon( string_from_cstr( opt_cwd ) );
-        cb_info( "cd '%S'", cmd_line );
+        cb_info( "cd '%S'", wide_cwd );
     }
 
     cb_info( "%S", cmd_line );
