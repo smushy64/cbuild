@@ -2265,7 +2265,6 @@ does_not_return() void cbuild_rebuild(
     rebuild_cmd.args  = args;
 
     cb_info( "rebuilding with command:" );
-    cb_info( "%s", command_flatten_local( &rebuild_cmd ) );
 
     const char* old_name = local_fmt( "%s.old", cbuild_executable_name );
     if( path_exists( old_name ) ) {
@@ -4562,8 +4561,18 @@ void fd_close( FD* file ) {
 static b32 fd_write_32(
     FD* file, DWORD size, const void* buf, DWORD* opt_out_write_size
 ) {
+    HANDLE hFile = (HANDLE)*file;
+    b32 is_console = GetFileType( hFile ) == FILE_TYPE_CHAR;
+
     DWORD out_size = 0;
-    BOOL res = WriteFile( (HANDLE)*file, buf, size, &out_size, 0 );
+    BOOL res = FALSE;
+    if( is_console ) {
+        // NOTE(alicia): actually UTF-8 encoded
+        // because of _platform_init_ SetConsoleOutputCP to CP_UTF8
+        res = WriteConsoleA( hFile, buf, size, &out_size, 0 );
+    } else {
+        res = WriteFile( hFile, buf, size, &out_size, 0 );
+    }
     if( opt_out_write_size ) {
         *opt_out_write_size = out_size;
     }
@@ -4944,7 +4953,7 @@ PID process_exec(
     Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
     WritePipe* opt_stdout, WritePipe* opt_stderr, const cstr* opt_cwd
 ) {
-    STARTUPINFOA        startup;
+    STARTUPINFOW        startup;
     PROCESS_INFORMATION info;
 
     memory_zero( &startup, sizeof(startup) );
@@ -4982,11 +4991,57 @@ PID process_exec(
 
     DWORD flags = 0;
 
-    cstr* cmd_line = (cstr*)command_flatten_local( &cmd );
+    usize cmd_line_utf8_len = 0;
+    for( usize i = 0; i < cmd.count; ++i ) {
+        cmd_line_utf8_len += cstr_len( cmd.args[i] );
+    }
 
-    BOOL res = CreateProcessA(
+    usize wide_cmd_line_cap  = cmd_line_utf8_len + 8 + cmd.count;
+    usize wide_cmd_line_size = sizeof(wchar_t) * wide_cmd_line_cap;
+    usize wide_cmd_line_len  = 0;
+    wchar_t* cmd_line = HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, wide_cmd_line_size );
+
+    expect( cmd_line, "failed to allocate command line wide buffer!" );
+
+    for( usize i = 0; i < cmd.count; ++i ) {
+        string current = string_from_cstr( cmd.args[i] );
+        if( !current.cc || !current.len ) {
+            continue;
+        }
+
+        b32 contains_space = false;
+        if( string_find( current, ' ', 0 ) ) {
+            cmd_line[wide_cmd_line_len++] = L'"';
+            contains_space = true;
+        }
+
+        int len = MultiByteToWideChar(
+            CP_UTF8, 0, current.cc, current.len, 
+            cmd_line + wide_cmd_line_len, wide_cmd_line_cap - wide_cmd_line_len );
+        wide_cmd_line_len += len;
+
+        if( contains_space ) {
+            cmd_line[wide_cmd_line_len++] = L'"';
+        }
+
+        if( i + 1 != cmd.count ) {
+            cmd_line[wide_cmd_line_len++] = L' ';
+        }
+    }
+
+    wchar_t* wide_cwd = NULL;
+    if( opt_cwd ) {
+        wide_cwd = win32_local_path_canon( string_from_cstr( opt_cwd ) );
+        cb_info( "cd '%S'", cmd_line );
+    }
+
+    cb_info( "%S", cmd_line );
+    BOOL res = CreateProcessW(
         NULL, cmd_line, NULL, NULL, bInheritHandle,
-        flags, NULL, opt_cwd, &startup, &info );
+        flags, NULL, wide_cwd, &startup, &info );
+    HeapFree( GetProcessHeap(), 0, cmd_line );
+
     expect( res, "failed to launch process '%s'!", cmd.args[0] );
 
     CloseHandle( info.hThread );
@@ -5634,12 +5689,19 @@ PID process_exec(
     // thread where process will run
 
     if( opt_cwd ) {
+        cb_info( "cd '%s'", opt_cwd );
         chdir( opt_cwd );
     }
 
     expect_crash( dup2( stdin_ , STDIN_FILENO  ) >= 0, "failed to setup stdin!" );
     expect_crash( dup2( stdout_, STDOUT_FILENO ) >= 0, "failed to setup stdout!" );
     expect_crash( dup2( stderr_, STDERR_FILENO ) >= 0, "failed to setup stderr!" );
+
+    dstring* flat = command_flatten_dstring( &cmd );
+    if( flat ) {
+        cb_info( "%s", flat );
+        dstring_free( flat );
+    }
 
     expect_crash( execvp(
         cmd.args[0], (char* const*)(cmd.args) // cmd.args always has a null string at the end
