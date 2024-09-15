@@ -2321,7 +2321,7 @@ does_not_return() void cbuild_rebuild(
         "\033[1;00m\n" );
     exit(0);
 #else
-    process_exec( global_command_line, false, 0, 0, 0 );
+    process_exec( global_command_line, false, 0, 0, 0, 0 );
     exit(0);
 #endif
 }
