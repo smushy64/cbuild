@@ -5393,7 +5393,7 @@ b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size )
         return false;
     }
 
-    if( *opt_out_write_size ) {
+    if( opt_out_write_size ) {
         *opt_out_write_size = write_size;
     }
     return true;
