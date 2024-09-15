@@ -5374,7 +5374,9 @@ b32 fd_open( const cstr* path, FileOpenFlags flags, FD* out_file ) {
         oflag |= O_APPEND;
     }
 
-    int fd = open( path, oflag );
+    mode_t mode = S_IRUSR | S_IWUSR;
+
+    int fd = open( path, oflag, mode );
     if( fd < 0 ) {
         cb_error( "fd_open: failed to open '%s'!", path );
         return false;
