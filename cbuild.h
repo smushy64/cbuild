@@ -281,11 +281,12 @@ typedef struct {
     /// @brief Array of arguments. Last item in array is a null-pointer.
     const char** args;
 } Command;
-/// @brief Object for dynamically creating a command. Do not use fields directly.
+/// @brief Command line argument builder.
 typedef struct {
-    usize*   args; // darray
-    DString* buf;
-    b32      is_offsets;
+    /// @brief Character buffer.
+    Darray(char) buf;
+    /// @brief Array of strings.
+    Darray(const char*) args;
 } CommandBuilder;
 /// @brief Result of walking a directory.
 typedef struct {
@@ -1597,30 +1598,47 @@ u32 thread_id(void);
 ///     - Dynamic string, free with dstring_free().
 ///     - NULL : Failed to allocate result.
 DString* command_flatten_dstring( const Command* command );
-/// @brief Convert command to null-terminated local string.
-/// @param[in] command Command to convert.
-/// @return Local string containing commmand line.
-const char* command_flatten_local( const Command* command );
 
-/// @brief Create a new command builder.
-/// @param[in]  path        Path to process.
-/// @param[out] out_builder Pointer to write new command builder to.
+/// @brief Create command builder.
+/// @param[in]  exe         Name of executable.
+/// @param[out] out_builder Pointer to write result to.
 /// @return
-///     - @c True  : Successfully created new command builder.
-///     - @c False : Failed to allocate command builder.
-b32 command_builder_new( const char* path, CommandBuilder* out_builder );
-/// @brief Push new argument to end of command builder.
-/// @param[in] builder Command builder to push to.
-/// @param[in] arg     Null-terminated argument to push.
+///     - true  : Allocated new command builder.
+///     - false : Failed to allocate new command builder.
+b32 command_builder_new( const char* exe, CommandBuilder* out_builder );
+/// @brief Clear command builder.
+/// @param[in] builder Builder to clear.
+void command_builder_clear( CommandBuilder* builder );
+/// @brief Push argument to end of command builder.
+/// @param[in] builder Builder to push to.
+/// @param[in] arg     Argument to push.
 /// @return
-///     - @c True  : Pushed new argument.
-///     - @c False : Failed to reallocate @c builder buffers.
+///     - true  : Pushed argument successfully.
+///     - false : Failed to reallocate command builder.
 b32 command_builder_push( CommandBuilder* builder, const char* arg );
-/// @brief Create command from builder. Command is invalidated when @c builder is modified.
-/// @param[in] builder Command builder.
-/// @return Command. Do not use after @c builder is modified (push or free).
+b32 __internal_command_builder_append( CommandBuilder* builder, const char* first, ... );
+/// @brief Append arguments to end of command builder.
+/// @param[in] builder Builder to append to.
+/// @param     args... Arguments to append.
+/// @return
+///     - true  : Appended arguments successfully.
+///     - false : Failed to reallocate command builder.
+#define command_builder_append( builder, args... )\
+    __internal_command_builder_append( builder, args, 0 )
+/// @brief Append list of arguments to end of command builder.
+/// @param[in] builder Builder to append to.
+/// @param     count   Number of arguments to append.
+/// @param[in] args    Pointer to list of arguments to append.
+/// @return
+///     - true  : Appended arguments successfully.
+///     - false : Failed to reallocate command builder.
+b32 command_builder_append_list(
+    CommandBuilder* builder, usize count, const char** args );
+/// @brief Convert builder to command.
+/// @param[in] builder Builder to convert.
+/// @return Command.
 Command command_builder_cmd( CommandBuilder* builder );
-/// @brief Free command builder buffers.
+/// @brief Free command builder.
 /// @param[in] builder Builder to free.
 void command_builder_free( CommandBuilder* builder );
 
@@ -3691,7 +3709,95 @@ b32 job_wait_all( u32 ms ) {
 u32 thread_id(void) {
     return global_thread_id;
 }
+b32 command_builder_new( const char* exe, CommandBuilder* out_builder ) {
+    out_builder->buf = darray_empty( sizeof(char), 128 );
+    if( !out_builder->buf ) {
+        return false;
+    }
+    out_builder->args = darray_empty( sizeof(const char*), 5 );
+    if( !out_builder->args ) {
+        darray_free( out_builder->buf );
+        return false;
+    }
+    command_builder_push( out_builder, exe );
+    return true;
+}
+void command_builder_clear( CommandBuilder* builder ) {
+    darray_clear( builder->buf );
+    darray_clear( builder->args );
+}
+b32 command_builder_push( CommandBuilder* builder, const char* arg ) {
+    usize arg_len = strlen( arg );
+    if( darray_remaining( builder->buf ) < arg_len + 1 ) {
+        Darray(char) new_buf = darray_grow( builder->buf, darray_cap( builder->buf ) );
+        if( !new_buf ) {
+            return false;
+        }
+        builder->buf = new_buf;
+    }
+    if( darray_remaining( builder->args ) < 1 ) {
+        Darray(const char*) new_buf =
+            darray_grow( builder->args, darray_cap( builder->args ) );
+        if( !new_buf ) {
+            return false;
+        }
+        builder->args = new_buf;
+    }
+    const char* new_arg = builder->buf + darray_len( builder->buf );
+    darray_try_append( builder->buf, arg_len + 1, arg );
 
+    darray_pop( builder->args, 0 );
+    darray_try_push( builder->args, &new_arg );
+    const char* null = 0;
+    darray_try_push( builder->args, &null );
+
+    return true;
+}
+b32 __internal_command_builder_append(
+    CommandBuilder* builder, const char* first, ...
+) {
+    if( !command_builder_push( builder, first ) ) {
+        return false;
+    }
+    va_list va;
+    va_start( va, first );
+
+    for( ;; ) {
+        const char* next = va_arg( va, const char* );
+        if( !next ) {
+            break;
+        }
+
+        if( !command_builder_push( builder, next ) ) {
+            va_end(va);
+            return false;
+        }
+    }
+
+    va_end(va);
+    return true;
+}
+b32 command_builder_append_list(
+    CommandBuilder* builder, usize count, const char** args
+) {
+    for( usize i = 0; i < count; ++i ) {
+        if( !command_builder_push( builder, args[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+Command command_builder_cmd( CommandBuilder* builder ) {
+    return (Command){
+        .count = darray_len(builder->args) - 1,
+        .args  = builder->args,
+    };
+}
+void command_builder_free( CommandBuilder* builder ) {
+    darray_free( builder->buf );
+    darray_free( builder->args );
+    memory_zero( builder, sizeof(*builder) );
+}
 DString* command_flatten_dstring( const Command* command ) {
     usize total_len = 1;
     for( usize i = 0; i < command->count; ++i ) {
@@ -3732,145 +3838,6 @@ DString* command_flatten_dstring( const Command* command ) {
     }
 
     return res;
-}
-const char* command_flatten_local( const Command* command ) {
-    char* buf = (char*)local_byte_buffer();
-    usize len = 0;
-
-    for( usize i = 0; i < command->count; ++i ) {
-        const char* current = command->args[i];
-        if( !current ) {
-            continue;
-        }
-
-        usize current_len = strlen( current );
-        if( !current_len ) {
-            continue;
-        }
-
-        b32 contains_space = false;
-        if( strchr( current, ' ' ) ) {
-            buf[len++] = '"';
-            contains_space = true;
-        }
-
-        memory_copy( buf + len, current, current_len );
-        len += current_len;
-
-        if( contains_space ) {
-            buf[len++] = '"';
-        }
-
-        if( i + 1 != command->count ) {
-            buf[len++] = ' ';
-        }
-    }
-
-    return buf;
-}
-static void command_builder_set_offsets( CommandBuilder* builder, b32 is_offsets ) {
-    if( builder->is_offsets == is_offsets ) {
-        return;
-    }
-
-    usize arg_count = darray_len( builder->args ) - 1;
-    if( is_offsets ) {
-        for( usize i = 0; i < arg_count; ++i ) {
-            usize offset = (const char*)builder->args[i] - builder->buf;
-            builder->args[i] = offset;
-        }
-    } else {
-        for( usize i = 0; i < arg_count; ++i ) {
-            usize offset = builder->args[i];
-            builder->args[i] = (usize)builder->buf + offset;
-        }
-    }
-
-    builder->is_offsets = is_offsets;
-}
-b32 command_builder_new( const char* path, CommandBuilder* out_builder ) {
-    assertion( path, "path is null!" );
-
-    usize path_len = strlen( path );
-    CommandBuilder res;
-    res.is_offsets = true;
-    res.buf        = dstring_empty( 33 + path_len );
-    if( !res.buf ) {
-        return false;
-    }
-    res.args = darray_empty( sizeof(usize), 4 );
-    if( !res.args ) {
-        return false;
-    }
-
-    dstring_append_cstr( res.buf, path );
-    dstring_push( res.buf, 0 );
-
-    const char* nul = 0;
-    darray_push( res.args, &nul );
-    darray_push( res.args, &nul );
-
-    *out_builder   = res;
-    return true;
-}
-b32 command_builder_push( CommandBuilder* builder, const char* arg ) {
-    assertion( builder, "builder provided is null!" );
-    assertion( builder->args && builder->buf, "builder provided is malformed!" );
-    assertion( arg, "argument provided is null!" );
-
-    command_builder_set_offsets( builder, true );
-
-    if( darray_remaining( builder->args ) < 3 ) {
-        usize* _new = darray_grow( builder->args, 4 );
-        if( !_new ) {
-            return false;
-        }
-        builder->args = _new;
-    }
-
-    usize arg_len = strlen( arg ) + 1;
-    if( dstring_remaining( builder->buf ) < arg_len ) {
-        DString* _new = dstring_grow( builder->buf, arg_len + 32 );
-        if( !_new ) {
-            return false;
-        }
-        builder->buf = _new;
-    }
-
-    usize offset = dstring_len( builder->buf );
-    darray_pop( builder->args, 0 );
-    darray_try_push( builder->args, &offset );
-
-    assertion(
-        darray_try_push( builder->args, (usize[]){0} ),
-        "reallocation miscalculated!" );
-    assertion(
-        dstring_append( builder->buf, string_new( arg_len, arg ) ),
-        "reallocation miscalculated!" );
-    return true;
-}
-Command command_builder_cmd( CommandBuilder* builder ) {
-    assertion( builder, "builder is null!" );
-    assertion( builder->args, "builder is malformed!" );
-
-    command_builder_set_offsets( builder, false );
-
-    Command res;
-    res.count = darray_len( builder->args ) - 1;
-    res.args  = (const char**)builder->args;
-    
-    return res;
-}
-void command_builder_free( CommandBuilder* builder ) {
-    if( builder ) {
-        if( builder->args ) {
-            darray_free( builder->args );
-        }
-        if( builder->buf ) {
-            dstring_free( builder->buf );
-        }
-        memory_zero( builder, sizeof(*builder) );
-    }
 }
 
 u8* local_byte_buffer() {
