@@ -58,7 +58,7 @@ clang is provided as an alternative in the script.
 - Compile example project.
 ```sh
 cd example
-cc cbuild.c -o cbuild
+cc cbuild.c -o cbuild -I..
 ```
 - Run cbuild.
 ```sh
@@ -75,7 +75,7 @@ change how many threads are created by job system.
 Define `CBUILD_ASSERTIONS` to enable debug assertions.
 
 Define `CBUILD_ADDTIONAL_FLAGS` with additional compiler flags
-thatare used to compile cbuild.
+that are used to compile cbuild.
 
 Example:
 ```C

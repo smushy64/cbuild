@@ -5,7 +5,7 @@
  * @date   May 15, 2024
 */
 #define CBUILD_THREAD_COUNT 16
-#include "../cbuild.h" // including the header from root
+#include "cbuild.h" // including the header from root
 
 typedef enum Result {
     RESULT_SUCCESS,
@@ -38,10 +38,10 @@ b32 mode_from_str( String string, Mode* out_mode );
 #endif
 
 #if defined(COMPILER_MSVC)
-    #define ARG_OUT    "-Fe:"
+    #define ARG_OUT    "-nologo", "-Fe:"
     #define ARG_OPT    "-O2"
     #define ARG_NO_OPT "-Od"
-    #define ARG_SYMB   "-Wl,/debug"
+    #define ARG_SYMB   "-link", "-debug"
 #else
     #define ARG_OUT    "-o"
     #define ARG_OPT    "-O3"
@@ -52,6 +52,12 @@ b32 mode_from_str( String string, Mode* out_mode );
 #if defined(PLATFORM_MINGW) && !defined(COMPILER_MSVC)
     #undef  ARG_SYMB
     #define ARG_SYMB "-g", "-gcodeview", "-fuse-ld=lld", "-Wl,/debug"
+#endif
+
+#if defined(PLATFORM_WINDOWS)
+    #define defstring( macro, string ) "-D" #macro "=\\\"" string "\\\"" 
+#else
+    #define defstring( macro, string ) "-D" #macro "=\"\\\"" string "\"\\\"" 
 #endif
 
 #define PROGRAM_NAME  "test-program" PROGRAM_EXT
@@ -256,8 +262,8 @@ int mode_build( struct BuildArgs* args ) {
 
     CommandBuilder builder;
     command_builder_new( compiler, &builder );
-    #define push( args... )\
-        command_builder_append( &builder, args )
+    #define push( ... )\
+        command_builder_append( &builder, __VA_ARGS__ )
 
     push( "src/main.c" );
 
@@ -269,12 +275,13 @@ int mode_build( struct BuildArgs* args ) {
         push( ARG_NO_OPT );
     }
 
+    push( defstring( CBUILD_MESSAGE, "hello, world!" ) );
+
     if( args->strip_symbols ) {
     } else {
         push( ARG_SYMB );
     }
 
-    push( "-DCBUILD_MESSAGE=\"\\\"hello, world!\\\"\"" );
 
     Command cmd = command_builder_cmd( &builder );
 
@@ -446,6 +453,7 @@ String mode_to_str( Mode mode ) {
 
         case MODE_COUNT : return string_text( "Unknown" );
     }
+    return string_text( "Unknown" );
 }
 String mode_description( Mode mode ) {
     switch( mode ) {
@@ -456,6 +464,7 @@ String mode_description( Mode mode ) {
 
         case MODE_COUNT : return string_text( "Unknown" );
     }
+    return string_text( "Unknown" );
 }
 b32 mode_from_str( String string, Mode* out_mode ) {
     for( Mode mode = 0; mode < MODE_COUNT; ++mode ) {
@@ -469,4 +478,5 @@ b32 mode_from_str( String string, Mode* out_mode ) {
 }
 
 #define CBUILD_IMPLEMENTATION
-#include "../cbuild.h"
+#define CBUILD_ADDITIONAL_FLAGS "-I.."
+#include "cbuild.h"
