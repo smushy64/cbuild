@@ -1624,7 +1624,7 @@ b32 __internal_command_builder_append( CommandBuilder* builder, const char* firs
 ///     - true  : Appended arguments successfully.
 ///     - false : Failed to reallocate command builder.
 #define command_builder_append( builder, ... )\
-    __internal_command_builder_append( builder, __VA_ARGS__, 0 )
+    __internal_command_builder_append( builder, __VA_ARGS__, NULL )
 /// @brief Append list of arguments to end of command builder.
 /// @param[in] builder Builder to append to.
 /// @param     count   Number of arguments to append.
