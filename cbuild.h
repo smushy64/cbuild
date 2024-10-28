@@ -5541,24 +5541,25 @@ PID process_exec(
     expect( pid >= 0, "failed to fork!" );
 
     if( pid ) { // thread that ran process_exec
+        if( opt_cwd ) {
+            cb_info( "cd '%s'", opt_cwd );
+        }
+        DString* flat = command_flatten_dstring( &cmd );
+        if( flat ) {
+            cb_info( "%s", flat );
+            dstring_free( flat );
+        }
         return pid;
     }
 
     // thread where process will run
 
-    if( opt_cwd ) {
-        cb_info( "cd '%s'", opt_cwd );
-        chdir( opt_cwd );
-    }
-
     expect_crash( dup2( stdin_ , STDIN_FILENO  ) >= 0, "failed to setup stdin!" );
     expect_crash( dup2( stdout_, STDOUT_FILENO ) >= 0, "failed to setup stdout!" );
     expect_crash( dup2( stderr_, STDERR_FILENO ) >= 0, "failed to setup stderr!" );
 
-    DString* flat = command_flatten_dstring( &cmd );
-    if( flat ) {
-        cb_info( "%s", flat );
-        dstring_free( flat );
+    if( opt_cwd ) {
+        chdir( opt_cwd );
     }
 
     expect_crash( execvp(
