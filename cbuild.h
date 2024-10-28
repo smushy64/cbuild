@@ -983,11 +983,19 @@ b32 dstring_is_empty( const DString* str );
 ///     - @c True  : Length equals capacity - 1.
 ///     - @c False : Dynamic string has remaining capacity.
 b32 dstring_is_full( const DString* str );
+/// @brief Set length of dstring.
+/// @details
+/// Panics if @c len exceeds string capacity.
+///
+/// This function also sets null-terminator.
+/// @param[in] str Dynamic string.
+/// @param     len Length to set.
+void dstring_set_len( DString* str, usize len );
 /// @brief Get mutable pointer to start of dynamic string buffer.
 /// @details
 /// Used internally.
 /// Returns NULL if @c str is NULL.
-/// @param str Dynamic string.
+/// @param[in] str Dynamic string.
 /// @return Start of dynamic string.
 void* dstring_head( DString* str );
 /// @brief Get pointer to start of dynamic string buffer.
@@ -2987,6 +2995,12 @@ b32 dstring_is_empty( const DString* str ) {
 }
 b32 dstring_is_full( const DString* str ) {
     return dstring_len( str ) == dstring_cap( str );
+}
+void dstring_set_len( DString* str, usize len ) {
+    struct DynamicString* head = dstring_head( str );
+    expect( len < head->cap, "length exceeds string capacity!" );
+    head->len            = len;
+    head->buf[head->len] = 0;
 }
 void* dstring_head( DString* str ) {
     if( !str ) {
