@@ -21,6 +21,8 @@
  * @copyright MIT License.
 */
 // IWYU pragma: begin_exports
+#define _POSIX_C_SOURCE 200809L
+#define _XOPEN_SOURCE 700
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdarg.h>
@@ -134,6 +136,10 @@
     /// @brief Cross-compiler macro for declaring a thread local variable.
     #define make_tls( type )\
         _Thread_local type
+#endif
+
+#if defined(__cplusplus)
+    #define restrict __restrict
 #endif
 
 /// @brief 8-bit unsigned.
@@ -493,13 +499,13 @@ usize strlen_utf8( const char* string );
 /// @brief Create an empty string.
 /// @return Empty @c string.
 #define string_empty()\
-    (String){ .cc=0, .len=0 }
+    (String){ .len=0, .cc=0 }
 /// @brief Create a new string from length and buffer.
 /// @param     length (usize) Length of string buffer.
 /// @param[in] buf    (const char*) Pointer to start of buffer.
 /// @return New @c string.
 #define string_new( length, buf )\
-    (String){ .cc=buf, .len=length }
+    (String){ .len=length, .cc=buf }
 /// @brief Create a new string from string literal.
 /// @param literal (string literal) Literal to make string out of.
 /// @return New @c string.
@@ -1861,7 +1867,7 @@ const Command* cbuild_query_command_line(void);
 /// @param ...       (format and format arguments) Message to log upon failed condition.
 #define expect_crash( condition, ... ) do {\
     if( !(condition) ) {\
-        fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): expected '"#condition"'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
+        fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): expected '" #condition "'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
         fprintf( stderr, __VA_ARGS__ );\
         fprintf( stderr, "\033[1;00m\n" );\
         fflush( stderr );\
@@ -1875,7 +1881,7 @@ const Command* cbuild_query_command_line(void);
 /// @param ...       (format and format arguments) Message to log upon failed condition.
 #define expect( condition, ... ) do {\
     if( !(condition) ) {\
-        fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): expected '"#condition"'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
+        fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): expected '" #condition "'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
         fprintf( stderr, __VA_ARGS__ );\
         fprintf( stderr, "\033[1;00m\n" );\
         fflush( stderr );\
@@ -1886,7 +1892,7 @@ const Command* cbuild_query_command_line(void);
 
 /// @brief Mark control path as unimplemented. (Noreturn)
 #define unimplemented() do {\
-    fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): unimplemented path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
+    fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): unimplemented path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
     fflush( stderr );\
     fence();\
     __insert_panic();\
@@ -1894,7 +1900,7 @@ const Command* cbuild_query_command_line(void);
 
 /// @brief Mark control path as unreachable (hopefully). (Noreturn)
 #define unreachable() do {\
-    fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): reached unreachable path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
+    fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): reached unreachable path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
     fflush( stderr );\
     fence();\
     __insert_unreachable();\
@@ -1910,7 +1916,7 @@ void _init_(
 
 #endif /* header guard */
 
-#if defined(CBUILD_IMPLEMENTATION) || defined(_CLANGD)
+#if defined(CBUILD_IMPLEMENTATION)
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -1918,6 +1924,8 @@ void _init_(
 
 #if defined(PLATFORM_WINDOWS)
     #include <process.h>
+#else
+    void posix_process_replace( Command cmd );
 #endif
 
 struct GlobalBuffers {
@@ -2129,7 +2137,7 @@ static b32 dir_remove_internal( const char* path );
 #endif
 
 #if !defined(CBUILD_POSIX_FLAGS) && defined(PLATFORM_POSIX)
-    #define CBUILD_POSIX_FLAGS "-pthread"
+    #define CBUILD_POSIX_FLAGS "-lpthread"
 #endif
 
 String cbuild_query_compiler(void) {
@@ -2149,7 +2157,9 @@ void _init_(
     _platform_init_();
     logger_set_level( logger_level );
 
-    const char** heap_args = darray_from_array( sizeof(const char*), argc, argv ); {
+    const char** heap_args = (const char**)darray_from_array(
+        sizeof(const char*), argc, argv
+    ); {
         expect( heap_args, "failed to allocate arguments!" );
         const char* nul = 0;
         heap_args = darray_push( heap_args, &nul );
@@ -2296,7 +2306,10 @@ does_not_return() void cbuild_rebuild(
         "\033[1;00m\n" );
     exit(0);
 #else
-    process_exec( global_command_line, false, 0, 0, 0, 0 );
+
+    posix_process_replace( global_command_line );
+    // execvp( global_command_line.args[0], (char* const*)(global_command_line.args) );
+    // process_exec( global_command_line, false, 0, 0, 0, 0 );
     exit(0);
 #endif
 }
@@ -2314,7 +2327,7 @@ void memory_zero( void* memory, usize size ) {
     memory_set( memory, 0, size );
 }
 void memory_stamp( void* memory, usize value_size, const void* value, usize size ) {
-    u8*   dst = memory;
+    u8*   dst = (u8*)memory;
     usize rem = size;
     while( rem ) {
         if( value_size > rem ) {
@@ -2553,11 +2566,11 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
         }
     }
 
-    String* res = darray_empty( sizeof(String), count );
+    String* res = (String*)darray_empty( sizeof(String), count );
     expect( res, "failed to allocate string buffer!" );
 
     if( count == 1 ) {
-        return darray_push( res, &src );
+        return (String*)darray_push( res, &src );
     }
 
     substr = src;
@@ -2618,7 +2631,7 @@ String* string_split_delim_ex(
         }
     }
 
-    String* res = darray_empty( sizeof(String), count );
+    String* res = (String*)darray_empty( sizeof(String), count );
     expect( res, "failed to allocate string buffer!" );
 
     if( count == 1 ) {
@@ -2703,12 +2716,14 @@ usize string_len_utf8( String str ) {
 
 DString* dstring_empty( usize cap ) {
     usize capacity = cap ? cap : 1;
-    struct DynamicString* res = memory_alloc( sizeof(*res) + capacity );
+    struct DynamicString* res =
+        (struct DynamicString*)memory_alloc( sizeof(*res) + capacity );
     res->cap = capacity;
     return res->buf;
 }
 DString* dstring_new( usize len, const char* str ) {
-    struct DynamicString* res = dstring_head( dstring_empty( len + 1 ) );
+    struct DynamicString* res = 
+        (struct DynamicString*)dstring_head( dstring_empty( len + 1 ) );
     if( !res ) {
         return NULL;
     }
@@ -5171,7 +5186,10 @@ static b32 path_walk_dir_internal(
         }
         *path = _new;
 
-        if( entry->d_type == DT_DIR ) {
+        struct stat st;
+        stat( *path, &st );
+
+        if( S_ISDIR( st.st_mode ) ) {
             if( include_dirs ) {
                 _new = dstring_append(
                     *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
@@ -5532,6 +5550,9 @@ b32 process_in_path( const char* process_name ) {
 
     return res == 0;
 }
+void posix_process_replace( Command cmd ) {
+    execvp( cmd.args[0], (char* const*)cmd.args );
+}
 PID process_exec(
     Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
     WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd
@@ -5643,9 +5664,12 @@ f64 timer_seconds(void) {
 
 void thread_sleep( u32 ms ) {
     struct timespec ts = ms_to_timespec( ms );
+    struct timespec rem;
+    memory_zero( &rem, sizeof(rem) );
 
-    // this should never fail.
-    expect( nanosleep( &ts, 0 ) != EFAULT, "nanosleep failed!" );
+    while( clock_nanosleep( CLOCK_REALTIME, 0, &ts, &rem ) ) {
+        ts = rem;
+    }
 }
 
 void* posix_thread_proc( void* params ) {

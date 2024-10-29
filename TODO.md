@@ -11,5 +11,6 @@ BUGS
 DONE
 -----
 
+- [x] posix: cbuild_rebuild doesn't replace exe
 - [x] arbitrarily set dstring len
 
