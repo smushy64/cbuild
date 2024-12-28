@@ -1,23 +1,31 @@
-#if !defined(CBUILD_HEADER)
-#define CBUILD_HEADER
+#if !defined(CB_HEADER)
+#define CB_HEADER
 /**
- * @file   cbuild.h
- * @brief  C Build System.
+ * @file cbuild.h
+ *
+ * @brief C-Build System.
+ *
  * @details
- * Single header library for writing a build system in C.
- * Include to get API, include again (ONCE) with CBUILD_IMPLEMENTATION
- * defined to define implementation.
  *
- * Options can be defined before first include.
- *
- * Options:
- * - define CBUILD_THREAD_COUNT with number between 2 and 16 to set how many
- *   threads cbuild is allowed to initialize.
- * - define CBUILD_ASSERTIONS to get debug assertions in implementation and
- *   access to assertion() macro. The assertion() macro is otherwise defined
- *   to be unused( ... )
+ *    Single header library for writing a build system in C.
+ *    Include to get API, include again (ONCE) with CB_IMPLEMENTATION
+ *    defined to define implementation.
+ *   
+ *    Options can be defined before first include.
+ *   
+ *    Options:
+ *   
+ *    - define CB_THREAD_COUNT with number between 2 and 16 to set how many
+ *      threads cbuild is allowed to initialize.
+ *   
+ *    - define CB_ENABLE_ASSERTIONS to get debug assertions in implementation and
+ *      access to CB_ASSERT() macro. The CB_ASSERT() macro is otherwise defined
+ *      to be CB_UNUSED( ... )
+ * 
  * @author Alicia Amarilla (smushyaa@gmail.com)
- * @date   May 28, 2024
+ *
+ * @date May 28, 2024
+ *
  * @copyright MIT License.
 */
 // IWYU pragma: begin_exports
@@ -32,115 +40,412 @@
 #include <string.h>
 // IWYU pragma: end_exports
 
-#if !(defined(COMPILER_CLANG) || defined(COMPILER_GCC) || defined(COMPILER_MSVC) || defined(COMPILER_UNKNOWN))
+// NOTE(alicia): Macro Constants
+
+/// @brief C-Build major version.
+#define CB_VERSION_MAJOR 0
+/// @brief C-Build minor version.
+#define CB_VERSION_MINOR 2
+/// @brief C-Build patch version.
+#define CB_VERSION_PATCH 0
+
+/// @brief C-Build combined version.
+#define CB_VERSION \
+    (CB_VERSION_MAKE( CB_VERSION_MAJOR, CB_VERSION_MINOR, CB_VERSION_PATCH ))
+
+/// @brief C-Build version string.
+#define CB_VERSION_STRING \
+    CB_STRINGIFY_VALUE( CB_VERSION_MAJOR ) "." \
+    CB_STRINGIFY_VALUE( CB_VERSION_MINOR ) "." \
+    CB_STRINGIFY_VALUE( CB_VERSION_PATCH )
+
+/// @brief Unknown compiler.
+#define CB_COMPILER_UNKNOWN 0
+    /// @brief Unknown compiler name.
+    #define CB_COMPILER_UNKNOWN_NAME    "Unknown"
+    /// @brief Unknown compiler C compiler command.
+    #define CB_COMPILER_UNKNOWN_C_CMD   "cc"
+    /// @brief Unknown compiler C++ compiler command.
+    #define CB_COMPILER_UNKNOWN_CPP_CMD "c++"
+/// @brief GCC compiler.
+#define CB_COMPILER_GCC     1
+    /// @brief GCC compiler name.
+    #define CB_COMPILER_GCC_NAME        "GCC"
+    /// @brief GCC compiler C compiler command.
+    #define CB_COMPILER_GCC_C_CMD       "gcc"
+    /// @brief GCC compiler C++ compiler command.
+    #define CB_COMPILER_GCC_CPP_CMD     "g++"
+/// @brief Clang compiler.
+#define CB_COMPILER_CLANG   2
+    /// @brief Clang compiler name.
+    #define CB_COMPILER_CLANG_NAME      "clang"
+    /// @brief Clang compiler C compiler command.
+    #define CB_COMPILER_CLANG_C_CMD     "clang"
+    /// @brief Clang compiler C++ compiler command.
+    #define CB_COMPILER_CLANG_CPP_CMD   "clang++"
+/// @brief Microsoft Visual C++ compiler.
+#define CB_COMPILER_MSVC    3
+    /// @brief MSVC compiler name.
+    #define CB_COMPILER_MSVC_NAME       "Microsoft Visual C++"
+    /// @brief MSVC compiler C compiler command.
+    #define CB_COMPILER_MSVC_C_CMD      "cl"
+    /// @brief MSVC compiler C++ compiler command.
+    #define CB_COMPILER_MSVC_CPP_CMD    "cl"
+
+#if !defined(CB_COMPILER_COUNT)
+    /// @brief Number of compiler enum variants.
+    #define CB_COMPILER_COUNT 4
+#endif
+// CB_COMPILER_CURRENT
+// CB_COMPILER_CURRENT_NAME
+// CB_COMPILER_CURRENT_C_CMD
+// CB_COMPILER_CURRENT_CPP_CMD
+// CB_COMPILER_IS_GNU_COMPATIBLE (1 or undefined)
+
+/// @brief Unknown platform.
+#define CB_PLATFORM_UNKNOWN   0
+    /// @brief Unknown platform name.
+    #define CB_PLATFORM_UNKNOWN_NAME       "Unknown"
+/// @brief GNU/Linux platform.
+#define CB_PLATFORM_GNU_LINUX 1
+    /// @brief GNU/Linux platform name.
+    #define CB_PLATFORM_GNU_LINUX_NAME     "GNU/Linux"
+/// @brief Windows platform.
+#define CB_PLATFORM_WINDOWS   2
+    /// @brief Windows platform name.
+    #define CB_PLATFORM_WINDOWS_NAME       "Windows"
+    /// @brief Windows (MinGW) platform name.
+    #define CB_PLATFORM_WINDOWS_MINGW_NAME "Windows (MinGW)"
+/// @brief MacOS platform.
+#define CB_PLATFORM_MACOS     3
+    /// @brief MacOS platform name.
+    #define CB_PLATFORM_MACOS_NAME         "MacOS"
+
+#if !defined(CB_PLATFORM_COUNT)
+    /// @brief Number of platform enum variants.
+    #define CB_PLATFORM_COUNT 4
+#endif
+// CB_PLATFORM_CURRENT
+// CB_PLATFORM_CURRENT_NAME
+// CB_PLATFORM_IS_POSIX (1 or undefined)
+// CB_PLATFORM_IS_MINGW (1 or undefined, always undefined on non-windows)
+
+/// @brief Unknown architecture.
+#define CB_ARCH_UNKNOWN 0
+    /// @brief Unknown architecture with unknown word size.
+    #define CB_ARCH_UNKNOWN_UNKNOWN_NAME "Unknown-Unknown"
+    /// @brief Unknown architecture with 32-bit word size.
+    #define CB_ARCH_UNKNOWN_32_NAME      "Unknown-32"
+    /// @brief Unknown architecture with 64-bit word size.
+    #define CB_ARCH_UNKNOWN_64_NAME      "Unknown-64"
+/// @brief x86 architecture.
+#define CB_ARCH_X86     1
+    /// @brief x86 architecture with unknown word size.
+    #define CB_ARCH_X86_UNKNOWN_NAME     "x86-Unknown"
+    /// @brief x86 architecture with 32-bit word size.
+    #define CB_ARCH_X86_32_NAME          "x86"
+    /// @brief x86 architecture with 64-bit word size.
+    #define CB_ARCH_X86_64_NAME          "x86-64"
+/// @brief ARM architecture.
+#define CB_ARCH_ARM     2
+    /// @brief ARM architecture with unknown word size.
+    #define CB_ARCH_ARM_UNKNOWN_NAME     "ARM-Unknown"
+    /// @brief ARM architecture with 32-bit word size.
+    #define CB_ARCH_ARM_32_NAME          "ARM"
+    /// @brief ARM architecture with 64-bit word size.
+    #define CB_ARCH_ARM_64_NAME          "ARM64"
+
+#if !defined(CB_ARCH_COUNT)
+    /// @brief Number of architecture enum variants.
+    #define CB_ARCH_COUNT 3
+#endif
+// CB_ARCH_CURRENT
+// CB_ARCH_CURRENT_NAME
+// CB_ARCH_WORD_SIZE (realistically, 64 or 32, defaults to 32)
+// CB_ARCH_IS_64BIT  (1 or undefined)
+
+#if !defined(CB_COMPILER_CURRENT)
     #if defined(__clang__)
-        /// @brief Current compiler is clang (LLVM).
-        #define COMPILER_CLANG
+        /// @brief Current compiler is clang.
+        #define CB_COMPILER_CURRENT CB_COMPILER_CLANG
     #elif defined(__GNUC__)
         /// @brief Current compiler is GCC.
-        #define COMPILER_GCC
+        #define CB_COMPILER_CURRENT CB_COMPILER_GCC
     #elif defined(_MSC_VER)
-        /// @brief Current compiler is Microsoft Visual C++.
-        #define COMPILER_MSVC
+        /// @brief Current compiler is MSVC.
+        #define CB_COMPILER_CURRENT CB_COMPILER_MSVC
     #else
         /// @brief Current compiler is unknown.
-        #define COMPILER_UNKNOWN
+        #define CB_COMPILER_CURRENT CB_COMPILER_UNKNOWN
     #endif
-#endif /* If no compiler is defined */
+#endif
 
-#if defined(_WIN32)
-    /// @brief Current platform is Windows.
-    #define PLATFORM_WINDOWS 1
-    #if defined(__MINGW32__) || defined(__MINGW64__)
-        /// @brief C Build compiled using MinGW subsystem.
-        #define PLATFORM_MINGW 1
+#if !defined(CB_COMPILER_IS_GNU_COMPATIBLE)
+    #if CB_COMPILER_CURRENT == CB_COMPILER_GCC || \
+        CB_COMPILER_CURRENT == CB_COMPILER_CLANG
+
+        /// @brief Current compiler is compatible with GNU extensions.
+        #define CB_COMPILER_IS_GNU_COMPATIBLE 1
     #endif
-#elif defined(__linux__)
-    /// @brief Current platform is GNU/Linux.
-    #define PLATFORM_LINUX 1
-    /// @brief Current platform is POSIX compliant.
-    #define PLATFORM_POSIX 1
-#elif defined(__APPLE__)
-    /// @brief Current platform is MacOS.
-    #define PLATFORM_MACOS 1
-    /// @brief Current platform is POSIX compliant.
-    #define PLATFORM_POSIX 1
-#else
-    /// @brief Current platform is unknown.
-    #define PLATFORM_UNKNOWN 1
-    #if __has_include(<unistd.h>)
+#endif
+
+#if !defined(CB_PLATFORM_CURRENT)
+    #if defined(_WIN32)
+        /// @brief Current platform is Windows.
+        #define CB_PLATFORM_CURRENT CB_PLATFORM_WINDOWS
+    #elif defined(__gnu_linux__)
+        /// @brief Current platform is GNU/Linux.
+        #define CB_PLATFORM_CURRENT CB_PLATFORM_GNU_LINUX
+    #elif defined(__APPLE__)
+        /// @brief Current platform is MacOS.
+        #define CB_PLATFORM_CURRENT CB_PLATFORM_MACOS
+    #else
+        /// @brief Current platform is unknown.
+        #define CB_PLATFORM_CURRENT CB_PLATFORM_UNKNOWN
+    #endif
+#endif
+
+#if !defined(CB_PLATFORM_IS_POSIX)
+    #if CB_PLATFORM_CURRENT == CB_PLATFORM_GNU_LINUX || \
+        CB_PLATFORM_CURRENT == CB_PLATFORM_MACOS
+        
         /// @brief Current platform is POSIX compliant.
-        #define PLATFORM_POSIX 1
+        #define CB_PLATFORM_IS_POSIX 1
+
+    #elif CB_PLATFORM_CURRENT == CB_PLATFORM_UNKNOWN && CB_COMPILER_IS_GNU_COMPATIBLE
+
+        #if __has_include(<unistd.h>)
+            /// @brief Current platform is POSIX compliant.
+            #define CB_PLATFORM_IS_POSIX 1
+        #endif
+
     #endif
 #endif
 
-#if defined(__arm__) || defined(_M_ARM) || defined(__aarch64__) || defined(_M_ARM64)
-    /// @brief Current CPU architecture is ARM-based.
-    #define ARCH_ARM 1
-#elif defined(__i386__) || defined(_M_IX86) || defined(__X86__) || defined(__x86_64__)
-    /// @brief Current CPU architecture is x86 or x86-64.
-    #define ARCH_X86 1
-#else
-    /// @brief Current CPU architecture is unknown.
-    #define ARCH_UNKNOWN 1
+#if !defined(CB_PLATFORM_IS_MINGW)
+    #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS && \
+        (defined(__MINGW32__) || defined(__MINGW64__))
+    
+        /// @brief Platform is Windows with MinGW.
+        #define CB_PLATFORM_IS_MINGW 1
+    #endif
 #endif
 
-#if UINT64_MAX == UINTPTR_MAX
-    /// @brief Current CPU architecture is 64-bit.
-    #define ARCH_64BIT 1
-#else
-    /// @brief Current CPU architecture is 32-bit.
-    #define ARCH_32BIT 1
+#if !defined(CB_ARCH_CURRENT)
+    #if defined(__aarch64__) || defined(_M_ARM64)
+
+        /// @brief Current architecture is ARM.
+        #define CB_ARCH_CURRENT CB_ARCH_ARM
+
+        #if !defined(CB_ARCH_WORD_SIZE)
+            /// @brief Current word size is 64-bit.
+            #define CB_ARCH_WORD_SIZE 64
+        #endif
+
+    #elif defined(__arm__) || defined(_M_ARM)
+
+        /// @brief Current architecture is ARM.
+        #define CB_ARCH_CURRENT CB_ARCH_ARM
+
+        #if !defined(CB_ARCH_WORD_SIZE)
+            /// @brief Current word size is 32-bit.
+            #define CB_ARCH_WORD_SIZE 32
+        #endif
+    
+    #elif defined(__X86__) || defined(__x86_64__)
+
+        /// @brief Current architecture is x86.
+        #define CB_ARCH_CURRENT CB_ARCH_X86
+
+        #if !defined(CB_ARCH_WORD_SIZE)
+            /// @brief Current word size is 64-bit.
+            #define CB_ARCH_WORD_SIZE 64
+        #endif
+
+    #elif defined(__i386__) || defined(_M_IX86)
+
+        /// @brief Current architecture is x86.
+        #define CB_ARCH_CURRENT CB_ARCH_X86
+
+        #if !defined(CB_ARCH_WORD_SIZE)
+            /// @brief Current word size is 32-bit.
+            #define CB_ARCH_WORD_SIZE 32
+        #endif
+
+    #else
+
+        /// @brief Current architecture is unknown.
+        #define CB_ARCH_CURRENT CB_ARCH_UNKNOWN
+
+        #if !defined(CB_ARCH_WORD_SIZE)
+
+            #if UINT64_MAX == UINTPTR_MAX
+                /// @brief Current word size is 64-bit.
+                #define CB_ARCH_WORD_SIZE 64
+            #else
+                /// @brief Current word size is 32-bit.
+                #define CB_ARCH_WORD_SIZE 32
+            #endif
+
+        #endif
+    #endif
+#endif /* !defined(CB_ARCH_CURRENT) */
+
+#if !defined(CB_ARCH_IS_64BIT)
+    #if CB_ARCH_WORD_SIZE == 64
+        /// @brief Current architecture is 64-bit.
+        #define CB_ARCH_IS_64BIT 1
+    #endif /* CB_ARCH_WORD_SIZE == 64 */
+#endif /* !defined(CB_ARCH_IS_64BIT) */
+
+#if !defined(CB_COMPILER_CURRENT_NAME)
+    #if CB_COMPILER_CURRENT == CB_COMPILER_GCC
+        /// @brief Name of current compiler.
+        #define CB_COMPILER_CURRENT_NAME CB_COMPILER_GCC_NAME
+    #elif CB_COMPILER_CURRENT == CB_COMPILER_CLANG
+        /// @brief Name of current compiler.
+        #define CB_COMPILER_CURRENT_NAME CB_COMPILER_CLANG_NAME
+    #elif CB_COMPILER_CURRENT == CB_COMPILER_MSVC
+        /// @brief Name of current compiler.
+        #define CB_COMPILER_CURRENT_NAME CB_COMPILER_MSVC_NAME
+    #else
+        /// @brief Name of current compiler.
+        #define CB_COMPILER_CURRENT_NAME CB_COMPILER_UNKNOWN_NAME
+    #endif
 #endif
 
-/// @brief Maximum path length expected.
-#define CBUILD_PATH_CAPACITY (4096)
+#if !defined(CB_COMPILER_CURRENT_C_CMD)
+    #if CB_COMPILER_CURRENT == CB_COMPILER_CLANG
+        /// @brief C compile command of current compiler.
+        #define CB_COMPILER_CURRENT_C_CMD   CB_COMPILER_CLANG_C_CMD
+    #elif CB_COMPILER_CURRENT == CB_COMPILER_GCC
+        /// @brief C compile command of current compiler.
+        #define CB_COMPILER_CURRENT_C_CMD   CB_COMPILER_GCC_C_CMD
+    #elif CB_COMPILER_CURRENT == CB_COMPILER_MSVC
+        /// @brief C compile command of current compiler.
+        #define CB_COMPILER_CURRENT_C_CMD   CB_COMPILER_MSVC_C_CMD
+    #else
+        /// @brief C compile command of current compiler.
+        #define CB_COMPILER_CURRENT_C_CMD   CB_COMPILER_UNKNOWN_C_CMD
+    #endif
+#endif
 
-#if defined(PLATFORM_WINDOWS)
-    #undef CBUILD_PATH_CAPACITY
-    /// @brief Maximum path length expected.
-    #define CBUILD_PATH_CAPACITY (8192) // this is to allow wide paths the same max length as narrow paths
+#if !defined(CB_COMPILER_CURRENT_CPP_CMD)
+    #if CB_COMPILER_CURRENT == CB_COMPILER_CLANG
+        /// @brief C++ compile command of current compiler.
+        #define CB_COMPILER_CURRENT_CPP_CMD CB_COMPILER_CLANG_CPP_CMD
+    #elif CB_COMPILER_CURRENT == CB_COMPILER_GCC
+        /// @brief C++ compile command of current compiler.
+        #define CB_COMPILER_CURRENT_CPP_CMD CB_COMPILER_GCC_CPP_CMD
+    #elif CB_COMPILER_CURRENT == CB_COMPILER_MSVC
+        /// @brief C++ compile command of current compiler.
+        #define CB_COMPILER_CURRENT_CPP_CMD CB_COMPILER_MSVC_CPP_CMD
+    #else
+        /// @brief C++ compile command of current compiler.
+        #define CB_COMPILER_CURRENT_CPP_CMD CB_COMPILER_UNKNOWN_CPP_CMD
+    #endif
+#endif
+
+#if !defined(CB_PLATFORM_CURRENT_NAME)
+    #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
+        #if CB_PLATFORM_IS_MINGW
+            /// @brief Name of current platform.
+            #define CB_PLATFORM_CURRENT_NAME CB_PLATFORM_WINDOWS_MINGW_NAME
+        #else
+            /// @brief Name of current platform.
+            #define CB_PLATFORM_CURRENT_NAME CB_PLATFORM_WINDOWS_NAME
+        #endif
+    #elif CB_PLATFORM_CURRENT == CB_PLATFORM_GNU_LINUX
+        /// @brief Name of current platform.
+        #define CB_PLATFORM_CURRENT_NAME CB_PLATFORM_GNU_LINUX_NAME
+    #elif CB_PLATFORM_CURRENT == CB_PLATFORM_MACOS
+        /// @brief Name of current platform.
+        #define CB_PLATFORM_CURRENT_NAME CB_PLATFORM_MACOS_NAME
+    #else
+        /// @brief Name of current platform.
+        #define CB_PLATFORM_CURRENT_NAME CB_PLATFORM_UNKNOWN_NAME
+    #endif
+#endif
+
+#if !defined(CB_ARCH_CURRENT_NAME)
+    #if CB_ARCH_CURRENT == CB_ARCH_X86
+        #if CB_ARCH_WORD_SIZE == 64
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_X86_64_NAME
+        #elif CB_ARCH_WORD_SIZE == 32
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_X86_32_NAME
+        #else
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_X86_UNKNOWN_NAME
+        #endif
+    #elif CB_ARCH_CURRENT == CB_ARCH_ARM
+        #if CB_ARCH_WORD_SIZE == 64
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_ARM_64_NAME
+        #elif CB_ARCH_WORD_SIZE == 32
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_ARM_32_NAME
+        #else
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_ARM_UNKNOWN_NAME
+        #endif
+    #else
+        #if CB_ARCH_WORD_SIZE == 64
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_UNKNOWN_64_NAME
+        #elif CB_ARCH_WORD_SIZE == 32
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_UNKNOWN_32_NAME
+        #else
+            /// @brief Name of current architecture.
+            #define CB_ARCH_CURRENT_NAME CB_ARCH_UNKNOWN_UNKNOWN_NAME
+        #endif
+    #endif
+#endif
+
+#if !defined(CB_PATH_CAPACITY)
+    #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
+        /// @brief Maximum path length expected.
+        #define CB_PATH_CAPACITY (8192)
+        // NOTE(alicia): this is to allow wide paths to be the same max length as narrow paths
+    #else
+        /// @brief Maximum path length expected.
+        #define CB_PATH_CAPACITY (4096)
+    #endif
 #endif
 
 /// @brief Number of local buffers per thread.
-#define CBUILD_LOCAL_BUFFER_COUNT (4)
+#define CB_LOCAL_BUFFER_COUNT (4)
 /// @brief Capacity of local buffers in bytes.
-#define CBUILD_LOCAL_BUFFER_CAPACITY CBUILD_PATH_CAPACITY
+#define CB_LOCAL_BUFFER_CAPACITY CB_PATH_CAPACITY
 
 /// @brief Maximum number of MT jobs.
-#define CBUILD_MAX_JOBS (32)
+#define CB_MAX_JOBS (32)
 
 /// @brief Minimum number of threads allowed.
-#define CBUILD_THREAD_COUNT_MIN (1)
+#define CB_THREAD_COUNT_MIN (1)
 /// @brief Maximum number of threads allowed.
-#define CBUILD_THREAD_COUNT_MAX (16)
+#define CB_THREAD_COUNT_MAX (16)
 
-#if !defined(CBUILD_THREAD_COUNT)
+#if !defined(CB_THREAD_COUNT)
     /// @brief Number of threads to be spawned for job system.
-    #define CBUILD_THREAD_COUNT (8)
+    #define CB_THREAD_COUNT (8)
 #else
-    #if CBUILD_THREAD_COUNT > CBUILD_THREAD_COUNT_MAX
+    #if CB_THREAD_COUNT > CB_THREAD_COUNT_MAX
         /// @brief Number of threads to be spawned for job system.
-        #define CBUILD_THREAD_COUNT CBUILD_THREAD_COUNT_MAX
-    #elif CBUILD_THREAD_COUNT < CBUILD_THREAD_COUNT_MIN
+        #define CB_THREAD_COUNT CB_THREAD_COUNT_MAX
+    #elif CB_THREAD_COUNT < CB_THREAD_COUNT_MIN
         /// @brief Number of threads to be spawned for job system.
-        #define CBUILD_THREAD_COUNT CBUILD_THREAD_COUNT_MIN
+        #define CB_THREAD_COUNT CB_THREAD_COUNT_MIN
     #endif
-#endif
-
-#if defined(COMPILER_MSVC)
-    /// @brief Cross-compiler macro for declaring a thread local variable.
-    #define make_tls( type )\
-        __declspec( thread ) type
-#else
-    /// @brief Cross-compiler macro for declaring a thread local variable.
-    #define make_tls( type )\
-        _Thread_local type
 #endif
 
 #if defined(__cplusplus)
     #define restrict __restrict
 #endif
+
+// NOTE(alicia): Types
 
 /// @brief 8-bit unsigned.
 typedef uint8_t   u8;
@@ -182,7 +487,7 @@ typedef u32 b32;
 /// @details When returned from library, guaranteed to be 0 or 1.
 typedef u64 b64;
 
-#if defined(PLATFORM_WINDOWS)
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Volatile 32-bit signed for atomic operations.
     typedef volatile long      atom;
     /// @brief Volatile 64-bit signed for atomic operations.
@@ -216,44 +521,44 @@ typedef enum {
     /// @brief Info level.
     /// @details
     /// Most permissive, all logger messages allowed.
-    LOGGER_LEVEL_INFO,
+    CB_LOGGER_LEVEL_INFO,
     /// @brief Warning level.
     /// @details
     /// Warning, Error and Fatal messages allowed.
-    LOGGER_LEVEL_WARNING,
+    CB_LOGGER_LEVEL_WARNING,
     /// @brief Error level.
     /// @details
     /// Error and Fatal messages allowed.
-    LOGGER_LEVEL_ERROR,
+    CB_LOGGER_LEVEL_ERROR,
     /// @brief Fatal level.
     /// @details
     /// Most restrictive level, only fatal messages allowed.
-    LOGGER_LEVEL_FATAL,
+    CB_LOGGER_LEVEL_FATAL,
 } LoggerLevel;
 /// @brief Types of file seek.
 typedef enum {
     /// @brief Seek from current position.
-    FSEEK_CURRENT,
+    CB_FSEEK_CURRENT,
     /// @brief Seek from start of file.
-    FSEEK_BEGIN,
+    CB_FSEEK_BEGIN,
     /// @brief Seek from end of file.
-    FSEEK_END,
+    CB_FSEEK_END,
 } FileSeek;
 /// @brief Flags for opening file.
 typedef enum {
     /// @brief Open file for reading.
-    FOPEN_READ     = (1 << 0),
+    CB_FOPEN_READ     = (1 << 0),
     /// @brief Open file for writing.
-    FOPEN_WRITE    = (1 << 1),
+    CB_FOPEN_WRITE    = (1 << 1),
     /// @brief Create file. File must not exist if using this flag.
-    FOPEN_CREATE   = (1 << 2),
+    CB_FOPEN_CREATE   = (1 << 2),
     /// @brief Open and truncate file. File can only be opened for writing.
-    FOPEN_TRUNCATE = (1 << 3),
+    CB_FOPEN_TRUNCATE = (1 << 3),
     /// @brief Open and set position to end of file. File must be opened for writing.
-    FOPEN_APPEND   = (1 << 4),
+    CB_FOPEN_APPEND   = (1 << 4),
 } FileOpenFlags;
 
-#if defined(PLATFORM_WINDOWS)
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Cross-platform file descriptor.
     typedef isize FD;
     /// @brief Cross-platform process ID.
@@ -325,88 +630,217 @@ typedef String StringSplitDelimFilterFN( usize index, String str, void* params )
 typedef b32 DarrayFilterFN(
     usize index, usize item_stride, const void* item, void* params );
 
-static inline void _0( int _, ... ) {(void)_;}
+// NOTE(alicia): Macro Functions
+
 /// @brief Mark any variables/parameters as unused.
 /// @param ... Variables to be marked as unused.
-#define unused( ... ) _0( 0, __VA_ARGS__ )
+#define CB_UNUSED( ... ) _INTERNAL_CB_UNUSED_FUNCTION( 0, __VA_ARGS__ )
 
-/// @brief Insert a panic.
-#define __insert_panic() exit(-1)
+#define _INTERNAL_CB_INSERT_PANIC() exit(-1)
 
-#if defined(COMPILER_MSVC)
-    /// @brief Insert an unreachable statement.
-    #define __insert_unreachable() __assume(0)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
+    #define _INTERNAL_CB_INSERT_UNREACHABLE()    __assume(0)
+    #define _INTERNAL_CB_INSERT_CRASH()          __debugbreak()
+
     /// @brief Insert a debugger break statement.
-    #define insert_break()         __debugbreak()
-    /// @brief Insert a runtime crash.
-    #define __insert_crash()       __debugbreak()
+    #define CB_DEBUG_BREAK()                     __debugbreak()
+
     /// @brief Mark function as no return.
-    #define does_not_return()      __declspec( noreturn )
+    #define CB_NO_RETURN                         __declspec( noreturn )
+
+    /// @brief Cross-compiler macro for declaring a thread local variable.
+    #define CB_TLS( type )\
+        __declspec( thread ) type
 #else
-    /// @brief Insert an unreachable statement.
-    #define __insert_unreachable() __builtin_unreachable()
+    #define _INTERNAL_CB_INSERT_UNREACHABLE()    __builtin_unreachable()
+    #define _INTERNAL_CB_INSERT_CRASH()          __builtin_trap()
+
     /// @brief Insert a debugger break statement.
-    #define insert_break()         __builtin_debugtrap()
-    /// @brief Insert a runtime crash.
-    #define __insert_crash()       __builtin_trap()
+    #define CB_DEBUG_BREAK()                     __builtin_debugtrap()
+
     /// @brief Mark function as no return.
-    #define does_not_return()      _Noreturn
+    #define CB_NO_RETURN                         _Noreturn
+
+    /// @brief Cross-compiler macro for declaring a thread local variable.
+    #define CB_TLS( type )\
+        _Thread_local type
 #endif
 
-/// @brief Stringify macro name.
-/// @param macro (any defined) Macro to stringify
-/// @return String literal.
-#define macro_to_string( macro ) #macro
-/// @brief Stringify macro value.
-/// @param macro (any defined) Macro whose value will be stringified.
-/// @return String literal.
-#define macro_value_to_string( macro ) macro_to_string( macro )
+#if defined(CB_ENABLE_ASSERTIONS)
+    /// @brief Check if condition is true. Panic if it's not. (Noreturn on fail)
+    /// @param condition (boolean expression) Condition to check.
+    /// @param ...       (format and format arguments) Message to log upon failed condition.
+    #define CB_ASSERT( condition, ... ) do {\
+        if( !(condition) ) {\
+            fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): assertion '"#condition"' failed! message: ", thread_id(), __LINE__, __FUNCTION__ );\
+            fprintf( stderr, __VA_ARGS__ );\
+            fprintf( stderr, "\033[1;00m\n" );\
+            fflush( stderr );\
+            fence();\
+            _INTERNAL_CB_INSERT_PANIC();\
+        }\
+    } while(0)
+#else
+    /// @brief Check if condition is true. Panic if it's not. (Noreturn on fail)
+    /// @param ... (anything) Assertion is disabled so any arguments go to CB_UNUSED() macro.
+    #define CB_ASSERT( ... ) CB_UNUSED( __VA_ARGS__ )
+#endif
+
+/// @brief Insert a panic with message. (Noreturn)
+/// @param ... (format and format arguments) Message to log.
+#define CB_PANIC( ... ) do {\
+    fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): panic! message: ", thread_id(), __LINE__, __FUNCTION__ );\
+    fprintf( stderr, __VA_ARGS__ );\
+    fprintf( stderr, "\033[1;00m\n" );\
+    fflush( stderr );\
+    fence();\
+    _INTERNAL_CB_INSERT_PANIC();\
+} while(0)
+
+/// @brief Assert something that should always be checked. (Noreturn on fail)
+/// @details
+/// Crashes program rather than inserting exit(-1) on fail.
+/// @param condition (boolean expression) Condition to check.
+/// @param ...       (format and format arguments) Message to log upon failed condition.
+#define CB_EXPECT_CRASH( condition, ... ) do {\
+    if( !(condition) ) {\
+        fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): expected '" #condition "'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
+        fprintf( stderr, __VA_ARGS__ );\
+        fprintf( stderr, "\033[1;00m\n" );\
+        fflush( stderr );\
+        fence();\
+        _INTERNAL_CB_INSERT_CRASH();\
+    }\
+} while(0)
+
+/// @brief Assert something that should always be checked. (Noreturn on fail)
+/// @param condition (boolean expression) Condition to check.
+/// @param ...       (format and format arguments) Message to log upon failed condition.
+#define CB_EXPECT( condition, ... ) do {\
+    if( !(condition) ) {\
+        fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): expected '" #condition "'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
+        fprintf( stderr, __VA_ARGS__ );\
+        fprintf( stderr, "\033[1;00m\n" );\
+        fflush( stderr );\
+        fence();\
+        _INTERNAL_CB_INSERT_PANIC();\
+    }\
+} while(0)
+
+/// @brief Mark control path as unimplemented. (Noreturn)
+#define CB_UNIMPLEMENTED() do {\
+    fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): unimplemented path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
+    fflush( stderr );\
+    fence();\
+    _INTERNAL_CB_INSERT_PANIC();\
+} while(0)
+
+/// @brief Mark control path as unreachable (hopefully). (Noreturn)
+#define CB_UNREACHABLE() do {\
+    fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): reached unreachable path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
+    fflush( stderr );\
+    fence();\
+    _INTERNAL_CB_INSERT_UNREACHABLE();\
+    _INTERNAL_CB_INSERT_PANIC();\
+} while(0)
+/*           ^^^^^ just in case compiler warns */
+
+/// @brief Create version integer the same way C-Build defines version integers.
+/// @param major (unsigned short) Major version.
+/// @param minor (unsigned char)  Minor version.
+/// @param patch (unsigned char)  Patch version.
+/// @return (unsigned int) C-Build version integer.
+#define CB_VERSION_MAKE( major, minor, patch ) \
+    ((unsigned int)((major) << 16u | (minor) << 8u | (patch)))
+
+/// @brief Read major version from C-Build style version integer.
+/// @param version (unsigned int) Version integer.
+/// @return (unsigned short) Major version.
+#define CB_VERSION_READ_MAJOR( version ) \
+    ((unsigned short)(((version) & 0xFFFF0000u) >> 16u))
+/// @brief Read minor version from C-Build style version integer.
+/// @param version (unsigned int) Version integer.
+/// @return (unsigned char) Minor version.
+#define CB_VERSION_READ_MINOR( version ) \
+    ((unsigned char)(((version) & 0x0000FF00u) >> 8u))
+/// @brief Read patch version from C-Build style version integer.
+/// @param version (unsigned int) Version integer.
+/// @return (unsigned char) Patch version.
+#define CB_VERSION_READ_PATCH( version ) \
+    ((unsigned char)((version) & 0x000000FFu))
+
+/// @brief Stringify.
+/// @param x (Any) C identifier to stringify.
+/// @return (const char* literal) String.
+#define CB_STRINGIFY( x )       #x
+/// @brief Stringify expanded macro.
+/// @param x (Any) Macro to expand, then stringify.
+/// @return (const char* literal) String.
+#define CB_STRINGIFY_VALUE( x ) CB_STRINGIFY( x )
+
+/// @brief Log an info level message to stdout.
+/// @param ... (format and format arguments) Message to log.
+#define CB_INFO( ... )  logger( CB_LOGGER_LEVEL_INFO, __VA_ARGS__ )
+/// @brief Log a warning level message to stdout.
+/// @param ... (format and format arguments) Message to log.
+#define CB_WARN( ... )  logger( CB_LOGGER_LEVEL_WARNING, __VA_ARGS__ )
+/// @brief Log an error level message to stderr.
+/// @param ... (format and format arguments) Message to log.
+#define CB_ERROR( ... ) logger( CB_LOGGER_LEVEL_ERROR, __VA_ARGS__ )
+/// @brief Log a fatal level message to stderr.
+/// @param ... (format and format arguments) Message to log.
+#define CB_FATAL( ... ) logger( CB_LOGGER_LEVEL_FATAL, __VA_ARGS__ )
+
 /// @brief Calculate length of static array.
 /// @param array (any[]) Static array to calculate length of.
 /// @return (usize) Length of @c array.
-#define static_array_len( array ) (sizeof(array) / sizeof((array)[0]))
+#define CB_ARRAY_LEN( array ) (sizeof(array) / sizeof((array)[0]))
 /// @brief Convert kilobytes to bytes.
 /// @param kb (size_t) Kilobytes.
 /// @return (size_t) @c kb as bytes.
-#define kilobytes( kb ) (kb * 1000ULL)
+#define CB_KILOBYTES( kb ) (kb * 1000ULL)
 /// @brief Convert megabytes to bytes.
 /// @param mb (size_t) Megabytes.
 /// @return (size_t) @c mb as bytes.
-#define megabytes( mb ) (kilobytes(mb) * 1000ULL)
+#define CB_MEGABYTES( mb ) (CB_KILOBYTES(mb) * 1000ULL)
 /// @brief Convert gigabytes to bytes.
 /// @param gb (size_t) Gigabytes.
 /// @return (size_t) @c gb as bytes.
-#define gigabytes( gb ) (megabytes(gb) * 1000ULL)
+#define CB_GIGABYTES( gb ) (CB_MEGABYTES(gb) * 1000ULL)
 /// @brief Convert Terabytes to bytes.
 /// @param tb (size_t) Terabytes.
 /// @return (size_t) @c tb as bytes.
-#define terabytes( tb ) (gigabytes(tb) * 1000ULL)
+#define CB_TERABYTES( tb ) (CB_GIGABYTES(tb) * 1000ULL)
 /// @brief Convert kibibytes to bytes.
 /// @param kb (size_t) Kibibytes.
 /// @return (size_t) @c kb as bytes.
-#define kibibytes( kb ) (kb * 1024ULL)
+#define CB_KIBIBYTES( kb ) (kb * 1024ULL)
 /// @brief Convert mebibytes to bytes.
 /// @param mb (size_t) Mebibytes.
 /// @return (size_t) @c mb as bytes.
-#define mebibytes( mb ) (kibibytes(mb) * 1024ULL)
+#define CB_MEBIBYTES( mb ) (CB_KIBIBYTES(mb) * 1024ULL)
 /// @brief Convert gibibytes to bytes.
 /// @param gb (size_t) Gibibytes.
 /// @return (size_t) @c gb as bytes.
-#define gibibytes( gb ) (mebibytes(gb) * 1024ULL)
+#define CB_GIBIBYTES( gb ) (CB_MEBIBYTES(gb) * 1024ULL)
 /// @brief Convert tebibytes to bytes.
 /// @param tb (size_t) Tebibytes.
 /// @return (size_t) @c tb as bytes.
-#define tebibytes( tb ) (gibibytes(tb) * 1024ULL)
+#define CB_TEBIBYTES( tb ) (CB_GIBIBYTES(tb) * 1024ULL)
 
 /// @brief Function for initializing cbuild. Must be called from main()
 /// @param logger_level Level to set logger to.
-#define init( logger_level )\
+#define CB_INIT( logger_level )\
     _init_( logger_level, argv[0], __FILE__, argc, (const char**)argv )
+
+// NOTE(alicia): Functions
+
 /// @brief Rebuild cbuild.
 /// @param[in] cbuild_source_file_name Filename of source file (__FILE__).
 /// @param[in] cbuild_executable_name  Name of cbuild executable (argv[0]).
 /// @param     reload                  Reloads cbuild after rebuilding. Only supported on POSIX platforms.
-does_not_return() void cbuild_rebuild(
+CB_NO_RETURN
+void cbuild_rebuild(
     const char* cbuild_source_file_name,
     const char* cbuild_executable_name, b32 reload );
 
@@ -643,7 +1077,7 @@ String string_trim_trailing_whitespace( String str );
 String string_trim_surrounding_whitespace( String str );
 /// @brief Split string in two from given index.
 /// @warning
-/// expect() 's that @c at is <= @c str.len!
+/// CB_EXPECT() 's that @c at is <= @c str.len!
 /// @param      src           String to split.
 /// @param      at            Index to split at.
 /// @param      keep_split    True to keep index in right side, false to remove it.
@@ -1478,7 +1912,7 @@ atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch );
 /// Inserts a compiler and instruction memory barrier to ensure memory ordering.
 void fence(void);
 
-#if defined(COMPILER_MSVC)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     /// @brief Create an unintialized mutex.
     /// @return Unintialized mutex.
     #define mutex_null() {0}
@@ -1518,7 +1952,7 @@ void mutex_unlock( Mutex* mutex );
 /// @param[in] mutex Mutex to destroy.
 void mutex_destroy( Mutex* mutex );
 
-#if defined(COMPILER_MSVC)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     /// @brief Create an uninitialized semaphore.
     /// @return Unintialized semaphore.
     #define semaphore_null() {0}
@@ -1591,7 +2025,7 @@ b32 job_wait_all( u32 ms );
 /// @return Current thread id. (0 is main thread)
 u32 thread_id(void);
 
-#if defined(COMPILER_MSVC)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     /// @brief Create empty command.
     /// @return Empty command.
     #define command_null() {0}
@@ -1656,7 +2090,7 @@ Command command_builder_cmd( CommandBuilder* builder );
 /// @param[in] builder Builder to free.
 void command_builder_free( CommandBuilder* builder );
 
-#if defined(PLATFORM_WINDOWS)
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Create null pipe.
     /// @return Null pipe.
     #define pipe_null() (0)
@@ -1751,9 +2185,9 @@ f64 timer_seconds(void);
 
 /// @brief Get pointer to next local byte buffer.
 /// @details
-/// cbuild allocates CBUILD_LOCAL_BUFFER_COUNT * CBUILD_THREAD_COUNT
-/// number of buffers of size CBUILD_LOCAL_BUFFER_CAPACITY
-/// when either init() or this function is first called.
+/// cbuild allocates CB_LOCAL_BUFFER_COUNT * CB_THREAD_COUNT
+/// number of buffers of size CB_LOCAL_BUFFER_CAPACITY
+/// when either CB_INIT() or this function is first called.
 /// Local buffers should not be freed.
 /// Local buffers should be used immediately to prevent
 /// other functions from overwriting the currently obtained
@@ -1762,9 +2196,9 @@ f64 timer_seconds(void);
 u8* local_byte_buffer(void);
 /// @brief Write formatted string to local buffer.
 /// @details
-/// cbuild allocates CBUILD_LOCAL_BUFFER_COUNT * CBUILD_THREAD_COUNT
-/// number of buffers of size CBUILD_LOCAL_BUFFER_CAPACITY
-/// when either init() or this function is first called.
+/// cbuild allocates CB_LOCAL_BUFFER_COUNT * CB_THREAD_COUNT
+/// number of buffers of size CB_LOCAL_BUFFER_CAPACITY
+/// when either CB_INIT() or this function is first called.
 /// Local buffers should not be freed.
 /// Local buffers should be used immediately to prevent
 /// other functions from overwriting the currently obtained
@@ -1775,9 +2209,9 @@ u8* local_byte_buffer(void);
 char* local_fmt_va( const char* format, va_list va );
 /// @brief Write formatted string to local buffer.
 /// @details
-/// cbuild allocates CBUILD_LOCAL_BUFFER_COUNT * CBUILD_THREAD_COUNT
-/// number of buffers of size CBUILD_LOCAL_BUFFER_CAPACITY
-/// when either init() or this function is first called.
+/// cbuild allocates CB_LOCAL_BUFFER_COUNT * CB_THREAD_COUNT
+/// number of buffers of size CB_LOCAL_BUFFER_CAPACITY
+/// when either CB_INIT() or this function is first called.
 /// Local buffers should not be freed.
 /// Local buffers should be used immediately to prevent
 /// other functions from overwriting the currently obtained
@@ -1816,113 +2250,23 @@ String cbuild_query_compiler(void);
 /// @return Pointer to command.
 const Command* cbuild_query_command_line(void);
 
-/// @brief Log an info level message to stdout.
-/// @param ... (format and format arguments) Message to log.
-#define cb_info( ... )  logger( LOGGER_LEVEL_INFO, __VA_ARGS__ )
-/// @brief Log a warning level message to stdout.
-/// @param ... (format and format arguments) Message to log.
-#define cb_warn( ... )  logger( LOGGER_LEVEL_WARNING, __VA_ARGS__ )
-/// @brief Log an error level message to stderr.
-/// @param ... (format and format arguments) Message to log.
-#define cb_error( ... ) logger( LOGGER_LEVEL_ERROR, __VA_ARGS__ )
-/// @brief Log a fatal level message to stderr.
-/// @param ... (format and format arguments) Message to log.
-#define cb_fatal( ... ) logger( LOGGER_LEVEL_FATAL, __VA_ARGS__ )
-
-#if defined(CBUILD_ASSERTIONS)
-    /// @brief Check if condition is true. Panic if it's not. (Noreturn on fail)
-    /// @param condition (boolean expression) Condition to check.
-    /// @param ...       (format and format arguments) Message to log upon failed condition.
-    #define assertion( condition, ... ) do {\
-        if( !(condition) ) {\
-            fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): assertion '"#condition"' failed! message: ", thread_id(), __LINE__, __FUNCTION__ );\
-            fprintf( stderr, __VA_ARGS__ );\
-            fprintf( stderr, "\033[1;00m\n" );\
-            fflush( stderr );\
-            fence();\
-            __insert_panic();\
-        }\
-    } while(0)
-#else
-    /// @brief Check if condition is true. Panic if it's not. (Noreturn on fail)
-    /// @param ... (anything) Assertion is disabled so any arguments go to unused() macro.
-    #define assertion( ... ) unused( __VA_ARGS__ )
-#endif
-
-/// @brief Insert a panic with message. (Noreturn)
-/// @param ... (format and format arguments) Message to log.
-#define panic( ... ) do {\
-    fprintf( stderr, "\033[1;35m[F:%02u] "__FILE__":%i:%s(): panic! message: ", thread_id(), __LINE__, __FUNCTION__ );\
-    fprintf( stderr, __VA_ARGS__ );\
-    fprintf( stderr, "\033[1;00m\n" );\
-    fflush( stderr );\
-    fence();\
-    __insert_panic();\
-} while(0)
-
-/// @brief Assert something that should always be checked. (Noreturn on fail)
-/// @details
-/// Crashes program rather than inserting exit(-1) on fail.
-/// @param condition (boolean expression) Condition to check.
-/// @param ...       (format and format arguments) Message to log upon failed condition.
-#define expect_crash( condition, ... ) do {\
-    if( !(condition) ) {\
-        fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): expected '" #condition "'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
-        fprintf( stderr, __VA_ARGS__ );\
-        fprintf( stderr, "\033[1;00m\n" );\
-        fflush( stderr );\
-        fence();\
-        __insert_crash();\
-    }\
-} while(0)
-
-/// @brief Assert something that should always be checked. (Noreturn on fail)
-/// @param condition (boolean expression) Condition to check.
-/// @param ...       (format and format arguments) Message to log upon failed condition.
-#define expect( condition, ... ) do {\
-    if( !(condition) ) {\
-        fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): expected '" #condition "'! message: ", thread_id(), __LINE__, __FUNCTION__ );\
-        fprintf( stderr, __VA_ARGS__ );\
-        fprintf( stderr, "\033[1;00m\n" );\
-        fflush( stderr );\
-        fence();\
-        __insert_panic();\
-    }\
-} while(0)
-
-/// @brief Mark control path as unimplemented. (Noreturn)
-#define unimplemented() do {\
-    fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): unimplemented path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
-    fflush( stderr );\
-    fence();\
-    __insert_panic();\
-} while(0)
-
-/// @brief Mark control path as unreachable (hopefully). (Noreturn)
-#define unreachable() do {\
-    fprintf( stderr, "\033[1;35m[F:%02u] " __FILE__ ":%i:%s(): reached unreachable path!\033[1;00m\n", thread_id(), __LINE__, __FUNCTION__ );\
-    fflush( stderr );\
-    fence();\
-    __insert_unreachable();\
-    __insert_panic();\
-} while(0)
-/*           ^^^^^ just in case compiler warns */
-
 void _init_(
     LoggerLevel logger_level,
     const char* executable_name,
     const char* source_name,
     int argc, const char** argv );
 
+static inline void _INTERNAL_CB_UNUSED_FUNCTION( int _, ... ) {(void)_;}
+
 #endif /* header guard */
 
-#if defined(CBUILD_IMPLEMENTATION)
+#if defined(CB_IMPLEMENTATION)
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
 
-#if defined(PLATFORM_WINDOWS)
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     #include <process.h>
 #else
     void posix_process_replace( Command cmd );
@@ -1938,9 +2282,9 @@ struct GlobalBuffers {
     WritePipe void_write;
 };
 struct LocalBuffers {
-    char buffers[CBUILD_THREAD_COUNT + 1]
-        [CBUILD_LOCAL_BUFFER_COUNT][CBUILD_LOCAL_BUFFER_CAPACITY];
-    atom indices[CBUILD_THREAD_COUNT + 1];
+    char buffers[CB_THREAD_COUNT + 1]
+        [CB_LOCAL_BUFFER_COUNT][CB_LOCAL_BUFFER_CAPACITY];
+    atom indices[CB_THREAD_COUNT + 1];
 };
 struct DynamicString {
     usize len, cap;
@@ -1959,7 +2303,7 @@ struct JobQueue {
     Semaphore wakeup;
     atom front, back;
     atom pending, len;
-    struct JobEntry entries[CBUILD_MAX_JOBS];
+    struct JobEntry entries[CB_MAX_JOBS];
 };
 
 volatile struct JobQueue* global_queue = NULL;
@@ -1969,15 +2313,15 @@ atom64 global_memory_usage       = 0;
 atom64 global_total_memory_usage = 0;
 
 atom            global_thread_id_source = 1; // 0 is main thread
-make_tls( u32 ) global_thread_id        = 0;
+CB_TLS( u32 ) global_thread_id        = 0;
 
 static Mutex       global_logger_mutex = mutex_null();
-static LoggerLevel global_logger_level = LOGGER_LEVEL_INFO;
+static LoggerLevel global_logger_level = CB_LOGGER_LEVEL_INFO;
 
 static Command global_command_line;
 
 volatile struct LocalBuffers* global_local_buffers = NULL;
-#if defined(COMPILER_MSVC)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     volatile struct GlobalBuffers global_buffers = {0};
 #else
     volatile struct GlobalBuffers global_buffers =
@@ -2001,7 +2345,7 @@ static b32 job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
     atom front = atomic_add( &queue->front, 1 );
     fence();
 
-    *out_entry = queue->entries[ (front + 1) % CBUILD_MAX_JOBS ];
+    *out_entry = queue->entries[ (front + 1) % CB_MAX_JOBS ];
     return true;
 }
 void job_queue_proc( void* params ) {
@@ -2023,26 +2367,26 @@ void job_queue_proc( void* params ) {
     }
 }
 static void initialize_job_queue(void) {
-    cb_info(
+    CB_INFO(
         "creating job queue with %u entries and %u threads . . .",
-        CBUILD_MAX_JOBS, CBUILD_THREAD_COUNT );
+        CB_MAX_JOBS, CB_THREAD_COUNT );
 
-    expect( mutex_create( &global_logger_mutex ), "failed to create logger mutex!" );
+    CB_EXPECT( mutex_create( &global_logger_mutex ), "failed to create logger mutex!" );
     atomic_add( &global_is_mt, 1 );
 
     usize queue_size       = sizeof(*global_queue);
     struct JobQueue* queue = memory_alloc( queue_size );
 
-    expect( queue, "failed to allocate job queue!" );
+    CB_EXPECT( queue, "failed to allocate job queue!" );
 
-    expect(
+    CB_EXPECT(
         semaphore_create( &queue->wakeup ),
         "failed to create job queue semaphore!" );
     queue->front = -1;
 
     fence();
 
-    for( usize i = 0; i < CBUILD_THREAD_COUNT; ++i ) {
+    for( usize i = 0; i < CB_THREAD_COUNT; ++i ) {
         thread_create( job_queue_proc, queue );
     }
 
@@ -2058,7 +2402,7 @@ static volatile struct JobQueue* get_job_queue(void) {
 static volatile struct LocalBuffers* get_local_buffers(void) {
     if( !global_local_buffers ) {
         global_local_buffers = memory_alloc( sizeof(*global_local_buffers) );
-        expect( global_local_buffers,
+        CB_EXPECT( global_local_buffers,
             "failed to allocate local buffers! size: %zu",
             sizeof(*global_local_buffers) );
     }
@@ -2070,15 +2414,15 @@ static volatile char* get_next_local_buffer( u32 id ) {
     u32 index = 0;
     if( global_is_mt ) {
         atom atomic = atomic_add( &b->indices[id], 1 );
-        index = (*(u32*)&atomic) % CBUILD_LOCAL_BUFFER_COUNT;
+        index = (*(u32*)&atomic) % CB_LOCAL_BUFFER_COUNT;
     } else {
         atom atomic     = b->indices[id];
         b->indices[id] += 1;
-        index = (*(u32*)&atomic) % CBUILD_LOCAL_BUFFER_COUNT;
+        index = (*(u32*)&atomic) % CB_LOCAL_BUFFER_COUNT;
     }
 
     volatile char* result = b->buffers[id][index];
-    memory_zero( (void*)result, CBUILD_LOCAL_BUFFER_CAPACITY );
+    memory_zero( (void*)result, CB_LOCAL_BUFFER_CAPACITY );
     return result;
 }
 static volatile struct GlobalBuffers* get_global_buffers(void) {
@@ -2097,17 +2441,17 @@ static volatile struct GlobalBuffers* get_global_buffers(void) {
     return &global_buffers;
 }
 static b32 validate_file_flags( FileOpenFlags flags ) {
-    if( !( flags & FOPEN_READ | FOPEN_WRITE ) ) {
-        cb_error( "FD flags must have READ and/or WRITE set!" );
+    if( !( flags & CB_FOPEN_READ | CB_FOPEN_WRITE ) ) {
+        CB_ERROR( "FD flags must have READ and/or WRITE set!" );
         return false;
     }
-    if( flags & FOPEN_TRUNCATE ) {
-        if( flags & FOPEN_APPEND ) {
-            cb_error( "FD flag APPEND and TRUNCATE cannot be set at the same time!" );
+    if( flags & CB_FOPEN_TRUNCATE ) {
+        if( flags & CB_FOPEN_APPEND ) {
+            CB_ERROR( "FD flag APPEND and TRUNCATE cannot be set at the same time!" );
             return false;
         }
-        if( flags & FOPEN_READ ) {
-            cb_error( "FD flag TRUNCATE and READ cannot be set at the same time!" );
+        if( flags & CB_FOPEN_READ ) {
+            CB_ERROR( "FD flag TRUNCATE and READ cannot be set at the same time!" );
             return false;
         }
     }
@@ -2117,26 +2461,18 @@ static b32 validate_file_flags( FileOpenFlags flags ) {
 static b32 dir_remove_internal( const char* path );
 
 #if !defined(CBUILD_COMPILER_NAME)
-    #if defined(COMPILER_MSVC)
-        #define CBUILD_COMPILER_NAME "cl"
-    #elif defined(COMPILER_CLANG)
-        #define CBUILD_COMPILER_NAME "clang"
-    #elif defined(COMPILER_GCC)
-        #define CBUILD_COMPILER_NAME "gcc"
-    #else
-        #define CBUILD_COMPILER_NAME "cc"
-    #endif
+    #define CBUILD_COMPILER_NAME CB_COMPILER_CURRENT_C_CMD
 #endif
 
 #if !defined(CBUILD_COMPILER_OUTPUT_FLAG)
-    #if defined(COMPILER_MSVC)
+    #if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
         #define CBUILD_COMPILER_OUTPUT_FLAG "-Fe:"
     #else
         #define CBUILD_COMPILER_OUTPUT_FLAG "-o"
     #endif
 #endif
 
-#if !defined(CBUILD_POSIX_FLAGS) && defined(PLATFORM_POSIX)
+#if !defined(CBUILD_POSIX_FLAGS) && CB_PLATFORM_IS_POSIX
     #define CBUILD_POSIX_FLAGS "-lpthread"
 #endif
 
@@ -2160,7 +2496,7 @@ void _init_(
     const char** heap_args = (const char**)darray_from_array(
         sizeof(const char*), argc, argv
     ); {
-        expect( heap_args, "failed to allocate arguments!" );
+        CB_EXPECT( heap_args, "failed to allocate arguments!" );
         const char* nul = 0;
         heap_args = darray_push( heap_args, &nul );
     }
@@ -2171,9 +2507,9 @@ void _init_(
     (void)get_local_buffers();
     (void)get_global_buffers();
 
-    expect( path_exists( __FILE__ ),
+    CB_EXPECT( path_exists( __FILE__ ),
         "cbuild MUST be run from its source code directory!" );
-    expect( path_exists( source_name ),
+    CB_EXPECT( path_exists( source_name ),
         "cbuild MUST be run from its source code directory!" );
 
     b32 rebuild = false;
@@ -2199,10 +2535,10 @@ void _init_(
     }
     // rebuild
 
-    cb_info( "changes detected in cbuild source, rebuilding . . ." );
+    CB_INFO( "changes detected in cbuild source, rebuilding . . ." );
     cbuild_rebuild( source_name, executable_name, true );
 }
-does_not_return() void cbuild_rebuild(
+CB_NO_RETURN void cbuild_rebuild(
     const char* cbuild_source_file_name,
     const char* cbuild_executable_name,
     b32 reload
@@ -2220,7 +2556,7 @@ does_not_return() void cbuild_rebuild(
     const char* posix_flags[] = { CBUILD_POSIX_FLAGS };
     const char* additional[]  = { CBUILD_ADDITIONAL_FLAGS };
     usize arg_count = 0;
-    const char* args[6 + static_array_len( additional ) + static_array_len( posix_flags )];
+    const char* args[6 + CB_ARRAY_LEN( additional ) + CB_ARRAY_LEN( posix_flags )];
     memory_zero( (void*)args, sizeof(args) );
 
     args[arg_count++] = CBUILD_COMPILER_NAME;
@@ -2228,17 +2564,17 @@ does_not_return() void cbuild_rebuild(
     args[arg_count++] = CBUILD_COMPILER_OUTPUT_FLAG;
     args[arg_count++] = cbuild_executable_name;
 
-#if defined(COMPILER_MSVC)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     args[arg_count++] = "-nologo";
 #endif
 
-    for( int i = 0; i < static_array_len( additional ); ++i ) {
+    for( int i = 0; i < CB_ARRAY_LEN( additional ); ++i ) {
         const char* a = additional[i];
         if( a ) {
             args[arg_count++] = additional[i];
         }
     }
-    for( int i = 0; i < static_array_len( posix_flags ); ++i ) {
+    for( int i = 0; i < CB_ARRAY_LEN( posix_flags ); ++i ) {
         const char* a = posix_flags[i];
         if( a ) {
             args[arg_count++] = posix_flags[i];
@@ -2249,16 +2585,16 @@ does_not_return() void cbuild_rebuild(
     rebuild_cmd.count = arg_count;
     rebuild_cmd.args  = args;
 
-    cb_info( "rebuilding with command:" );
+    CB_INFO( "rebuilding with command:" );
 
     const char* old_name = local_fmt( "%s.old", cbuild_executable_name );
     if( path_exists( old_name ) ) {
-        expect(
+        CB_EXPECT(
             file_remove( old_name ),
             "could not remove old executable!" );
     }
 
-    expect(
+    CB_EXPECT(
         file_move( old_name, cbuild_executable_name ),
         "could not rename executable!" );
 
@@ -2267,13 +2603,13 @@ does_not_return() void cbuild_rebuild(
     PID pid = process_exec( rebuild_cmd, false, 0, 0, 0, 0 );
     int res = process_wait( pid );
     if( res != 0 ) {
-        cb_fatal( "failed to rebuild!" );
+        CB_FATAL( "failed to rebuild!" );
         file_move( cbuild_executable_name, old_name );
 
         exit(127);
     }
 
-#if defined(COMPILER_MSVC)
+#if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     /* attempt to remove annoying .obj file generated by msvc */ {
         String exe = string_from_cstr( cbuild_executable_name );
         char* local = (char*)local_byte_buffer();
@@ -2291,13 +2627,13 @@ does_not_return() void cbuild_rebuild(
 #endif
 
     f64 end = timer_milliseconds();
-    cb_info( "rebuilt in %fms", end - start );
+    CB_INFO( "rebuilt in %fms", end - start );
 
     if( !reload ) {
         exit(0);
     }
 
-#if defined(PLATFORM_WINDOWS)
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     printf(
         "\033[1;33m"
         "[W:00] cbuild: "
@@ -2532,7 +2868,7 @@ String string_trim_surrounding_whitespace( String str ) {
 void string_split_at(
     String src, usize at, b32 keep_split, String* opt_out_left, String* opt_out_right
 ) {
-    expect( at <= src.len,
+    CB_EXPECT( at <= src.len,
         "index provided is outside string bounds! at: %zu", at );
 
     if( opt_out_left ) {
@@ -2567,7 +2903,7 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
     }
 
     String* res = (String*)darray_empty( sizeof(String), count );
-    expect( res, "failed to allocate string buffer!" );
+    CB_EXPECT( res, "failed to allocate string buffer!" );
 
     if( count == 1 ) {
         return (String*)darray_push( res, &src );
@@ -2581,12 +2917,12 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
                 String chunk = substr;
                 chunk.len = pos + delim.len;
 
-                expect( darray_try_push( res, &chunk ),
+                CB_EXPECT( darray_try_push( res, &chunk ),
                     "misallocated result!" );
 
                 substr = string_advance_by( substr, chunk.len );
             } else {
-                expect( darray_try_push( res, &substr ),
+                CB_EXPECT( darray_try_push( res, &substr ),
                     "misallocated result!" );
                 break;
             }
@@ -2598,12 +2934,12 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
                 String chunk = substr;
                 chunk.len    = pos;
 
-                expect( darray_try_push( res, &chunk ),
+                CB_EXPECT( darray_try_push( res, &chunk ),
                     "misallocated result!" );
 
                 substr = string_advance_by( substr, chunk.len + delim.len );
             } else {
-                expect( darray_try_push( res, &substr ),
+                CB_EXPECT( darray_try_push( res, &substr ),
                     "misallocated result!" );
                 break;
             }
@@ -2616,7 +2952,7 @@ String* string_split_delim_ex(
     String src, String delim, b32 keep_delim,
     StringSplitDelimFilterFN* filter, void* params
 ) {
-    expect( filter, "no filter function provided!" );
+    CB_EXPECT( filter, "no filter function provided!" );
 
     usize  count  = 0;
     String substr = src;
@@ -2632,12 +2968,12 @@ String* string_split_delim_ex(
     }
 
     String* res = (String*)darray_empty( sizeof(String), count );
-    expect( res, "failed to allocate string buffer!" );
+    CB_EXPECT( res, "failed to allocate string buffer!" );
 
     if( count == 1 ) {
         String filtered = filter( 0, src, params );
         if( filtered.len ) {
-            expect( darray_try_push( res, &filtered ),
+            CB_EXPECT( darray_try_push( res, &filtered ),
                 "misallocated result!" );
         }
         return res;
@@ -2655,7 +2991,7 @@ String* string_split_delim_ex(
                 chunk = filter( index, chunk, params );
 
                 if( chunk.len ) {
-                    expect( darray_try_push( res, &chunk ),
+                    CB_EXPECT( darray_try_push( res, &chunk ),
                         "misallocated result!" );
                     index++;
                 }
@@ -2665,7 +3001,7 @@ String* string_split_delim_ex(
                 String filtered = filter( index++, substr, params );
 
                 if( filtered.len ) {
-                    expect( darray_try_push( res, &filtered ),
+                    CB_EXPECT( darray_try_push( res, &filtered ),
                         "misallocated result!" );
                 }
                 break;
@@ -2681,7 +3017,7 @@ String* string_split_delim_ex(
                 chunk = filter( index, chunk, params );
 
                 if( chunk.len ) {
-                    expect( darray_try_push( res, &chunk ),
+                    CB_EXPECT( darray_try_push( res, &chunk ),
                         "misallocated result!" );
                     index++;
                 }
@@ -2691,7 +3027,7 @@ String* string_split_delim_ex(
                 String filtered = filter( index++, substr, params );
 
                 if( filtered.len ) {
-                    expect( darray_try_push( res, &filtered ),
+                    CB_EXPECT( darray_try_push( res, &filtered ),
                         "misallocated result!" );
                 }
                 break;
@@ -2786,7 +3122,7 @@ DString* dstring_concat( String lhs, String rhs ) {
 DString* dstring_concat_multi(
     usize count, const String* strings, String opt_separator
 ) {
-    expect( count, "did not provide any strings!" );
+    CB_EXPECT( count, "did not provide any strings!" );
     usize total_size = (count - 1) * opt_separator.len;
     for( usize i = 0; i < count; ++i ) {
         total_size += strings[i].len;
@@ -2812,7 +3148,7 @@ DString* dstring_concat_multi(
 DString* dstring_concat_multi_cstr(
     usize count, const char** strings, const char* opt_separator
 ) {
-    expect( count, "did not provide any strings!" );
+    CB_EXPECT( count, "did not provide any strings!" );
     usize seplen     = opt_separator ? strlen( opt_separator ) : 0;
     usize total_size = (count - 1) * seplen;
     for( usize i = 0; i < count; ++i ) {
@@ -2890,7 +3226,7 @@ DString* dstring_insert( DString* str, String insert, usize at ) {
         return dstring_append( str, insert );
     }
     if( at >= res->len ) {
-        cb_warn(
+        CB_WARN(
             "dstring_insert: attempted to insert past dstring bounds! "
             "len: %zu index: %zu", res->len, at );
         return NULL;
@@ -2941,7 +3277,7 @@ b32 dstring_pop( DString* str, char* opt_out_c ) {
 b32 dstring_remove( DString* str, usize index ) {
     struct DynamicString* head = dstring_head( str );
     if( !head->len || index > head->len ) {
-        cb_warn(
+        CB_WARN(
             "dstring_remove: attempted to remove past dstring bounds! "
             "len: %zu index: %zu", head->len, index );
         return false;
@@ -2953,12 +3289,12 @@ b32 dstring_remove( DString* str, usize index ) {
     return true;
 }
 b32 dstring_remove_range( DString* str, usize from_inclusive, usize to_exclusive ) {
-    assertion( from_inclusive < to_exclusive,
+    CB_ASSERT( from_inclusive < to_exclusive,
         "dstring_remove_range: invalid range provided! (%zu, %zu]",
         from_inclusive, to_exclusive );
     struct DynamicString* head = dstring_head( str );
     if( !head->len || from_inclusive >= head->len || to_exclusive > head->len ) {
-        cb_warn(
+        CB_WARN(
             "dstring_remove_range: attempted to remove past dstring bounds! "
             "len: %zu range: (%zu, %zu]", head->len, from_inclusive, to_exclusive );
         return false;
@@ -3013,7 +3349,7 @@ b32 dstring_is_full( const DString* str ) {
 }
 void dstring_set_len( DString* str, usize len ) {
     struct DynamicString* head = dstring_head( str );
-    expect( len < head->cap, "length exceeds string capacity!" );
+    CB_EXPECT( len < head->cap, "length exceeds string capacity!" );
     head->len            = len;
     head->buf[head->len] = 0;
 }
@@ -3080,11 +3416,11 @@ String* path_chunk_split( String path ) {
             String chunk = subpath;
             chunk.len    = sep;
 
-            expect( darray_try_push( res, &chunk ), "push should have worked!" );
+            CB_EXPECT( darray_try_push( res, &chunk ), "push should have worked!" );
 
             subpath = string_advance_by( subpath, sep + 1 );
         } else {
-            expect( darray_try_push( res, &subpath ), "push should have worked!" );
+            CB_EXPECT( darray_try_push( res, &subpath ), "push should have worked!" );
             break;
         }
     }
@@ -3133,7 +3469,7 @@ b32 path_matches_glob( String path, String glob ) {
 static b32 path_walk_glob_filter_filter(
     usize index, usize stride, const void* item, void* params
 ) {
-    unused(index, stride);
+    CB_UNUSED(index, stride);
 
     String glob = *(String*)params;
     String path = *(String*)item;
@@ -3141,7 +3477,7 @@ static b32 path_walk_glob_filter_filter(
     return path_matches_glob( path, glob );
 }
 String* path_walk_glob_filter( const WalkDirectory* wd, String glob ) {
-    assertion( wd && wd->paths, "walk result is null!" );
+    CB_ASSERT( wd && wd->paths, "walk result is null!" );
 
     String* res = darray_from_filter(
         sizeof(String), wd->count, wd->paths,
@@ -3152,8 +3488,8 @@ b32 path_walk_dir(
     const char* dir, b32 recursive,
     b32 include_dirs, WalkDirectory* out_result
 ) {
-    assertion( dir, "no path provided!" );
-    assertion( out_result, "no walk dir result provided!" );
+    CB_ASSERT( dir, "no path provided!" );
+    CB_ASSERT( out_result, "no walk dir result provided!" );
 
     DString* path = dstring_from_cstr( dir );
     if( !path ) {
@@ -3163,7 +3499,7 @@ b32 path_walk_dir(
     DString* buffer = dstring_empty( 255 );
     if( !buffer ) {
         dstring_free( path );
-        cb_error( "path_walk_dir: failed to allocate buffer!" );
+        CB_ERROR( "path_walk_dir: failed to allocate buffer!" );
         return false;
     }
 
@@ -3209,11 +3545,11 @@ b32 path_walk_dir(
             String current = rem;
             current.len    = nul;
 
-            expect( darray_try_push( paths, &current ), "miscalculated path count!" );
+            CB_EXPECT( darray_try_push( paths, &current ), "miscalculated path count!" );
 
             rem = string_advance_by( rem, nul + 1 );
         } else {
-            expect( darray_try_push( paths, &rem ), "miscalculated path count!" );
+            CB_EXPECT( darray_try_push( paths, &rem ), "miscalculated path count!" );
             break;
         }
     }
@@ -3246,13 +3582,13 @@ b32 dir_remove( const char* path, b32 recursive ) {
     memory_zero( &wd, sizeof(wd) );
 
     if( !path_walk_dir( path, true, false, &wd ) ) {
-        cb_error( "dir_remove: failed to walk directory '%s'!", path );
+        CB_ERROR( "dir_remove: failed to walk directory '%s'!", path );
         return false;
     }
 
     for( usize i = 0; i < wd.count; ++i ) {
         if( !file_remove( wd.paths[i].cc ) ) {
-            cb_error( "dir_remove: failed to remove file '%s'!", wd.paths[i].cc );
+            CB_ERROR( "dir_remove: failed to remove file '%s'!", wd.paths[i].cc );
 
             path_walk_free( &wd );
             return false;
@@ -3262,13 +3598,13 @@ b32 dir_remove( const char* path, b32 recursive ) {
     path_walk_free( &wd );
 
     if( !path_walk_dir( path, true, true, &wd ) ) {
-        cb_error( "dir_remove: failed to walk directory '%s'!", path );
+        CB_ERROR( "dir_remove: failed to walk directory '%s'!", path );
         return false;
     }
 
     for( usize i = 0; i < wd.count; ++i ) {
         if( !dir_remove_internal( wd.paths[i].cc ) ) {
-            cb_error( "dir_remove: failed to remove dir '%s'!", wd.paths[i].cc );
+            CB_ERROR( "dir_remove: failed to remove dir '%s'!", wd.paths[i].cc );
 
             path_walk_free( &wd );
             return false;
@@ -3436,7 +3772,7 @@ b32 darray_try_emplace( void* darray, const void* item, usize at ) {
         return false;
     }
     if( at >= head->len ) {
-        cb_warn(
+        CB_WARN(
             "darray_emplace: attempted to emplace past darray bounds! "
             "len: %zu index: %zu", head->len, at );
         return false;
@@ -3457,7 +3793,7 @@ b32 darray_try_insert( void* darray, usize count, const void* items, usize at ) 
         return false;
     }
     if( at >= head->len ) {
-        cb_warn(
+        CB_WARN(
             "darray_insert: attempted to insert past darray bounds! "
             "len: %zu index: %zu", head->len, at );
         return false;
@@ -3516,7 +3852,7 @@ void* darray_push( void* darray, const void* item ) {
 }
 void* darray_emplace( void* darray, const void* item, usize at ) {
     if( at >= darray_len( darray ) ) {
-        cb_warn(
+        CB_WARN(
             "darray_emplace: attempted to emplace past darray bounds! "
             "len: %zu index: %zu", darray_len( darray ), at );
         return NULL;
@@ -3539,7 +3875,7 @@ void* darray_insert( void* darray, usize count, const void* items, usize at ) {
     struct DynamicArray* res = darray_head( darray );
 
     if( at >= res->len ) {
-        cb_warn(
+        CB_WARN(
             "darray_insert: attempted to insert past darray bounds! "
             "len: %zu index: %zu", res->len, at );
         return false;
@@ -3575,7 +3911,7 @@ b32 darray_remove( void* darray, usize index ) {
 
     struct DynamicArray* head = darray_head( darray );
     if( !head->len || index > head->len ) {
-        cb_warn(
+        CB_WARN(
             "darray_remove: attempted to remove past array bounds! "
             "len: %zu index: %zu", head->len, index );
         return false;
@@ -3595,12 +3931,12 @@ b32 darray_remove( void* darray, usize index ) {
     return true;
 }
 b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive ) {
-    assertion( from_inclusive < to_exclusive,
+    CB_ASSERT( from_inclusive < to_exclusive,
         "darray_remove_range: invalid range provided! (%zu, %zu]",
         from_inclusive, to_exclusive );
     struct DynamicArray* head = darray_head( darray );
     if( !head->len || from_inclusive >= head->len || to_exclusive > head->len ) {
-        cb_warn(
+        CB_WARN(
             "darray_remove_range: attempted to remove past array bounds! "
             "len: %zu range: (%zu, %zu]", head->len, from_inclusive, to_exclusive );
         return false;
@@ -3659,8 +3995,8 @@ void darray_free( void* darray ) {
 b32 job_enqueue( JobFN* job, void* params ) {
     volatile struct JobQueue* queue = get_job_queue();
 
-    if( queue->pending >= CBUILD_MAX_JOBS ) {
-        cb_warn(
+    if( queue->pending >= CB_MAX_JOBS ) {
+        CB_WARN(
             "attempted to enqueue job while queue is full!" );
         return false;
     }
@@ -3672,7 +4008,7 @@ b32 job_enqueue( JobFN* job, void* params ) {
     fence();
 
     atom back = atomic_add( &queue->back, 1 );
-    queue->entries[back % CBUILD_MAX_JOBS] = entry;
+    queue->entries[back % CB_MAX_JOBS] = entry;
 
     fence();
 
@@ -3685,13 +4021,13 @@ b32 job_enqueue( JobFN* job, void* params ) {
 b32 job_enqueue_timed( JobFN* job, void* params, u32 ms ) {
     volatile struct JobQueue* queue = get_job_queue();
 
-    while( queue->pending >= CBUILD_MAX_JOBS ) {
+    while( queue->pending >= CB_MAX_JOBS ) {
         if( !job_wait_next( ms ) ) {
             return false;
         }
     }
 
-    expect( job_enqueue( job, params ),
+    CB_EXPECT( job_enqueue( job, params ),
         "enqueue unexpectedly failed!" );
     return true;
 }
@@ -3851,18 +4187,18 @@ DString* command_flatten_dstring( const Command* command ) {
         b32 contains_space = false;
         String arg = string_new( current_len, current );
         if( string_find( arg, ' ', 0 ) ) {
-            expect( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
+            CB_EXPECT( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
             contains_space = true;
         }
 
-        expect( dstring_append( res, arg ) == res, "miscalculated total_len!" );
+        CB_EXPECT( dstring_append( res, arg ) == res, "miscalculated total_len!" );
 
         if( contains_space ) {
-            expect( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
+            CB_EXPECT( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
         }
 
         if( i + 1 != command->count ) {
-            expect( dstring_push( res, ' ' ) == res, "miscalculated total_len!" );
+            CB_EXPECT( dstring_push( res, ' ' ) == res, "miscalculated total_len!" );
         }
     }
 
@@ -3875,7 +4211,7 @@ u8* local_byte_buffer() {
 }
 char* local_fmt_va( const char* format, va_list va ) {
     char* buf = (char*)local_byte_buffer();
-    vsnprintf( buf, CBUILD_LOCAL_BUFFER_CAPACITY - 1, format, va ); // -1 to ensure null-terminated
+    vsnprintf( buf, CB_LOCAL_BUFFER_CAPACITY - 1, format, va ); // -1 to ensure null-terminated
     return buf;
 }
 char* local_fmt( const char* format, ... ) {
@@ -3902,24 +4238,24 @@ void logger_va( LoggerLevel level, const char* format, va_list va ) {
     }
 
     static const char local_level_letters[] = {
-        'I', // LOGGER_LEVEL_INFO
-        'W', // LOGGER_LEVEL_WARNING
-        'E', // LOGGER_LEVEL_ERROR
-        'F', // LOGGER_LEVEL_FATAL
+        'I', // CB_LOGGER_LEVEL_INFO
+        'W', // CB_LOGGER_LEVEL_WARNING
+        'E', // CB_LOGGER_LEVEL_ERROR
+        'F', // CB_LOGGER_LEVEL_FATAL
     };
 
     static const char* local_level_colors[] = {
-        "",           // LOGGER_LEVEL_INFO
-        "\033[1;33m", // LOGGER_LEVEL_WARNING
-        "\033[1;31m", // LOGGER_LEVEL_ERROR
-        "\033[1;35m", // LOGGER_LEVEL_FATAL
+        "",           // CB_LOGGER_LEVEL_INFO
+        "\033[1;33m", // CB_LOGGER_LEVEL_WARNING
+        "\033[1;31m", // CB_LOGGER_LEVEL_ERROR
+        "\033[1;35m", // CB_LOGGER_LEVEL_FATAL
     };
 
     FILE* const level_output[] = {
-        stdout, // LOGGER_LEVEL_INFO
-        stdout, // LOGGER_LEVEL_WARNING
-        stderr, // LOGGER_LEVEL_ERROR
-        stderr, // LOGGER_LEVEL_FATAL
+        stdout, // CB_LOGGER_LEVEL_INFO
+        stdout, // CB_LOGGER_LEVEL_WARNING
+        stderr, // CB_LOGGER_LEVEL_ERROR
+        stderr, // CB_LOGGER_LEVEL_FATAL
     };
 
     if( global_is_mt ) {
@@ -3946,7 +4282,7 @@ void logger( LoggerLevel level, const char* format, ... ) {
     va_end( va );
 }
 
-#if defined(PLATFORM_WINDOWS)
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <limits.h>
@@ -3961,9 +4297,9 @@ struct Win32ThreadParams {
     u32    id;
 };
 
-#define CBUILD_LOCAL_WIDE_CAPACITY (CBUILD_LOCAL_BUFFER_CAPACITY / 2)
+#define CBUILD_LOCAL_WIDE_CAPACITY (CB_LOCAL_BUFFER_CAPACITY / 2)
 
-static struct Win32ThreadParams global_win32_thread_params[CBUILD_THREAD_COUNT];
+static struct Win32ThreadParams global_win32_thread_params[CB_THREAD_COUNT];
 
 static HANDLE global_win32_process_heap = NULL;
 
@@ -3974,7 +4310,7 @@ void _platform_init_(void) {
 static HANDLE get_process_heap(void) {
     if( !global_win32_process_heap ) {
         global_win32_process_heap = GetProcessHeap();
-        expect( global_win32_process_heap, "failed to get process heap!" );
+        CB_EXPECT( global_win32_process_heap, "failed to get process heap!" );
     }
     return global_win32_process_heap;
 }
@@ -3995,8 +4331,8 @@ static time_t win32_filetime_to_posix( FILETIME ft ) {
     return res;
 }
 static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
-    assertion( utf8.cc, "null pointer!" );
-    assertion(
+    CB_ASSERT( utf8.cc, "null pointer!" );
+    CB_ASSERT(
         utf8.len < CBUILD_LOCAL_WIDE_CAPACITY,
         "attempted to convert a utf8 string longer than %u!",
         CBUILD_LOCAL_WIDE_CAPACITY );
@@ -4016,7 +4352,7 @@ static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
 
         int written = MultiByteToWideChar(
             CP_UTF8, 0, src, max_convert, dst, max_convert );
-        expect( written, "failed to convert utf8 string!" );
+        CB_EXPECT( written, "failed to convert utf8 string!" );
 
         src += max_convert;
         dst += written;
@@ -4026,8 +4362,8 @@ static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
     return buf;
 }
 static String win32_local_wide_to_utf8( usize len, wchar_t* wide ) {
-    assertion( wide, "null pointer!" );
-    assertion(
+    CB_ASSERT( wide, "null pointer!" );
+    CB_ASSERT(
         len < CBUILD_LOCAL_WIDE_CAPACITY,
         "attempted to convert a wide string longer than %u!",
         CBUILD_LOCAL_WIDE_CAPACITY );
@@ -4046,12 +4382,12 @@ static String win32_local_wide_to_utf8( usize len, wchar_t* wide ) {
         const char* last_codepoint = (const char*)(src + (max_convert - 1));
         if( last_codepoint[0] & 0b10000000 ) {
             max_convert--;
-            assertion( max_convert, "invalid wide string!" );
+            CB_ASSERT( max_convert, "invalid wide string!" );
         }
         
         int written = WideCharToMultiByte(
             CP_UTF8, 0, src, max_convert, dst, max_convert, 0, 0 );
-        expect( written, "failed to convert wide string!" );
+        CB_EXPECT( written, "failed to convert wide string!" );
 
         src += max_convert;
         dst += written;
@@ -4065,7 +4401,7 @@ static String win32_local_error_message( DWORD error_code ) {
 
     FormatMessageA(
         FORMAT_MESSAGE_FROM_SYSTEM, 0, error_code,
-        0, buf, CBUILD_LOCAL_BUFFER_CAPACITY, 0 );
+        0, buf, CB_LOCAL_BUFFER_CAPACITY, 0 );
 
     return string_from_cstr( buf );
 }
@@ -4235,7 +4571,7 @@ void* memory_alloc( usize size ) {
     return res;
 }
 void* memory_realloc( void* memory, usize old_size, usize new_size ) {
-    assertion( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
+    CB_ASSERT( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
     void* res = HeapReAlloc( get_process_heap(), HEAP_ZERO_MEMORY, memory, new_size );
     if( !res ) {
         return NULL;
@@ -4252,7 +4588,7 @@ void* memory_realloc( void* memory, usize old_size, usize new_size ) {
 }
 void memory_free( void* memory, usize size ) {
     if( !memory ) {
-        cb_warn( "attempted to free null pointer!" );
+        CB_WARN( "attempted to free null pointer!" );
         return;
     }
     HeapFree( get_process_heap(), 0, memory );
@@ -4265,7 +4601,7 @@ void memory_free( void* memory, usize size ) {
     }
 }
 b32 path_is_absolute( const char* path ) {
-    assertion( path, "null path!" );
+    CB_ASSERT( path, "null path!" );
     if( !path[0] || !path[1] ) {
         return false;
     }
@@ -4288,7 +4624,7 @@ b32 path_is_directory( const char* path ) {
     }
 }
 b32 path_exists( const char* path ) {
-    assertion( path, "null path!" );
+    CB_ASSERT( path, "null path!" );
     String spath = string_from_cstr( path );
     return path_attributes( spath ) != INVALID_FILE_ATTRIBUTES;
 }
@@ -4390,19 +4726,19 @@ static b32 path_walk_dir_internal(
 
 static DWORD fd_open_dwaccess( FileOpenFlags flags ) {
     DWORD res = 0;
-    if( flags & FOPEN_READ ) {
+    if( flags & CB_FOPEN_READ ) {
         res |= GENERIC_READ;
     }
-    if( flags & FOPEN_WRITE ) {
+    if( flags & CB_FOPEN_WRITE ) {
         res |= GENERIC_WRITE;
     }
     return res;
 }
 static DWORD fd_open_dwcreationdisposition( FileOpenFlags flags ) {
     DWORD res = OPEN_EXISTING;
-    if( flags & FOPEN_CREATE ) {
+    if( flags & CB_FOPEN_CREATE ) {
         res = CREATE_ALWAYS;
-    } else if( flags & FOPEN_TRUNCATE ) {
+    } else if( flags & CB_FOPEN_TRUNCATE ) {
         res = TRUNCATE_EXISTING;
     }
     return res;
@@ -4422,7 +4758,7 @@ static b32 fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
         DWORD error_code = GetLastError();
         String msg = win32_local_error_message( error_code );
 
-        cb_error(
+        CB_ERROR(
             "failed to open '%S'! reason: (0x%X) %s", wide, error_code, msg.cc );
         return false;
     }
@@ -4463,7 +4799,7 @@ static b32 fd_write_32(
     }
     return res;
 }
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT
 static b32 fd_write_64(
     FD* file, usize size, const void* buf, usize* opt_out_write_size
 ) {
@@ -4510,7 +4846,7 @@ static b32 fd_read_32(
     }
     return res;
 }
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT
 static b32 fd_read_64(
     FD* file, usize size, void* buf, usize* opt_out_read_size
 ) {
@@ -4548,14 +4884,14 @@ static b32 fd_read_64(
 #endif
 
 b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size ) {
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT
     return fd_write_64( file, size, buf, opt_out_write_size );
 #else
     return fd_write_32( file, size, buf, (DWORD*)opt_out_write_size );
 #endif
 }
 b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size ) {
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT
     return fd_read_64( file, size, buf, opt_out_read_size );
 #else
     return fd_read_32( file, size, buf, (DWORD*)opt_out_read_size );
@@ -4565,9 +4901,9 @@ b32 fd_truncate( FD* file ) {
     return SetEndOfFile( (HANDLE)*file ) != FALSE;
 }
 usize fd_query_size( FD* file ) {
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT
     LARGE_INTEGER li;
-    expect( GetFileSizeEx( (HANDLE)*file, &li ), "failed to get file size!" );
+    CB_EXPECT( GetFileSizeEx( (HANDLE)*file, &li ), "failed to get file size!" );
     return li.QuadPart;
 #else
     DWORD res = GetFileSize( (HANDLE)*file, 0 );
@@ -4577,22 +4913,22 @@ usize fd_query_size( FD* file ) {
 void fd_seek( FD* file, FileSeek type, isize seek ) {
     DWORD dwMoveMethod = 0;
     switch( type ) {
-        case FSEEK_CURRENT: {
+        case CB_FSEEK_CURRENT: {
             dwMoveMethod = FILE_CURRENT;
         } break;
-        case FSEEK_BEGIN: {
+        case CB_FSEEK_BEGIN: {
             dwMoveMethod = FILE_BEGIN;
         } break;
-        case FSEEK_END: {
+        case CB_FSEEK_END: {
             dwMoveMethod = FILE_END;
         } break;
     }
 
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT 
     LARGE_INTEGER li;
     li.QuadPart = seek;
 
-    expect(
+    CB_EXPECT(
         SetFilePointerEx( (HANDLE)*file, li, 0, dwMoveMethod ) != FALSE,
         "failed to seek file!" );
 #else
@@ -4602,12 +4938,12 @@ void fd_seek( FD* file, FileSeek type, isize seek ) {
 usize fd_query_position( FD* file ) {
     DWORD dwMoveMethod = FILE_CURRENT;
 
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT 
     LARGE_INTEGER li;
     li.QuadPart = 0;
 
     LARGE_INTEGER res;
-    expect(
+    CB_EXPECT(
         SetFilePointerEx( (HANDLE)*file, li, &res, dwMoveMethod ) != FALSE,
         "failed to query file position!" );
 
@@ -4633,8 +4969,8 @@ static void file_query_time_long(
         wpath, dwDesiredAccess, dwShareMode,
         NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL );
 
-    expect( handle != INVALID_HANDLE_VALUE, "failed to open file!" );
-    expect(
+    CB_EXPECT( handle != INVALID_HANDLE_VALUE, "failed to open file!" );
+    CB_EXPECT(
         GetFileTime( handle, out_create, 0, out_modify ),
         "failed to get file time!" );
 
@@ -4667,7 +5003,7 @@ static b32 file_move_long( String dst, String src ) {
 }
 
 b32 file_move( const char* dst, const char* src ) {
-    assertion( dst && src, "null path provided!" );
+    CB_ASSERT( dst && src, "null path provided!" );
     usize dst_len = strlen( dst );
     usize src_len = strlen( src );
 
@@ -4684,7 +5020,7 @@ static b32 file_copy_long( String dst, String src ) {
 }
 
 b32 file_copy( const char* dst, const char* src ) {
-    assertion( dst && src, "null path provided!" );
+    CB_ASSERT( dst && src, "null path provided!" );
     usize dst_len = strlen( dst );
     usize src_len = strlen( src );
 
@@ -4821,7 +5157,7 @@ void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
     sa.nLength        = sizeof(sa);
     sa.bInheritHandle = TRUE;
 
-    expect( CreatePipe( &read, &write, &sa, 0 ), "failed to create pipes!" );
+    CB_EXPECT( CreatePipe( &read, &write, &sa, 0 ), "failed to create pipes!" );
 
     *out_read  = (isize)read;
     *out_write = (isize)write;
@@ -4887,7 +5223,7 @@ PID process_exec(
     wchar_t* cmd_line = HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, wide_cmd_line_size );
 
-    expect( cmd_line, "failed to allocate command line wide buffer!" );
+    CB_EXPECT( cmd_line, "failed to allocate command line wide buffer!" );
 
     for( usize i = 0; i < cmd.count; ++i ) {
         String current = string_from_cstr( cmd.args[i] );
@@ -4918,16 +5254,16 @@ PID process_exec(
     wchar_t* wide_cwd = NULL;
     if( opt_cwd ) {
         wide_cwd = win32_local_path_canon( string_from_cstr( opt_cwd ) );
-        cb_info( "cd '%S'", wide_cwd );
+        CB_INFO( "cd '%S'", wide_cwd );
     }
 
-    cb_info( "%S", cmd_line );
+    CB_INFO( "%S", cmd_line );
     BOOL res = CreateProcessW(
         NULL, cmd_line, NULL, NULL, bInheritHandle,
         flags, NULL, wide_cwd, &startup, &info );
     HeapFree( GetProcessHeap(), 0, cmd_line );
 
-    expect( res, "failed to launch process '%s'!", cmd.args[0] );
+    CB_EXPECT( res, "failed to launch process '%s'!", cmd.args[0] );
 
     CloseHandle( info.hThread );
     return (isize)info.hProcess;
@@ -4938,13 +5274,13 @@ int process_wait( PID pid ) {
         case WAIT_OBJECT_0: break;
         default: {
             String reason = win32_local_error_message( GetLastError() );
-            panic( "failed to wait for pid! reason: %s", reason.cc );
+            CB_PANIC( "failed to wait for pid! reason: %s", reason.cc );
             return -1;
         } break;
     }
 
     DWORD exit_code = 0;
-    expect( GetExitCodeProcess(
+    CB_EXPECT( GetExitCodeProcess(
         (HANDLE)pid, &exit_code ), "failed to get exit code!" );
 
     CloseHandle( (HANDLE)pid );
@@ -4960,13 +5296,13 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
         } break;
         default: {
             String reason = win32_local_error_message( GetLastError() );
-            panic( "failed to wait for pid! reason: %s", reason.cc );
+            CB_PANIC( "failed to wait for pid! reason: %s", reason.cc );
             return -1;
         } break;
     }
 
     DWORD exit_code = 0;
-    expect( GetExitCodeProcess(
+    CB_EXPECT( GetExitCodeProcess(
         (HANDLE)pid, &exit_code ), "failed to get exit code!" );
 
     if( success ) {
@@ -4992,8 +5328,8 @@ unsigned int win32_thread_proc( void* params ) {
 }
 
 void thread_create( JobFN* func, void* params ) {
-    expect(
-        global_thread_id_source < (CBUILD_THREAD_COUNT + 1),
+    CB_EXPECT(
+        global_thread_id_source < (CB_THREAD_COUNT + 1),
         "exceeded maximum number of threads!" );
 
     u32 id = atomic_add( &global_thread_id_source, 1 );
@@ -5006,14 +5342,14 @@ void thread_create( JobFN* func, void* params ) {
     fence();
 
     HANDLE h = (HANDLE)_beginthreadex( 0, 0, win32_thread_proc, p, 0, 0 );
-    expect( h != NULL, "failed to create thread!" );
+    CB_EXPECT( h != NULL, "failed to create thread!" );
 }
 
 char* internal_cwd(void) {
     DWORD len = GetCurrentDirectoryA( 0, 0 );
     char* buf = memory_alloc( len );
 
-    expect( buf, "failed to allocate working directory buffer!" );
+    CB_EXPECT( buf, "failed to allocate working directory buffer!" );
 
     GetCurrentDirectoryA( len, buf );
 
@@ -5027,12 +5363,12 @@ char* internal_cwd(void) {
 }
 char* internal_home(void) {
     const char* drive = getenv( "HOMEDRIVE" );
-    expect( drive, "failed to get home directory drive!" );
+    CB_EXPECT( drive, "failed to get home directory drive!" );
     const char* home  = getenv( "HOMEPATH" );
-    expect( home, "failed to get home path!" );
+    CB_EXPECT( home, "failed to get home path!" );
 
     DString* buf = dstring_concat_cstr( drive, home );
-    expect( buf, "failed to allocate home directory buffer!" );
+    CB_EXPECT( buf, "failed to allocate home directory buffer!" );
 
     usize len = dstring_len( buf );
     for( usize i = 0; i < len; ++i ) {
@@ -5059,7 +5395,7 @@ volatile atom global_semaphore_val = 0;
 
 struct PosixMutex {
     atom value;
-#if defined(ARCH_64BIT)
+#if CB_ARCH_IS_64BIT
     u32  __padding;
 #endif
 };
@@ -5069,7 +5405,7 @@ struct PosixThreadParams {
     void*  params;
     u32    id;
 };
-static struct PosixThreadParams global_posix_thread_params[CBUILD_THREAD_COUNT];
+static struct PosixThreadParams global_posix_thread_params[CB_THREAD_COUNT];
 
 void _platform_init_(void) {
     return;
@@ -5105,7 +5441,7 @@ void* memory_alloc( usize size ) {
     return res;
 }
 void* memory_realloc( void* memory, usize old_size, usize new_size ) {
-    assertion( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
+    CB_ASSERT( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
     void* res = realloc( memory, new_size );
     if( !res ) {
         return NULL;
@@ -5123,7 +5459,7 @@ void* memory_realloc( void* memory, usize old_size, usize new_size ) {
 }
 void memory_free( void* memory, usize size ) {
     if( !memory ) {
-        cb_warn( "attempted to free null pointer!" );
+        CB_WARN( "attempted to free null pointer!" );
         return;
     }
     free( memory );
@@ -5245,20 +5581,20 @@ b32 fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
         return false;
     }
     int oflag = 0;
-    if( (flags & (FOPEN_READ | FOPEN_WRITE)) == FOPEN_READ ) {
+    if( (flags & (CB_FOPEN_READ | CB_FOPEN_WRITE)) == CB_FOPEN_READ ) {
         oflag |= O_RDONLY;
-    } else if( (flags & (FOPEN_READ | FOPEN_WRITE)) == FOPEN_WRITE ) {
+    } else if( (flags & (CB_FOPEN_READ | CB_FOPEN_WRITE)) == CB_FOPEN_WRITE ) {
         oflag |= O_WRONLY;
     } else { // read + write
         oflag |= O_RDWR;
     }
-    if( flags & FOPEN_TRUNCATE ) {
+    if( flags & CB_FOPEN_TRUNCATE ) {
         oflag |= O_TRUNC;
     }
-    if( flags & FOPEN_CREATE ) {
+    if( flags & CB_FOPEN_CREATE ) {
         oflag |= O_CREAT;
     }
-    if( flags & FOPEN_APPEND ) {
+    if( flags & CB_FOPEN_APPEND ) {
         oflag |= O_APPEND;
     }
 
@@ -5266,7 +5602,7 @@ b32 fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
 
     int fd = open( path, oflag, mode );
     if( fd < 0 ) {
-        cb_error( "fd_open: failed to open '%s'!", path );
+        CB_ERROR( "fd_open: failed to open '%s'!", path );
         return false;
     }
 
@@ -5306,36 +5642,36 @@ b32 fd_truncate( FD* file ) {
 }
 usize fd_query_size( FD* file ) {
     off_t pos = lseek( *file, 0, SEEK_CUR );
-    expect( pos >= 0, "failed to query file descriptor size!" );
+    CB_EXPECT( pos >= 0, "failed to query file descriptor size!" );
     off_t res = lseek( *file, 0, SEEK_END );
-    expect( res >= 0, "failed to query file descriptor size!" );
-    expect( lseek( *file, pos, SEEK_SET ) >= 0,
+    CB_EXPECT( res >= 0, "failed to query file descriptor size!" );
+    CB_EXPECT( lseek( *file, pos, SEEK_SET ) >= 0,
         "failed to query file descriptor size!" );
 
     return res;
 }
 void fd_seek( FD* file, FileSeek type, isize seek ) {
     static const int local_whence[] = {
-        SEEK_CUR, // FSEEK_CURRENT
-        SEEK_SET, // FSEEK_BEGIN
-        SEEK_END, // FSEEK_END
+        SEEK_CUR, // CB_FSEEK_CURRENT
+        SEEK_SET, // CB_FSEEK_BEGIN
+        SEEK_END, // CB_FSEEK_END
     };
-    expect( lseek( *file, seek, local_whence[type] ) >= 0, "failed to seek!" );
+    CB_EXPECT( lseek( *file, seek, local_whence[type] ) >= 0, "failed to seek!" );
 }
 usize fd_query_position( FD* file ) {
     off_t pos = lseek( *file, 0, SEEK_CUR );
-    expect( pos >= 0, "failed to get current file position!" );
+    CB_EXPECT( pos >= 0, "failed to get current file position!" );
     return pos;
 }
 time_t file_query_time_create( const char* path ) {
     struct stat st;
-    expect( stat( path, &st ) == 0,
+    CB_EXPECT( stat( path, &st ) == 0,
         "failed to query create time for '%s'!", path );
     return st.st_ctime;
 }
 time_t file_query_time_modify( const char* path ) {
     struct stat st;
-    expect( stat( path, &st ) == 0,
+    CB_EXPECT( stat( path, &st ) == 0,
         "failed to query modify time for '%s'!", path );
     return st.st_mtime;
 }
@@ -5344,16 +5680,16 @@ b32 file_move( const char* dst, const char* src ) {
 }
 b32 file_copy( const char* dst, const char* src ) {
     FD src_file, dst_file;
-    if( !fd_open( src, FOPEN_READ, &src_file ) ) {
+    if( !fd_open( src, CB_FOPEN_READ, &src_file ) ) {
         return false;
     }
     if( path_exists( dst ) ) {
-        if( !fd_open( dst, FOPEN_WRITE | FOPEN_TRUNCATE, &dst_file ) ) {
+        if( !fd_open( dst, CB_FOPEN_WRITE | CB_FOPEN_TRUNCATE, &dst_file ) ) {
             fd_close( &src_file );
             return false;
         }
     } else {
-        if( !fd_open( dst, FOPEN_WRITE | FOPEN_CREATE, &dst_file ) ) {
+        if( !fd_open( dst, CB_FOPEN_WRITE | CB_FOPEN_CREATE, &dst_file ) ) {
             fd_close( &src_file );
             return false;
         }
@@ -5364,8 +5700,8 @@ b32 file_copy( const char* dst, const char* src ) {
 
     while( rem ) {
         usize max_write = rem;
-        if( rem > CBUILD_LOCAL_BUFFER_CAPACITY ) {
-            max_write = CBUILD_LOCAL_BUFFER_CAPACITY;
+        if( rem > CB_LOCAL_BUFFER_CAPACITY ) {
+            max_write = CB_LOCAL_BUFFER_CAPACITY;
         }
 
         if( !fd_read( &src_file, max_write, buf, 0 ) ) {
@@ -5418,9 +5754,9 @@ atom64 atomic_compare_swap64( atom64* atom, atom64 comp, atom64 exch ) {
     return __sync_val_compare_and_swap( atom, comp, exch );
 }
 void fence(void) {
-#if defined(ARCH_X86)
+#if CB_ARCH_CURRENT == CB_ARCH_X86 && CB_ARCH_IS_64BIT
     __asm__ volatile ("mfence":::"memory");
-#elif defined(ARCH_ARM)
+#elif CB_ARCH_CURRENT == CB_ARCH_ARM
     __asm__ volatile ("dmb":::"memory");
 #else
     __asm__ volatile ("":::"memory");
@@ -5433,7 +5769,7 @@ b32 mutex_create( Mutex* out_mutex ) {
     return true;
 }
 b32 mutex_is_valid( const Mutex* mutex ) {
-    unused( mutex );
+    CB_UNUSED( mutex );
     return true;
 }
 void mutex_lock( Mutex* mutex ) {
@@ -5494,7 +5830,7 @@ b32 semaphore_create( Semaphore* out_semaphore ) {
             default: break;
         }
 
-        cb_error( "failed to create semaphore! reason: %s", reason );
+        CB_ERROR( "failed to create semaphore! reason: %s", reason );
         return false;
     }
     out_semaphore->handle = s;
@@ -5504,7 +5840,7 @@ b32 semaphore_is_valid( const Semaphore* semaphore ) {
     return semaphore->handle != NULL;
 }
 void semaphore_wait( Semaphore* semaphore ) {
-    expect( sem_wait( semaphore->handle ) == 0, "failed to wait on semaphore!" );
+    CB_EXPECT( sem_wait( semaphore->handle ) == 0, "failed to wait on semaphore!" );
 }
 b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms ) {
     if( ms == MT_WAIT_INFINITE ) {
@@ -5520,12 +5856,12 @@ b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms ) {
         // anything else should abort the program
         return false;
     } else {
-        expect( res == 0, "failed to wait on semaphore!" );
+        CB_EXPECT( res == 0, "failed to wait on semaphore!" );
         return true;
     }
 }
 void semaphore_signal( Semaphore* semaphore ) {
-    expect( sem_post( semaphore->handle ) == 0, "failed to post semaphore!" );
+    CB_EXPECT( sem_post( semaphore->handle ) == 0, "failed to post semaphore!" );
 }
 void semaphore_destroy( Semaphore* semaphore ) {
     sem_close( semaphore->handle );
@@ -5534,7 +5870,7 @@ void semaphore_destroy( Semaphore* semaphore ) {
 
 void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
     int fd[2];
-    expect( pipe( fd ) != -1, "failed to create pipes!" );
+    CB_EXPECT( pipe( fd ) != -1, "failed to create pipes!" );
     *out_read  = fd[0];
     *out_write = fd[1];
 }
@@ -5573,15 +5909,15 @@ PID process_exec(
     }
 
     pid_t pid = fork();
-    expect( pid >= 0, "failed to fork!" );
+    CB_EXPECT( pid >= 0, "failed to fork!" );
 
     if( pid ) { // thread that ran process_exec
         if( opt_cwd ) {
-            cb_info( "cd '%s'", opt_cwd );
+            CB_INFO( "cd '%s'", opt_cwd );
         }
         DString* flat = command_flatten_dstring( &cmd );
         if( flat ) {
-            cb_info( "%s", flat );
+            CB_INFO( "%s", flat );
             dstring_free( flat );
         }
         return pid;
@@ -5589,22 +5925,22 @@ PID process_exec(
 
     // thread where process will run
 
-    expect_crash( dup2( stdin_ , STDIN_FILENO  ) >= 0, "failed to setup stdin!" );
-    expect_crash( dup2( stdout_, STDOUT_FILENO ) >= 0, "failed to setup stdout!" );
-    expect_crash( dup2( stderr_, STDERR_FILENO ) >= 0, "failed to setup stderr!" );
+    CB_EXPECT_CRASH( dup2( stdin_ , STDIN_FILENO  ) >= 0, "failed to setup stdin!" );
+    CB_EXPECT_CRASH( dup2( stdout_, STDOUT_FILENO ) >= 0, "failed to setup stdout!" );
+    CB_EXPECT_CRASH( dup2( stderr_, STDERR_FILENO ) >= 0, "failed to setup stderr!" );
 
     if( opt_cwd ) {
         chdir( opt_cwd );
     }
 
-    expect_crash( execvp(
+    CB_EXPECT_CRASH( execvp(
         cmd.args[0], (char* const*)(cmd.args) // cmd.args always has a null string at the end
     ) >= 0, "failed to execute command!" );
     exit(0);
 }
 int process_wait( PID pid ) {
     int wstatus = 0;
-    expect( waitpid( pid, &wstatus, 0 ) == pid, "failed to wait for process!" );
+    CB_EXPECT( waitpid( pid, &wstatus, 0 ) == pid, "failed to wait for process!" );
 
     if( WIFEXITED( wstatus ) ) {
         int status = WEXITSTATUS( wstatus );
@@ -5625,7 +5961,7 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
     for( u32 i = 0; i < ms; ++i ) {
         int wstatus = 0;
         pid_t v = waitpid( pid, &wstatus, WNOHANG );
-        expect( v != -1, "failed to wait for process!" );
+        CB_EXPECT( v != -1, "failed to wait for process!" );
 
         if( v == 0 ) {
             thread_sleep(1);
@@ -5646,7 +5982,7 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
     return false;
 }
 void process_discard( PID pid ) {
-    unused(pid); // this is not necessary on POSIX
+    CB_UNUSED(pid); // this is not necessary on POSIX
 }
 
 f64 timer_milliseconds(void) {
@@ -5684,9 +6020,9 @@ void* posix_thread_proc( void* params ) {
 }
 
 void thread_create( JobFN* func, void* params ) {
-    expect(
-        global_thread_id_source < (CBUILD_THREAD_COUNT + 1),
-        "exceeded maximum number of threads! max: %u", CBUILD_THREAD_COUNT );
+    CB_EXPECT(
+        global_thread_id_source < (CB_THREAD_COUNT + 1),
+        "exceeded maximum number of threads! max: %u", CB_THREAD_COUNT );
 
     u32 id = atomic_add( &global_thread_id_source, 1 );
 
@@ -5699,25 +6035,25 @@ void thread_create( JobFN* func, void* params ) {
 
     pthread_t thread;
     int res = pthread_create( &thread, NULL, posix_thread_proc, p );
-    expect( res == 0, "failed to create thread!" );
+    CB_EXPECT( res == 0, "failed to create thread!" );
 }
 
 char* internal_cwd(void) {
     char* buf = memory_alloc( PATH_MAX );
-    expect( buf, "failed to allocate working directory buffer!" );
+    CB_EXPECT( buf, "failed to allocate working directory buffer!" );
 
     char* res = getcwd( buf, PATH_MAX );
-    expect( res, "failed to get working directory!" );
+    CB_EXPECT( res, "failed to get working directory!" );
 
     return res;
 }
 char* internal_home(void) {
     char* home = getenv( "HOME" );
-    expect( home, "failed to get home directory!" );
+    CB_EXPECT( home, "failed to get home directory!" );
 
     return home;
 }
 
 #endif /* POSIX end */
 
-#endif /* CBUILD_IMPLEMENTATION end */
+#endif /* CB_IMPLEMENTATION end */
