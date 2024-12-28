@@ -21,6 +21,10 @@
  *    - define CB_ENABLE_ASSERTIONS to get debug assertions in implementation and
  *      access to CB_ASSERT() macro. The CB_ASSERT() macro is otherwise defined
  *      to be CB_UNUSED( ... )
+ *
+ *    - define CB_PRE_FN( x ) to change function prefixes.
+ *
+ *    - defined CB_PRE_T( x ) to change type prefixes.
  * 
  * @author Alicia Amarilla (smushyaa@gmail.com)
  *
@@ -447,45 +451,48 @@
 
 // NOTE(alicia): Types
 
-/// @brief 8-bit unsigned.
-typedef uint8_t   u8;
-/// @brief 16-bit unsigned.
-typedef uint16_t  u16;
-/// @brief 32-bit unsigned.
-typedef uint32_t  u32;
-/// @brief 64-bit unsigned.
-typedef uint64_t  u64;
-/// @brief Pointer sized unsigned.
-typedef uintptr_t usize;
+#if !defined(CB_DISABLE_TYPEDEF)
+    /// @brief Unsigned 8-bit integer.
+    typedef uint8_t   u8;
+    /// @brief Unsigned 16-bit integer.
+    typedef uint16_t  u16;
+    /// @brief Unsigned 32-bit integer.
+    typedef uint32_t  u32;
+    /// @brief Unsigned 64-bit integer.
+    typedef uint64_t  u64;
+    /// @brief Unsigned pointer sized integer.
+    typedef uintptr_t usize;
 
-/// @brief 8-bit signed.
-typedef int8_t   i8;
-/// @brief 16-bit signed.
-typedef int16_t  i16;
-/// @brief 32-bit signed.
-typedef int32_t  i32;
-/// @brief 64-bit signed.
-typedef int64_t  i64;
-/// @brief Pointer sized signed.
-typedef intptr_t isize;
+    /// @brief 8-bit integer.
+    typedef int8_t   i8;
+    /// @brief 16-bit integer.
+    typedef int16_t  i16;
+    /// @brief 32-bit integer.
+    typedef int32_t  i32;
+    /// @brief 64-bit integer.
+    typedef int64_t  i64;
+    /// @brief Pointer sized integer.
+    typedef intptr_t isize;
 
-/// @brief Single-precision float.
-typedef float  f32;
-/// @brief Double-precision float.
-typedef double f64;
+    /// @brief IEEE-754 single precision float.
+    typedef float  f32;
+    /// @brief IEEE-754 double precision float.
+    typedef double f64;
+#endif
 
-/// @brief 8-bit Boolean, useful for struct packing.
-/// @details When returned from library, guaranteed to be 0 or 1.
-typedef u8  b8;
-/// @brief 16-bit Boolean, useful for struct packing.
-/// @details When returned from library, guaranteed to be 0 or 1.
-typedef u16 b16;
-/// @brief 32-bit Boolean, useful for struct packing.
-/// @details When returned from library, guaranteed to be 0 or 1.
-typedef u32 b32;
-/// @brief 64-bit Boolean, useful for struct packing.
-/// @details When returned from library, guaranteed to be 0 or 1.
-typedef u64 b64;
+#if !defined(CB_PRE_FN)
+    /// @brief Generate identifier with prefix.
+    /// @param x (identifier) Identifier to prefix.
+    /// @return x
+    #define CB_PRE_FN(x) x
+#endif
+
+#if !defined(CB_PRE_T)
+    /// @brief Generate identifier with prefix.
+    /// @param x (identifier) Identifier to prefix.
+    /// @return x
+    #define CB_PRE_T(x) x
+#endif
 
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Volatile 32-bit signed for atomic operations.
@@ -494,9 +501,9 @@ typedef u64 b64;
     typedef volatile long long atom64;
 #else
     /// @brief Volatile 32-bit signed for atomic operations.
-    typedef volatile i32 atom;
+    typedef volatile int32_t atom;
     /// @brief Volatile 64-bit signed for atomic operations.
-    typedef volatile i64 atom64;
+    typedef volatile int64_t atom64;
 #endif
 
 /// @brief String is dynamically allocated on the heap,
@@ -512,7 +519,7 @@ typedef char DString;
 /// provide length followed by pointer in args.
 typedef struct {
     /// @brief ASCII length of string.
-    usize len;
+    size_t len;
     /// @brief Pointer to start of string buffer.
     const char* cc;
 } String;
@@ -560,9 +567,9 @@ typedef enum {
 
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Cross-platform file descriptor.
-    typedef isize FD;
+    typedef intptr_t FD;
     /// @brief Cross-platform process ID.
-    typedef isize PID;
+    typedef intptr_t PID;
 #else
     /// @brief Cross-platform file descriptor.
     typedef int   FD;
@@ -588,7 +595,7 @@ typedef FD Pipe;
 /// @brief Command line arguments for creating a process.
 typedef struct {
     /// @brief Number of arguments.
-    usize        count;
+    size_t        count;
     /// @brief Array of arguments. Last item in array is a null-pointer.
     const char** args;
 } Command;
@@ -602,7 +609,7 @@ typedef struct {
 /// @brief Result of walking a directory.
 typedef struct {
     /// @brief Number of paths found in directory.
-    usize    count;
+    size_t    count;
     /// @brief Dynamic array of paths found in directory.
     Darray(String) paths;
     /// @brief String buffer.
@@ -618,7 +625,7 @@ typedef void JobFN( void* params );
 /// @param     str    String to be filtered.
 /// @param[in] params (optional) Pointer to additional parameters.
 /// @return Filtered string.
-typedef String StringSplitDelimFilterFN( usize index, String str, void* params );
+typedef String StringSplitDelimFilterFN( size_t index, String str, void* params );
 /// @brief Filter prototype for dynamic array.
 /// @param     index       Index of item being tested.
 /// @param     item_stride Size of items in array.
@@ -627,8 +634,8 @@ typedef String StringSplitDelimFilterFN( usize index, String str, void* params )
 /// @return
 ///     - @c True  : Item passed filter, will be kept in.
 ///     - @c False : Item failed filter, will be filtered out.
-typedef b32 DarrayFilterFN(
-    usize index, usize item_stride, const void* item, void* params );
+typedef bool DarrayFilterFN(
+    size_t index, size_t item_stride, const void* item, void* params );
 
 // NOTE(alicia): Macro Functions
 
@@ -793,7 +800,7 @@ typedef b32 DarrayFilterFN(
 
 /// @brief Calculate length of static array.
 /// @param array (any[]) Static array to calculate length of.
-/// @return (usize) Length of @c array.
+/// @return (size_t) Length of @c array.
 #define CB_ARRAY_LEN( array ) (sizeof(array) / sizeof((array)[0]))
 /// @brief Convert kilobytes to bytes.
 /// @param kb (size_t) Kilobytes.
@@ -842,7 +849,7 @@ typedef b32 DarrayFilterFN(
 CB_NO_RETURN
 void cbuild_rebuild(
     const char* cbuild_source_file_name,
-    const char* cbuild_executable_name, b32 reload );
+    const char* cbuild_executable_name, bool reload );
 
 /// @brief Allocate memory on the heap. Always returns zeroed memory.
 /// @warning
@@ -852,7 +859,7 @@ void cbuild_rebuild(
 /// @return
 ///     - Pointer : Allocation succeeded, pointer to start of buffer.
 ///     - NULL    : Allocation failed.
-void* memory_alloc( usize size );
+void* memory_alloc( size_t size );
 /// @brief Reallocate memory on the heap. Always returns zeroed memory.
 /// @warning
 /// Do not free with free(), use memory_free() instead!
@@ -863,35 +870,35 @@ void* memory_alloc( usize size );
 /// @return
 ///     - Pointer : Allocation succeeded, pointer to start of buffer.
 ///     - NULL    : Allocation failed.
-void* memory_realloc( void* memory, usize old_size, usize new_size );
+void* memory_realloc( void* memory, size_t old_size, size_t new_size );
 /// @brief Free memory allocated on the heap.
 /// @warning
 /// Only free pointers from memory_alloc() or memory_realloc()!
 /// Do not use with pointer from malloc()!
 /// @param[in] memory Pointer to block of memory to free.
 /// @param     size   Size in bytes of block of memory.
-void  memory_free( void* memory, usize size );
+void  memory_free( void* memory, size_t size );
 /// @brief Query how many bytes are currently allocated.
 /// @return Bytes allocated.
-usize memory_query_usage(void);
+size_t memory_query_usage(void);
 /// @brief Query how many bytes have been allocated thus far.
 /// @return Bytes allocated in total.
-usize memory_query_total_usage(void);
+size_t memory_query_total_usage(void);
 /// @brief Copy value across block of memory.
 /// @param[in] memory     Block to modify, must be >= @c value_size in size.
 /// @param     value_size Size of value to stamp.
 /// @param[in] value      Pointer to value to stamp.
 /// @param     size       Total size of @c memory in bytes.
-void memory_stamp( void* memory, usize value_size, const void* value, usize size );
+void memory_stamp( void* memory, size_t value_size, const void* value, size_t size );
 /// @brief Set bytes in block of memory to a value.
 /// @param[in] memory Block to modify.
 /// @param     value  Value to set bytes to.
 /// @param     size   Size of @c memory in bytes.
-void memory_set( void* memory, i8 value, usize size );
+void memory_set( void* memory, int8_t value, size_t size );
 /// @brief Set bytes in block of memory to zero.
 /// @param[in] memory Block to modify.
 /// @param     size   Size of @c memory in bytes.
-void memory_zero( void* memory, usize size );
+void memory_zero( void* memory, size_t size );
 /// @brief Copy bytes from one block of memory to another.
 /// @details
 /// @c dst and @c src cannot be overlapping.
@@ -899,21 +906,21 @@ void memory_zero( void* memory, usize size );
 /// @param[in] dst  Pointer to destination.
 /// @param[in] src  Pointer to source.
 /// @param     size Size of @c dst and @c src.
-void memory_copy( void* restrict dst, const void* restrict src, usize size );
+void memory_copy( void* restrict dst, const void* restrict src, size_t size );
 /// @brief Copy bytes from one block of memory to another.
 /// @details
 /// @c dst and @c src can be overlapping.
 /// @param[in] dst  Pointer to destination.
 /// @param[in] src  Pointer to source.
 /// @param     size Size of @c dst and @c src.
-void memory_move( void* dst, const void* src, usize size );
+void memory_move( void* dst, const void* src, size_t size );
 /// @brief Compare bytes from two blocks of memory for equality.
 /// @param[in] a, b Pointer to blocks of memory to compare.
 /// @param     size Size of @c dst and @c src.
 /// @return
 ///     - @c True  : @c a and @c b are equal.
 ///     - @c False : @c a and @c b are not equal.
-b32 memory_cmp( const void* a, const void* b, usize size );
+bool memory_cmp( const void* a, const void* b, size_t size );
 
 /// @brief Check if character is in set.
 /// @param c   Character to check for.
@@ -921,21 +928,21 @@ b32 memory_cmp( const void* a, const void* b, usize size );
 /// @return
 ///     - @c True  : @c c is in @c set.
 ///     - @c False : @c c is not in @c set.
-b32 char_in_set( char c, String set );
+bool char_in_set( char c, String set );
 
 /// @brief Calculate UTF-8 length of null-terminated string.
 /// @note
 /// Does not check if @c string is a valid UTF-8 string!
 /// @param[in] string Pointer to character buffer.
 /// @return UTF-8 length of @c string.
-usize strlen_utf8( const char* string );
+size_t strlen_utf8( const char* string );
 
 /// @brief Create an empty string.
 /// @return Empty @c string.
 #define string_empty()\
     (String){ .len=0, .cc=0 }
 /// @brief Create a new string from length and buffer.
-/// @param     length (usize) Length of string buffer.
+/// @param     length (size_t) Length of string buffer.
 /// @param[in] buf    (const char*) Pointer to start of buffer.
 /// @return New @c string.
 #define string_new( length, buf )\
@@ -960,20 +967,20 @@ usize strlen_utf8( const char* string );
 /// @return
 ///     - @c True  : @c str is empty.
 ///     - @c False : @c str is not empty.
-b32 string_is_empty( String str );
+bool string_is_empty( String str );
 /// @brief Check if string is null-terminated.
 /// @param str String to check.
 /// @return
 ///     - @c True  : @c str is null-terminated.
 ///     - @c False : @c str is not null-terminated.
-b32 string_is_null_terminated( String str );
+bool string_is_null_terminated( String str );
 /// @brief Compare two strings for equality.
 /// First compares string lengths, then compares contents.
 /// @param a, b Strings to compare.
 /// @return
 ///     - @c True  : Strings @c a and @c b are equal.
 ///     - @c False : Strings @c a and @c b are not equal.
-b32 string_cmp( String a, String b );
+bool string_cmp( String a, String b );
 /// @brief Search for character in string.
 /// @param      str           String to search in.
 /// @param      c             ASCII character to search for.
@@ -981,7 +988,7 @@ b32 string_cmp( String a, String b );
 /// @return
 ///     - @c True  : @c c was found in @c string.
 ///     - @c False : @c c was not found in @c string.
-b32 string_find( String str, char c, usize* opt_out_index );
+bool string_find( String str, char c, size_t* opt_out_index );
 /// @brief Search for character in string from end of string.
 /// @param      str           String to search in.
 /// @param      c             ASCII character to search for.
@@ -989,7 +996,7 @@ b32 string_find( String str, char c, usize* opt_out_index );
 /// @return
 ///     - @c True  : @c c was found in @c string.
 ///     - @c False : @c c was not found in @c string.
-b32 string_find_rev( String str, char c, usize* opt_out_index );
+bool string_find_rev( String str, char c, size_t* opt_out_index );
 /// @brief Search for a set of characters in string.
 /// @param      str           String to search in.
 /// @param      set           Set of ASCII characters to search for.
@@ -997,7 +1004,7 @@ b32 string_find_rev( String str, char c, usize* opt_out_index );
 /// @return
 ///     - @c True  : Character in @c set was found in @c string.
 ///     - @c False : Character in @c set was not found in @c string.
-b32 string_find_set( String str, String set, usize* opt_out_index );
+bool string_find_set( String str, String set, size_t* opt_out_index );
 /// @brief Search for a set of characters in string from end of string.
 /// @param      str           String to search in.
 /// @param      set           Set of ASCII characters to search for.
@@ -1005,7 +1012,7 @@ b32 string_find_set( String str, String set, usize* opt_out_index );
 /// @return
 ///     - @c True  : Character in @c set was found in @c string.
 ///     - @c False : Character in @c set was not found in @c string.
-b32 string_find_set_rev( String str, String set, usize* opt_out_index );
+bool string_find_set_rev( String str, String set, size_t* opt_out_index );
 /// @brief Search for substring in string.
 /// @param      str           String to search in.
 /// @param      substr        String to search for.
@@ -1013,7 +1020,7 @@ b32 string_find_set_rev( String str, String set, usize* opt_out_index );
 /// @return
 ///     - @c True  : @c substr was found in @c string.
 ///     - @c False : @c substr was not found in @c string.
-b32 string_find_string( String str, String substr, usize* opt_out_index );
+bool string_find_string( String str, String substr, size_t* opt_out_index );
 /// @brief Search for substring in string from end of string.
 /// @param      str           String to search in.
 /// @param      substr        String to search for.
@@ -1021,7 +1028,7 @@ b32 string_find_string( String str, String substr, usize* opt_out_index );
 /// @return
 ///     - @c True  : @c substr was found in @c string.
 ///     - @c False : @c substr was not found in @c string.
-b32 string_find_string_rev( String str, String substr, usize* opt_out_index );
+bool string_find_string_rev( String str, String substr, size_t* opt_out_index );
 /// @brief Get pointer to first character in string.
 /// @param str String to get character from.
 /// @return
@@ -1046,7 +1053,7 @@ String string_advance( String str );
 /// @return
 ///     - @c string       : String @c stride number of characters forward.
 ///     - @c empty string : String has no more characters or stride >= @c str.len.
-String string_advance_by( String str, usize stride );
+String string_advance_by( String str, size_t stride );
 /// @brief Shorten string length to maximum.
 /// @details
 /// Does nothing if max > str.len.
@@ -1054,7 +1061,7 @@ String string_advance_by( String str, usize stride );
 /// @param str String to truncate.
 /// @param max Maximum length to truncate to.
 /// @return Truncated string.
-String string_truncate( String str, usize max );
+String string_truncate( String str, size_t max );
 /// @brief Subtract from string length.
 /// @details
 /// Does nothing if amount == 0. 
@@ -1062,7 +1069,7 @@ String string_truncate( String str, usize max );
 /// @param str    String to trim.
 /// @param amount Number of characters to trim from the end.
 /// @return Trimmed string.
-String string_trim( String str, usize amount );
+String string_trim( String str, size_t amount );
 /// @brief Remove leading whitespace characters from string.
 /// @param str String to remove from.
 /// @return @c str without leading whitespace.
@@ -1084,7 +1091,7 @@ String string_trim_surrounding_whitespace( String str );
 /// @param[out] opt_out_left  (optional) Pointer to write left side to.
 /// @param[out] opt_out_right (optional) Pointer to write right side to.
 void string_split_at(
-    String src, usize at, b32 keep_split,
+    String src, size_t at, bool keep_split,
     String* opt_out_left, String* opt_out_right );
 /// @brief Split string at first instance of character.
 /// @param      src           String to split.
@@ -1095,8 +1102,8 @@ void string_split_at(
 /// @return
 ///     - @c True  : Character @c c was found in @c src and string was split.
 ///     - @c False : Character @c c was not found in @c src.
-b32 string_split_char(
-    String src, char c, b32 keep_split,
+bool string_split_char(
+    String src, char c, bool keep_split,
     String* opt_out_left, String* opt_out_right );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param src        String to split.
@@ -1105,7 +1112,7 @@ b32 string_split_char(
 /// @return
 ///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
 ///     - @c NULL : Failed to allocate dynamic array of splits.
-String* string_split_delim( String src, String delim, b32 keep_delim );
+String* string_split_delim( String src, String delim, bool keep_delim );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param src        String to split.
 /// @param delim      Delimiter character to split by.
@@ -1125,7 +1132,7 @@ String* string_split_delim( String src, String delim, b32 keep_delim );
 ///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
 ///     - @c NULL : Failed to allocate dynamic array of splits.
 String* string_split_delim_ex(
-    String src, String delim, b32 keep_delim,
+    String src, String delim, bool keep_delim,
     StringSplitDelimFilterFN* filter, void* params );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param     src        String to split.
@@ -1144,14 +1151,14 @@ String* string_split_delim_ex(
 /// Does not check if @c string is a valid UTF-8 string!
 /// @param str String to get UTF-8 length of.
 /// @return UTF-8 length of @c str.
-usize string_len_utf8( String str );
+size_t string_len_utf8( String str );
 
 /// @brief Allocate an empty dynamic string with given capacity.
 /// @param cap Capacity to allocate.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_empty( usize cap );
+DString* dstring_empty( size_t cap );
 /// @brief Create new dynamic string from string buffer.
 /// @details
 /// Allocates appropriately sized dynamic string and
@@ -1162,7 +1169,7 @@ DString* dstring_empty( usize cap );
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_new( usize len, const char* str );
+DString* dstring_new( size_t len, const char* str );
 /// @brief Create a new dynamic string from null-terminated string.
 /// @details
 /// Allocates appropriately sized dynamic string and
@@ -1228,7 +1235,7 @@ DString* dstring_fmt( const char* format, ... );
 /// @return 
 ///     - @c Dynamic String : Buffer was successfully reallocated.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_grow( DString* str, usize amount );
+DString* dstring_grow( DString* str, size_t amount );
 /// @brief Create a new dynamic string from existing dynamic string.
 /// @param[in] src Dynamic string to clone.
 /// @return
@@ -1256,7 +1263,7 @@ DString* dstring_concat( String lhs, String rhs );
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
 DString* dstring_concat_multi(
-    usize count, const String* strings, String opt_separator );
+    size_t count, const String* strings, String opt_separator );
 /// @brief Create dynamic string by concatenating multiple null-terminated strings.
 /// @param     count         Number of strings to concatenate.
 /// @param[in] strings       Pointer to strings to concatenate.
@@ -1265,7 +1272,7 @@ DString* dstring_concat_multi(
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
 DString* dstring_concat_multi_cstr(
-    usize count, const char** strings, const char* opt_separator );
+    size_t count, const char** strings, const char* opt_separator );
 /// @brief Append string to end of dynamic string.
 /// @param[in] str    Dynamic string to append to.
 /// @param     append String to append.
@@ -1319,7 +1326,7 @@ DString* dstring_prepend( DString* str, String prepend );
 /// @return
 ///     - @c Dynamic String : Insert was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_insert( DString* str, String insert, usize at );
+DString* dstring_insert( DString* str, String insert, size_t at );
 /// @brief Insert null-terminated string inside dynamic string.
 /// @param[in] str    Dynamic string to insert in.
 /// @param[in] insert String to insert.
@@ -1352,21 +1359,21 @@ DString* dstring_push( DString* str, char c );
 /// @return
 ///     - @c Dynamic String : Push was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_emplace( DString* str, char c, usize at );
+DString* dstring_emplace( DString* str, char c, size_t at );
 /// @brief Pop last character from dynamic string, if available.
 /// @param[in]  str       Dynamic string to pop character from.
 /// @param[out] opt_out_c (optional) Pointer to write popped character to.
 /// @return
 ///     - @c True  : @c str has a character to pop.
 ///     - @c False : @c str is empty.
-b32 dstring_pop( DString* str, char* opt_out_c );
+bool dstring_pop( DString* str, char* opt_out_c );
 /// @brief Remove character from dynamic string.
 /// @param[in] str   Dynamic string to remove character from.
 /// @param     index Index of character to remove.
 /// @return
 ///     - @c True  : @c index was in bounds of @c str and was removed.
 ///     - @c False : @c index was out of bounds.
-b32 dstring_remove( DString* str, usize index );
+bool dstring_remove( DString* str, size_t index );
 /// @brief Remove range of characters from dynamic string.
 /// @details
 /// With assertions on, asserts that from < to.
@@ -1376,21 +1383,21 @@ b32 dstring_remove( DString* str, usize index );
 /// @return
 ///     - @c True  : Range was in bounds of @c str and was removed.
 ///     - @c False : Range was out of bounds.
-b32 dstring_remove_range( DString* str, usize from_inclusive, usize to_exclusive );
+bool dstring_remove_range( DString* str, size_t from_inclusive, size_t to_exclusive );
 /// @brief Shorten dynamic string length to maximum.
 /// @details
 /// Does nothing if max > str.len.
 /// Returns empty string if max == 0.
 /// @param[in] str Dynamic string to truncate.
 /// @param     max Maximum length to truncate to.
-void dstring_truncate( DString* str, usize max );
+void dstring_truncate( DString* str, size_t max );
 /// @brief Subtract from dynamic string length.
 /// @details
 /// Does nothing if amount == 0. 
 /// Returns empty string if amount >= str.len.
 /// @param[in] str    Dynamic string to trim.
 /// @param     amount Number of characters to trim from the end.
-void dstring_trim( DString* str, usize amount );
+void dstring_trim( DString* str, size_t amount );
 /// @brief Set length of dynamic string to zero and zero out memory.
 /// @note This does not free the string!
 /// @param[in] str Dynamic string to clear.
@@ -1398,31 +1405,31 @@ void dstring_clear( DString* str );
 /// @brief Calculate remaining capacity in dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Remaining capacity. Does not include null byte.
-usize dstring_remaining( const DString* str );
+size_t dstring_remaining( const DString* str );
 /// @brief Get length of dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Length not including null byte.
-usize dstring_len( const DString* str );
+size_t dstring_len( const DString* str );
 /// @brief Get capacity of dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Total capacity, includes null byte.
-usize dstring_cap( const DString* str );
+size_t dstring_cap( const DString* str );
 /// @brief Get total heap memory usage of dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Total memory usage.
-usize dstring_total_size( const DString* str );
+size_t dstring_total_size( const DString* str );
 /// @brief Check if dynamic string is empty.
 /// @param[in] str Dynamic string.
 /// @return
 ///     - @c True  : Length is zero.
 ///     - @c False : Length is not zero.
-b32 dstring_is_empty( const DString* str );
+bool dstring_is_empty( const DString* str );
 /// @brief Check if dynamic string is full.
 /// @param[in] str Dynamic string.
 /// @return
 ///     - @c True  : Length equals capacity - 1.
 ///     - @c False : Dynamic string has remaining capacity.
-b32 dstring_is_full( const DString* str );
+bool dstring_is_full( const DString* str );
 /// @brief Set length of dstring.
 /// @details
 /// Panics if @c len exceeds string capacity.
@@ -1430,7 +1437,7 @@ b32 dstring_is_full( const DString* str );
 /// This function also sets null-terminator.
 /// @param[in] str Dynamic string.
 /// @param     len Length to set.
-void dstring_set_len( DString* str, usize len );
+void dstring_set_len( DString* str, size_t len );
 /// @brief Get mutable pointer to start of dynamic string buffer.
 /// @details
 /// Used internally.
@@ -1458,7 +1465,7 @@ void dstring_free( DString* str );
 /// @return
 ///     - @c Pointer : Pointer to start of dynamic array.
 ///     - @c NULL    : Failed to allocate dynamic array.
-void* darray_empty( usize stride, usize cap );
+void* darray_empty( size_t stride, size_t cap );
 /// @brief Create dynamic array from existing array.
 /// @param     stride Size of items in array.
 /// @param     len    Length of array.
@@ -1466,14 +1473,14 @@ void* darray_empty( usize stride, usize cap );
 /// @return
 ///     - @c Pointer : Pointer to start of dynamic array.
 ///     - @c NULL    : Failed to allocate dynamic array.
-void* darray_from_array( usize stride, usize len, const void* buf );
+void* darray_from_array( size_t stride, size_t len, const void* buf );
 /// @brief Calculate memory requirement for dynamic array.
 /// @details
 /// Used to create dynamic array with fixed memory size.
 /// @param stride Size of items in dynamic array.
 /// @param cap    Number of items dynamic array should be able to hold.
 /// @return Required size of dynamic array buffer.
-usize darray_static_memory_requirement( usize stride, usize cap );
+size_t darray_static_memory_requirement( size_t stride, size_t cap );
 /// @brief Create a dynamic array from static memory. (non reallocating)
 /// @note
 /// Returned pointer is not the same as @c buf!
@@ -1483,7 +1490,7 @@ usize darray_static_memory_requirement( usize stride, usize cap );
 /// @param     cap    Number of items dynamic array can hold.
 /// @param[in] buf    Start of buffer. Must be able to hold result from darray_static_memory_requirement().
 /// @return Start of dynamic array buffer.
-void* darray_static( usize stride, usize cap, void* buf );
+void* darray_static( size_t stride, size_t cap, void* buf );
 /// @brief Create a dynamic array from item literals.
 /// @param type (type) Type of items.
 /// @param ...  (any of type @c type) Items to fill array with.
@@ -1504,8 +1511,8 @@ void* darray_static( usize stride, usize cap, void* buf );
 /// @return
 ///     - @c Pointer : Pointer to start of dynamic array.
 ///     - @c NULL    : Failed to allocate dynamic array.
-void* darray_join( usize stride,
-    usize lhs_len, const void* lhs, usize rhs_len, const void* rhs );
+void* darray_join( size_t stride,
+    size_t lhs_len, const void* lhs, size_t rhs_len, const void* rhs );
 /// @brief Create dynamic array from filtered array.
 /// @param     stride        Size of items in @c src.
 /// @param     len           Length of @c src.
@@ -1516,7 +1523,7 @@ void* darray_join( usize stride,
 ///     - @c Pointer : Pointer to start of dynamic array.
 ///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_from_filter(
-    usize stride, usize len, const void* src,
+    size_t stride, size_t len, const void* src,
     DarrayFilterFN* filter, void* filter_params );
 /// @brief Grow dynamic array by @c amount number of items.
 /// @param[in] darray Dynamic array to grow.
@@ -1524,7 +1531,7 @@ void* darray_from_filter(
 /// @return
 ///     - @c Pointer : Reallocated dynamic array capable of holding cap + @c amount.
 ///     - @c NULL    : Failed to reallocate dynamic array.
-void* darray_grow( void* darray, usize amount );
+void* darray_grow( void* darray, size_t amount );
 /// @brief Create new dynamic array from existing dynamic array.
 /// @param[in] darray Dynamic array to clone.
 /// @return
@@ -1547,27 +1554,27 @@ void darray_clear( void* darray );
 /// @return
 ///     - @c Pointer : Pointer to dynamic array.
 ///     - @c NULL    : Failed to reallocate dynamic array.
-void* darray_set_len( void* darray, usize len );
+void* darray_set_len( void* darray, size_t len );
 /// @brief Set maximum length of dynamic array.
 /// @details
 /// If @c max >= darray.len, returns without modifying array.
 /// Otherwise, truncates length and zeroes out max to length.
 /// @param[in] darray Dynamic array to modify.
 /// @param     max    Maximum length of dynamic array.
-void darray_truncate( void* darray, usize max );
+void darray_truncate( void* darray, size_t max );
 /// @brief Subtract from dynamic array length.
 /// @details
 /// If @c amount is >= darray.len, same as clearing darray.
 /// @param[in] darray Dynamic array to modify.
 /// @param     amount Number of items to substract from length.
-void darray_trim( void* darray, usize amount );
+void darray_trim( void* darray, size_t amount );
 /// @brief Attempt to push new item to end of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param[in] item   Pointer to item to push.
 /// @return
 ///     - @c True  : Had capacity to push new item.
 ///     - @c False : Dynamic array is full.
-b32 darray_try_push( void* darray, const void* item );
+bool darray_try_push( void* darray, const void* item );
 /// @brief Attempt to emplace new item inside of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param[in] item   Pointer to item to emplace.
@@ -1575,7 +1582,7 @@ b32 darray_try_push( void* darray, const void* item );
 /// @return
 ///     - @c True  : Had capacity to emplace new item.
 ///     - @c False : Dynamic array is full.
-b32 darray_try_emplace( void* darray, const void* item, usize at );
+bool darray_try_emplace( void* darray, const void* item, size_t at );
 /// @brief Attempt to append array to end of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param     count  Number of items in @c items.
@@ -1583,7 +1590,7 @@ b32 darray_try_emplace( void* darray, const void* item, usize at );
 /// @return
 ///     - @c True  : Had capacity to append array.
 ///     - @c False : Dynamic array is full.
-b32 darray_try_append( void* darray, usize count, const void* items );
+bool darray_try_append( void* darray, size_t count, const void* items );
 /// @brief Attempt to insert array inside of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param     count  Number of items in @c items.
@@ -1592,14 +1599,14 @@ b32 darray_try_append( void* darray, usize count, const void* items );
 /// @return
 ///     - @c True  : Had capacity to insert array.
 ///     - @c False : Dynamic array is full.
-b32 darray_try_insert( void* darray, usize count, const void* items, usize at );
+bool darray_try_insert( void* darray, size_t count, const void* items, size_t at );
 /// @brief Pop last item from dynamic array.
 /// @param[in]  darray       Dynamic array to pop from.
 /// @param[out] opt_out_item (optional) Pointer to write last item to.
 /// @return
 ///     - @c True  : Popped last item.
 ///     - @c False : Dynamic array is empty.
-b32 darray_pop( void* darray, void* opt_out_item );
+bool darray_pop( void* darray, void* opt_out_item );
 /// @brief Push new item to end of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param[in] item   Pointer to item to push.
@@ -1614,7 +1621,7 @@ void* darray_push( void* darray, const void* item );
 /// @return
 ///     - @c Pointer : Emplaced successfully.
 ///     - @c NULL    : Failed to reallocate dynamic array.
-void* darray_emplace( void* darray, const void* item, usize at );
+void* darray_emplace( void* darray, const void* item, size_t at );
 /// @brief Append array to end of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param     count  Number of items in @c items.
@@ -1622,7 +1629,7 @@ void* darray_emplace( void* darray, const void* item, usize at );
 /// @return
 ///     - @c Pointer : Appended successfully.
 ///     - @c NULL    : Failed to reallocate dynamic array.
-void* darray_append( void* darray, usize count, const void* items );
+void* darray_append( void* darray, size_t count, const void* items );
 /// @brief Insert array inside of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param     count  Number of items in @c items.
@@ -1631,14 +1638,14 @@ void* darray_append( void* darray, usize count, const void* items );
 /// @return
 ///     - @c Pointer : Inserted successfully.
 ///     - @c NULL    : Failed to reallocate dynamic array.
-void* darray_insert( void* darray, usize count, const void* items, usize at );
+void* darray_insert( void* darray, size_t count, const void* items, size_t at );
 /// @brief Remove item from dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param     index  Index of item to remove.
 /// @return
 ///     - @c True  : Removed item.
 ///     - @c False : Dynamic array was empty.
-b32 darray_remove( void* darray, usize index );
+bool darray_remove( void* darray, size_t index );
 /// @brief Remove range of items from dynamic array.
 /// @param[in] darray Dynamic array.
 /// @param     from_inclusive Start of range, inclusive.
@@ -1646,39 +1653,39 @@ b32 darray_remove( void* darray, usize index );
 /// @return
 ///     - @c True  : Range was in bounds of @c darray and was removed.
 ///     - @c False : Range was out of bounds.
-b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive );
+bool darray_remove_range( void* darray, size_t from_inclusive, size_t to_exclusive );
 /// @brief Calculate remaining capacity in dynamic array.
 /// @param[in] darray Dynamic array.
 /// @return Remaining capacity.
-usize darray_remaining( const void* darray );
+size_t darray_remaining( const void* darray );
 /// @brief Get length of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @return Length of dynamic array.
-usize darray_len( const void* darray );
+size_t darray_len( const void* darray );
 /// @brief Get capacity of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @return Capacity of dynamic array.
-usize darray_cap( const void* darray );
+size_t darray_cap( const void* darray );
 /// @brief Get size of items in dynamic array.
 /// @param[in] darray Dynamic array.
 /// @return Size of items in bytes.
-usize darray_stride( const void* darray );
+size_t darray_stride( const void* darray );
 /// @brief Get total heap memory usage of dynamic array.
 /// @param[in] darray Dynamic array.
 /// @return Total memory usage.
-usize darray_total_size( const void* darray );
+size_t darray_total_size( const void* darray );
 /// @brief Check if dynamic array is empty.
 /// @param[in] darray Dynamic array.
 /// @return
 ///     - @c True  : Dynamic array is empty.
 ///     - @c False : Dynamic array has items in it.
-b32 darray_is_empty( const void* darray );
+bool darray_is_empty( const void* darray );
 /// @brief Check if dynamic array is full.
 /// @param[in] darray Dynamic array.
 /// @return
 ///     - @c True  : Dynamic array is full.
 ///     - @c False : Dynamic array has capacity available.
-b32 darray_is_full( const void* darray );
+bool darray_is_full( const void* darray );
 /// @brief Get mutable pointer to start of dynamic array buffer.
 /// @details
 /// Used internally.
@@ -1710,7 +1717,7 @@ String path_home(void);
 /// @return
 ///     - @c True  : @c path is an absolute path.
 ///     - @c False : @c path is a relative path.
-b32 path_is_absolute( const char* path );
+bool path_is_absolute( const char* path );
 /// @brief Check if path points to a file/directory.
 /// @details
 /// Untested: if it returns false for files that require elevated permissions.
@@ -1718,18 +1725,18 @@ b32 path_is_absolute( const char* path );
 /// @return
 ///     - @c True  : @c path points to real file/directory.
 ///     - @c False : @c path does not point to file/directory.
-b32 path_exists( const char* path );
+bool path_exists( const char* path );
 /// @brief Check if path points to directory.
 /// @param[in] path Path to check.
 /// @return
 ///     - @c True  : @c path points to existing directory.
 ///     - @c False : @c path points to something else.
 ///     - @c False : @c path does not point to existing directory.
-b32 path_is_directory( const char* path );
+bool path_is_directory( const char* path );
 /// @brief Count number of path chunks in path.
 /// @param path Path to count.
 /// @return Number of chunks.
-usize path_chunk_count( String path );
+size_t path_chunk_count( String path );
 /// @brief Split path into chunks.
 /// @param path Path to split.
 /// @return
@@ -1748,7 +1755,7 @@ String* path_chunk_split( String path );
 /// @return
 ///     - @c True  : @c path matches @c glob.
 ///     - @c False : @c path does not match @c glob.
-b32 path_matches_glob( String path, String glob );
+bool path_matches_glob( String path, String glob );
 /// @brief Walk a directory, collecting all files/directories.
 /// @details
 /// If @c out_result is empty, allocates new buffers for it.
@@ -1761,9 +1768,9 @@ b32 path_matches_glob( String path, String glob );
 ///     - @c True  : Successfully walked directory and wrote results to @c out_result.
 ///     - @c False : Failed to open @c dir.
 ///     - @c False : Failed to allocate results.
-b32 path_walk_dir(
-    const char* dir, b32 recursive,
-    b32 include_dirs, WalkDirectory* out_result );
+bool path_walk_dir(
+    const char* dir, bool recursive,
+    bool include_dirs, WalkDirectory* out_result );
 /// @brief Create list of filtered paths from path_walk_dir() result.
 /// @param[in] wd   path_walk_dir() result to filter.
 /// @param     glob Glob pattern to check for.
@@ -1785,7 +1792,7 @@ void path_walk_free( WalkDirectory* wd );
 /// @return
 ///     - @c True  : File was opened successfully.
 ///     - @c False : Failed to open file. Check log for more details.
-b32 fd_open( const char* path, FileOpenFlags flags, FD* out_file );
+bool fd_open( const char* path, FileOpenFlags flags, FD* out_file );
 /// @brief Close a file descriptor.
 /// @param[in] file Pointer to file descriptor to close.
 void fd_close( FD* file );
@@ -1797,7 +1804,7 @@ void fd_close( FD* file );
 /// @return
 ///     - @c True  : Successfully wrote to file.
 ///     - @c False : Failed to write file.
-b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size );
+bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_size );
 /// @brief Write formatted string to file.
 /// @param[in] file   File descriptor to write to.
 /// @param[in] format Format string literal.
@@ -1805,7 +1812,7 @@ b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size )
 /// @return
 ///     - @c True  : Successfully wrote to file.
 ///     - @c False : Failed to write file.
-b32 fd_write_fmt_va( FD* file, const char* format, va_list va );
+bool fd_write_fmt_va( FD* file, const char* format, va_list va );
 /// @brief Write formatted string to file.
 /// @param[in] file   File descriptor to write to.
 /// @param[in] format Format string literal.
@@ -1813,7 +1820,7 @@ b32 fd_write_fmt_va( FD* file, const char* format, va_list va );
 /// @return
 ///     - @c True  : Successfully wrote to file.
 ///     - @c False : Failed to write file.
-b32 fd_write_fmt( FD* file, const char* format, ... );
+bool fd_write_fmt( FD* file, const char* format, ... );
 /// @brief Read bytes from file.
 /// @param[in]  file              File descriptor to read from.
 /// @param      size              Size of read buffer.
@@ -1822,26 +1829,26 @@ b32 fd_write_fmt( FD* file, const char* format, ... );
 /// @return
 ///     - @c True  : Successfully read from file.
 ///     - @c False : Failed to read file.
-b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size );
+bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size );
 /// @brief Set file size to current position.
 /// @param[in] file File descriptor.
 /// @return
 ///     - @c True  : Successfully set file size.
 ///     - @c False : Failed to set file size.
-b32 fd_truncate( FD* file );
+bool fd_truncate( FD* file );
 /// @brief Query file size.
 /// @param[in] file File descriptor.
 /// @return Size of @c file.
-usize fd_query_size( FD* file );
+size_t fd_query_size( FD* file );
 /// @brief Seek to file position.
 /// @param[in] file File descriptor.
 /// @param     type Type of seek.
 /// @param     seek Bytes to seek. Can be negative to seek in reverse.
-void fd_seek( FD* file, FileSeek type, isize seek );
+void fd_seek( FD* file, FileSeek type, intptr_t seek );
 /// @brief Query current seek position.
 /// @param[in] file File descriptor.
 /// @return Bytes from start of file.
-usize fd_query_position( FD* file );
+size_t fd_query_position( FD* file );
 /// @brief Query creation time of file at given path.
 /// @param[in] path Null-terminated path to file. Length must be <= 4096.
 /// @return Creation time in POSIX time.
@@ -1856,26 +1863,26 @@ time_t file_query_time_modify( const char* path );
 /// @return
 ///     - @c True  : Successfully moved file.
 ///     - @c False : Failed to move file.
-b32 file_move( const char* dst, const char* src );
+bool file_move( const char* dst, const char* src );
 /// @brief Copy file from one path to another.
 /// @param[in] dst Null-terminated destination path. Length must be <= 4096.
 /// @param[in] src Null-terminated source path. Length must be <= 4096.
 /// @return
 ///     - @c True  : Successfully copied file.
 ///     - @c False : Failed to copie file.
-b32 file_copy( const char* dst, const char* src );
+bool file_copy( const char* dst, const char* src );
 /// @brief Remove file from system.
 /// @param[in] path Null-terminated path. Length must be <= 4096.
 /// @return
 ///     - @c True  : Successfully removed file.
 ///     - @c False : Failed to remove file.
-b32 file_remove( const char* path );
+bool file_remove( const char* path );
 /// @brief Create directory.
 /// @param[in] path Path to create directory at.
 /// @return
 ///     - @c True  : Directory created successfully or it already exists.
 ///     - @c False : Failed to create directory.
-b32 dir_create( const char* path );
+bool dir_create( const char* path );
 /// @brief Remove directory.
 /// @param[in] path      Path to directory to remove.
 /// @param     recursive If directory contains items.
@@ -1883,7 +1890,7 @@ b32 dir_create( const char* path );
 ///     - @c True  : Directory removed successfully.
 ///     - @c False : Failed to remove directory.
 ///     - @c False : Attempted to remove directory that is not empty without @c recursive.
-b32 dir_remove( const char* path, b32 recursive );
+bool dir_remove( const char* path, bool recursive );
 
 /// @brief Atomically add to atomic integer.
 /// @param[in, out] atomic Pointer to atomic to add to.
@@ -1926,13 +1933,13 @@ void fence(void);
 /// @return
 ///     - @c True  : Created mutex successfully.
 ///     - @c False : Failed to create mutex (Windows only).
-b32 mutex_create( Mutex* out_mutex );
+bool mutex_create( Mutex* out_mutex );
 /// @brief Check if mutex was initialized.
 /// @param[in] mutex Pointer to mutex to check.
 /// @return
 ///     - @c True : Mutex was initialized.
 ///     - @c False : Mutex has not yet been initialized (Windows only).
-b32 mutex_is_valid( const Mutex* mutex );
+bool mutex_is_valid( const Mutex* mutex );
 /// @brief Lock mutex.
 /// @details
 /// Waits indefinitely for mutex lock.
@@ -1944,7 +1951,7 @@ void mutex_lock( Mutex* mutex );
 /// @return
 ///     - @c True  : Locked mutex before timeout.
 ///     - @c False : Timed out.
-b32 mutex_lock_timed( Mutex* mutex, u32 ms );
+bool mutex_lock_timed( Mutex* mutex, uint32_t ms );
 /// @brief Unlock locked mutex. Does nothing if mutex is already unlocked.
 /// @param[in] mutex Mutex to unlock.
 void mutex_unlock( Mutex* mutex );
@@ -1966,13 +1973,13 @@ void mutex_destroy( Mutex* mutex );
 /// @return
 ///     - @c True  : Created semaphore successfully.
 ///     - @c False : Failed to create semaphore.
-b32 semaphore_create( Semaphore* out_semaphore );
+bool semaphore_create( Semaphore* out_semaphore );
 /// @brief Check if semaphore has already been initialized.
 /// @param[in] semaphore Semaphore to check.
 /// @return
 ///     - @c True  : Semaphore is initialized.
 ///     - @c False : Semaphore has not been initialized.
-b32 semaphore_is_valid( const Semaphore* semaphore );
+bool semaphore_is_valid( const Semaphore* semaphore );
 /// @brief Wait indefinitely for semaphore to be signaled.
 /// @param[in] semaphore Semaphore to wait for.
 void semaphore_wait( Semaphore* semaphore );
@@ -1982,7 +1989,7 @@ void semaphore_wait( Semaphore* semaphore );
 /// @return
 ///     - @c True  : Semaphore was signaled in time.
 ///     - @c False : Timed out.
-b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms );
+bool semaphore_wait_timed( Semaphore* semaphore, uint32_t ms );
 /// @brief Signal a semaphore.
 /// @param[in] semaphore Semaphore to signal.
 void semaphore_signal( Semaphore* semaphore );
@@ -1991,7 +1998,7 @@ void semaphore_signal( Semaphore* semaphore );
 void semaphore_destroy( Semaphore* semaphore );
 /// @brief Sleep the current thread for given milliseconds.
 /// @param ms Milliseconds to sleep for.
-void thread_sleep( u32 ms );
+void thread_sleep( uint32_t ms );
 
 /// @brief Enqueue a new job.
 /// @param[in] job    Pointer to job function to enqueue.
@@ -1999,7 +2006,7 @@ void thread_sleep( u32 ms );
 /// @return
 ///     - @c True  : Was able to enqueue job.
 ///     - @c False : Job queue is full, use job_enqueue_timed() instead to wait for empty spot.
-b32 job_enqueue( JobFN* job, void* params );
+bool job_enqueue( JobFN* job, void* params );
 /// @brief Wait for job queue to enqueue.
 /// @param[in] job    Pointer to job function to enqueue.
 /// @param[in] params (optional) Parameters for job function.
@@ -2007,23 +2014,23 @@ b32 job_enqueue( JobFN* job, void* params );
 /// @return
 ///     - @c True  : Was able to enqueue in time.
 ///     - @c False : Timed out.
-b32 job_enqueue_timed( JobFN* job, void* params, u32 ms );
+bool job_enqueue_timed( JobFN* job, void* params, uint32_t ms );
 /// @brief Wait for next job to complete.
 /// @param ms Milliseconds to wait for, use MT_WAIT_INFINITE to wait indefinitely.
 /// @return
 ///      - @c True  : Next job completed in time or queue was empty.
 ///      - @c False : Timed out.
-b32 job_wait_next( u32 ms );
+bool job_wait_next( uint32_t ms );
 /// @brief Wait for all jobs to complete.
 /// @param ms Milliseconds to wait for, use MT_WAIT_INFINITE to wait indefinitely.
 /// @return
 ///      - @c True  : Jobs completed in time or queue was empty.
 ///      - @c False : Timed out.
-b32 job_wait_all( u32 ms );
+bool job_wait_all( uint32_t ms );
 
 /// @brief Get the current thread's monotonic id.
 /// @return Current thread id. (0 is main thread)
-u32 thread_id(void);
+uint32_t thread_id(void);
 
 #if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     /// @brief Create empty command.
@@ -2053,7 +2060,7 @@ DString* command_flatten_dstring( const Command* command );
 /// @return
 ///     - true  : Allocated new command builder.
 ///     - false : Failed to allocate new command builder.
-b32 command_builder_new( const char* exe, CommandBuilder* out_builder );
+bool command_builder_new( const char* exe, CommandBuilder* out_builder );
 /// @brief Clear command builder.
 /// @param[in] builder Builder to clear.
 void command_builder_clear( CommandBuilder* builder );
@@ -2063,8 +2070,8 @@ void command_builder_clear( CommandBuilder* builder );
 /// @return
 ///     - true  : Pushed argument successfully.
 ///     - false : Failed to reallocate command builder.
-b32 command_builder_push( CommandBuilder* builder, const char* arg );
-b32 __internal_command_builder_append( CommandBuilder* builder, const char* first, ... );
+bool command_builder_push( CommandBuilder* builder, const char* arg );
+bool __internal_command_builder_append( CommandBuilder* builder, const char* first, ... );
 /// @brief Append arguments to end of command builder.
 /// @param[in] builder Builder to append to.
 /// @param     args... Arguments to append.
@@ -2080,8 +2087,8 @@ b32 __internal_command_builder_append( CommandBuilder* builder, const char* firs
 /// @return
 ///     - true  : Appended arguments successfully.
 ///     - false : Failed to reallocate command builder.
-b32 command_builder_append_list(
-    CommandBuilder* builder, usize count, const char** args );
+bool command_builder_append_list(
+    CommandBuilder* builder, size_t count, const char** args );
 /// @brief Convert builder to command.
 /// @param[in] builder Builder to convert.
 /// @return Command.
@@ -2135,7 +2142,7 @@ void pipe_close( Pipe pipe );
 /// @return
 ///     - @c True  : Process is in path.
 ///     - @c False : Process is not in path.
-b32 process_in_path( const char* process_name );
+bool process_in_path( const char* process_name );
 /// @brief Execute a process command.
 /// @param cmd Command to execute.
 /// @param redirect_void If output should just be redirected to void.
@@ -2147,7 +2154,7 @@ b32 process_in_path( const char* process_name );
 /// Process ID must be discarded using process_discard(),
 /// process_wait() or successful process_wait_timed().
 PID process_exec(
-    Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
+    Command cmd, bool redirect_void, ReadPipe* opt_stdin,
     WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd );
 /// @brief Wait indefinitely for process to complete.
 /// @details
@@ -2168,7 +2175,7 @@ int process_wait( PID pid );
 /// @return
 ///     - @c True  : Process completed in time.
 ///     - @c False : Timed out.
-b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms );
+bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms );
 /// @brief Discard process ID.
 /// @details
 /// While not necessary on POSIX, pid should always
@@ -2178,10 +2185,10 @@ void process_discard( PID pid );
 
 /// @brief Get current time in milliseconds.
 /// @return Time in milliseconds.
-f64 timer_milliseconds(void);
+double timer_milliseconds(void);
 /// @brief Get current time in seconds.
 /// @return Time in seconds.
-f64 timer_seconds(void);
+double timer_seconds(void);
 
 /// @brief Get pointer to next local byte buffer.
 /// @details
@@ -2193,7 +2200,7 @@ f64 timer_seconds(void);
 /// other functions from overwriting the currently obtained
 /// local buffer.
 /// @return Pointer to next local byte buffer.
-u8* local_byte_buffer(void);
+uint8_t* local_byte_buffer(void);
 /// @brief Write formatted string to local buffer.
 /// @details
 /// cbuild allocates CB_LOCAL_BUFFER_COUNT * CB_THREAD_COUNT
@@ -2287,12 +2294,12 @@ struct LocalBuffers {
     atom indices[CB_THREAD_COUNT + 1];
 };
 struct DynamicString {
-    usize len, cap;
+    size_t len, cap;
     char  buf[];
 };
 struct DynamicArray {
-    usize len, cap, stride;
-    u8 buf[];
+    size_t len, cap, stride;
+    uint8_t buf[];
 };
 
 struct JobEntry {
@@ -2313,7 +2320,7 @@ atom64 global_memory_usage       = 0;
 atom64 global_total_memory_usage = 0;
 
 atom            global_thread_id_source = 1; // 0 is main thread
-CB_TLS( u32 ) global_thread_id        = 0;
+CB_TLS( uint32_t ) global_thread_id        = 0;
 
 static Mutex       global_logger_mutex = mutex_null();
 static LoggerLevel global_logger_level = CB_LOGGER_LEVEL_INFO;
@@ -2331,11 +2338,11 @@ volatile struct LocalBuffers* global_local_buffers = NULL;
 void  thread_create( JobFN* func, void* params );
 char* internal_cwd(void);
 char* internal_home(void);
-static b32 path_walk_dir_internal(
-    DString** path, b32 recursive, b32 include_dirs,
-    usize* out_count, DString** out_buffer );
+static bool path_walk_dir_internal(
+    DString** path, bool recursive, bool include_dirs,
+    size_t* out_count, DString** out_buffer );
 
-static b32 job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
+static bool job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
     if( !queue->len ) {
         return false;
     }
@@ -2374,7 +2381,7 @@ static void initialize_job_queue(void) {
     CB_EXPECT( mutex_create( &global_logger_mutex ), "failed to create logger mutex!" );
     atomic_add( &global_is_mt, 1 );
 
-    usize queue_size       = sizeof(*global_queue);
+    size_t queue_size       = sizeof(*global_queue);
     struct JobQueue* queue = memory_alloc( queue_size );
 
     CB_EXPECT( queue, "failed to allocate job queue!" );
@@ -2386,7 +2393,7 @@ static void initialize_job_queue(void) {
 
     fence();
 
-    for( usize i = 0; i < CB_THREAD_COUNT; ++i ) {
+    for( size_t i = 0; i < CB_THREAD_COUNT; ++i ) {
         thread_create( job_queue_proc, queue );
     }
 
@@ -2408,17 +2415,17 @@ static volatile struct LocalBuffers* get_local_buffers(void) {
     }
     return global_local_buffers;
 }
-static volatile char* get_next_local_buffer( u32 id ) {
+static volatile char* get_next_local_buffer( uint32_t id ) {
     volatile struct LocalBuffers* b = get_local_buffers();
 
-    u32 index = 0;
+    uint32_t index = 0;
     if( global_is_mt ) {
         atom atomic = atomic_add( &b->indices[id], 1 );
-        index = (*(u32*)&atomic) % CB_LOCAL_BUFFER_COUNT;
+        index = (*(uint32_t*)&atomic) % CB_LOCAL_BUFFER_COUNT;
     } else {
         atom atomic     = b->indices[id];
         b->indices[id] += 1;
-        index = (*(u32*)&atomic) % CB_LOCAL_BUFFER_COUNT;
+        index = (*(uint32_t*)&atomic) % CB_LOCAL_BUFFER_COUNT;
     }
 
     volatile char* result = b->buffers[id][index];
@@ -2440,7 +2447,7 @@ static volatile struct GlobalBuffers* get_global_buffers(void) {
     }
     return &global_buffers;
 }
-static b32 validate_file_flags( FileOpenFlags flags ) {
+static bool validate_file_flags( FileOpenFlags flags ) {
     if( !( flags & CB_FOPEN_READ | CB_FOPEN_WRITE ) ) {
         CB_ERROR( "FD flags must have READ and/or WRITE set!" );
         return false;
@@ -2458,7 +2465,7 @@ static b32 validate_file_flags( FileOpenFlags flags ) {
 
     return true;
 }
-static b32 dir_remove_internal( const char* path );
+static bool dir_remove_internal( const char* path );
 
 #if !defined(CBUILD_COMPILER_NAME)
     #define CBUILD_COMPILER_NAME CB_COMPILER_CURRENT_C_CMD
@@ -2512,14 +2519,14 @@ void _init_(
     CB_EXPECT( path_exists( source_name ),
         "cbuild MUST be run from its source code directory!" );
 
-    b32 rebuild = false;
+    bool rebuild = false;
     if( path_exists( executable_name ) ) {
         time_t executable_modify = file_query_time_modify( executable_name );
         time_t source_modify     = file_query_time_modify( source_name );
         time_t header_modify     = file_query_time_modify( __FILE__ );
 
-        f64 diff_source = difftime( executable_modify, source_modify );
-        f64 diff_header = difftime( executable_modify, header_modify );
+        double diff_source = difftime( executable_modify, source_modify );
+        double diff_header = difftime( executable_modify, header_modify );
 
         rebuild = (diff_source < 0.0) || (diff_header < 0.0);
     } else {
@@ -2541,10 +2548,10 @@ void _init_(
 CB_NO_RETURN void cbuild_rebuild(
     const char* cbuild_source_file_name,
     const char* cbuild_executable_name,
-    b32 reload
+    bool reload
 ) {
 
-    f64 start = timer_milliseconds();
+    double start = timer_milliseconds();
 
     #if !defined(CBUILD_ADDITIONAL_FLAGS)
         #define CBUILD_ADDITIONAL_FLAGS 0
@@ -2555,7 +2562,7 @@ CB_NO_RETURN void cbuild_rebuild(
 
     const char* posix_flags[] = { CBUILD_POSIX_FLAGS };
     const char* additional[]  = { CBUILD_ADDITIONAL_FLAGS };
-    usize arg_count = 0;
+    size_t arg_count = 0;
     const char* args[6 + CB_ARRAY_LEN( additional ) + CB_ARRAY_LEN( posix_flags )];
     memory_zero( (void*)args, sizeof(args) );
 
@@ -2614,7 +2621,7 @@ CB_NO_RETURN void cbuild_rebuild(
         String exe = string_from_cstr( cbuild_executable_name );
         char* local = (char*)local_byte_buffer();
         memory_copy( local, exe.cc, exe.len );
-        usize dot = 0;
+        size_t dot = 0;
         if( string_find_rev( exe, '.', &dot ) ) {
             local[++dot] = 'o';
             local[++dot] = 'b';
@@ -2626,7 +2633,7 @@ CB_NO_RETURN void cbuild_rebuild(
     }
 #endif
 
-    f64 end = timer_milliseconds();
+    double end = timer_milliseconds();
     CB_INFO( "rebuilt in %fms", end - start );
 
     if( !reload ) {
@@ -2650,21 +2657,21 @@ CB_NO_RETURN void cbuild_rebuild(
 #endif
 }
 
-usize memory_query_usage(void) {
+size_t memory_query_usage(void) {
     return global_memory_usage;
 }
-usize memory_query_total_usage(void) {
+size_t memory_query_total_usage(void) {
     return global_total_memory_usage;
 }
-void memory_set( void* memory, i8 value, usize size ) {
+void memory_set( void* memory, int8_t value, size_t size ) {
     memset( memory, value, size );
 }
-void memory_zero( void* memory, usize size ) {
+void memory_zero( void* memory, size_t size ) {
     memory_set( memory, 0, size );
 }
-void memory_stamp( void* memory, usize value_size, const void* value, usize size ) {
-    u8*   dst = (u8*)memory;
-    usize rem = size;
+void memory_stamp( void* memory, size_t value_size, const void* value, size_t size ) {
+    uint8_t*   dst = (uint8_t*)memory;
+    size_t rem = size;
     while( rem ) {
         if( value_size > rem ) {
             break;
@@ -2674,18 +2681,18 @@ void memory_stamp( void* memory, usize value_size, const void* value, usize size
         dst += value_size;
     }
 }
-void memory_copy( void* restrict dst, const void* restrict src, usize size ) {
+void memory_copy( void* restrict dst, const void* restrict src, size_t size ) {
     memcpy( dst, src, size );
 }
-void memory_move( void* dst, const void* src, usize size ) {
+void memory_move( void* dst, const void* src, size_t size ) {
     memmove( dst, src, size );
 }
-b32 memory_cmp( const void* a, const void* b, usize size ) {
+bool memory_cmp( const void* a, const void* b, size_t size ) {
     return memcmp( a, b, size ) == 0;
 }
 
-b32 char_in_set( char c, String set ) {
-    for( usize i = 0; i < set.len; ++i ) {
+bool char_in_set( char c, String set ) {
+    for( size_t i = 0; i < set.len; ++i ) {
         if( c == set.cc[i] ) {
             return true;
         }
@@ -2693,14 +2700,14 @@ b32 char_in_set( char c, String set ) {
     return false;
 }
 
-usize strlen_utf8( const char* str ) {
+size_t strlen_utf8( const char* str ) {
     return string_len_utf8( string_from_cstr( str ) );
 }
 
-b32 string_is_empty( String str ) {
+bool string_is_empty( String str ) {
     return !(str.cc && str.len);
 }
-b32 string_is_null_terminated( String str ) {
+bool string_is_null_terminated( String str ) {
     if( !str.cc[str.len] ) {
         return true;
     }
@@ -2709,13 +2716,13 @@ b32 string_is_null_terminated( String str ) {
     }
     return false;
 }
-b32 string_cmp( String a, String b ) {
+bool string_cmp( String a, String b ) {
     if( a.len != b.len ) {
         return false;
     }
     return memory_cmp( a.cc, b.cc, a.len );
 }
-b32 string_find( String str, char c, usize* opt_out_index ) {
+bool string_find( String str, char c, size_t* opt_out_index ) {
     const char* ptr = memchr( str.cc, c, str.len );
     if( !ptr ) {
         return false;
@@ -2725,8 +2732,8 @@ b32 string_find( String str, char c, usize* opt_out_index ) {
     }
     return true;
 }
-b32 string_find_rev( String str, char c, usize* opt_out_index ) {
-    for( usize i = str.len; i-- > 0; ) {
+bool string_find_rev( String str, char c, size_t* opt_out_index ) {
+    for( size_t i = str.len; i-- > 0; ) {
         if( str.cc[i] == c ) {
             if( opt_out_index ) {
                 *opt_out_index = i;
@@ -2736,16 +2743,16 @@ b32 string_find_rev( String str, char c, usize* opt_out_index ) {
     }
     return false;
 }
-b32 string_find_set( String str, String set, usize* opt_out_index ) {
-    for( usize i = 0; i < set.len; ++i ) {
+bool string_find_set( String str, String set, size_t* opt_out_index ) {
+    for( size_t i = 0; i < set.len; ++i ) {
         if( string_find( str, set.cc[i], opt_out_index ) ) {
             return true;
         }
     }
     return false;
 }
-b32 string_find_set_rev( String str, String set, usize* opt_out_index ) {
-    for( usize i = str.len; i-- > 0; ) {
+bool string_find_set_rev( String str, String set, size_t* opt_out_index ) {
+    for( size_t i = str.len; i-- > 0; ) {
         if( char_in_set( str.cc[i], set ) ) {
             if( opt_out_index ) {
                 *opt_out_index = i;
@@ -2755,14 +2762,14 @@ b32 string_find_set_rev( String str, String set, usize* opt_out_index ) {
     }
     return false;
 }
-b32 string_find_string( String str, String substr, usize* opt_out_index ) {
+bool string_find_string( String str, String substr, size_t* opt_out_index ) {
     String rem = str;
     if( rem.len < substr.len ) {
         return false;
     }
 
     while( rem.len ) {
-        usize start = 0;
+        size_t start = 0;
         if( string_find( rem, substr.cc[0], &start ) ) {
             rem = string_advance_by( rem, start );
             if( rem.len < substr.len ) {
@@ -2782,11 +2789,11 @@ b32 string_find_string( String str, String substr, usize* opt_out_index ) {
     }
     return false;
 }
-b32 string_find_string_rev( String str, String substr, usize* opt_out_index ) {
+bool string_find_string_rev( String str, String substr, size_t* opt_out_index ) {
     if( str.len < substr.len ) {
         return false;
     }
-    for( usize i = str.len; i-- > 0; ) {
+    for( size_t i = str.len; i-- > 0; ) {
         if( str.cc[i] != substr.cc[i] ) {
             continue;
         }
@@ -2822,7 +2829,7 @@ String string_advance( String str ) {
     }
     return string_new( str.len - 1, str.cc + 1 );
 }
-String string_advance_by( String str, usize stride ) {
+String string_advance_by( String str, size_t stride ) {
     if( string_is_empty( str ) ) {
         return str;
     }
@@ -2831,10 +2838,10 @@ String string_advance_by( String str, usize stride ) {
     }
     return string_new( str.len - stride, str.cc + stride );
 }
-String string_truncate( String str, usize max ) {
+String string_truncate( String str, size_t max ) {
     return string_new( max > str.len ? str.len : max, str.cc );
 }
-String string_trim( String str, usize amount ) {
+String string_trim( String str, size_t amount ) {
     if( amount >= str.len ) {
         return string_new( 0, str.cc );
     }
@@ -2866,7 +2873,7 @@ String string_trim_surrounding_whitespace( String str ) {
     return string_trim_leading_whitespace( string_trim_trailing_whitespace( str ) );
 }
 void string_split_at(
-    String src, usize at, b32 keep_split, String* opt_out_left, String* opt_out_right
+    String src, size_t at, bool keep_split, String* opt_out_left, String* opt_out_right
 ) {
     CB_EXPECT( at <= src.len,
         "index provided is outside string bounds! at: %zu", at );
@@ -2878,21 +2885,21 @@ void string_split_at(
         *opt_out_right = string_advance_by( src, at + (keep_split ? 0 : 1) );
     }
 }
-b32 string_split_char(
-    String src, char c, b32 keep_split, String* opt_out_left, String* opt_out_right
+bool string_split_char(
+    String src, char c, bool keep_split, String* opt_out_left, String* opt_out_right
 ) {
-    usize at = 0;
+    size_t at = 0;
     if( !string_find( src, c, &at ) ) {
         return false;
     }
     string_split_at( src, at, keep_split, opt_out_left, opt_out_right );
     return true;
 }
-String* string_split_delim( String src, String delim, b32 keep_delim ) {
-    usize  count  = 0;
+String* string_split_delim( String src, String delim, bool keep_delim ) {
+    size_t  count  = 0;
     String substr = src;
     while( substr.len ) {
-        usize pos = 0;
+        size_t pos = 0;
         if( string_find_string( substr, delim, &pos ) ) {
             count++;
             substr = string_advance_by( substr, pos + delim.len );
@@ -2912,7 +2919,7 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
     substr = src;
     if( keep_delim ) {
         while( substr.len ) {
-            usize pos = 0;
+            size_t pos = 0;
             if( string_find_string( substr, delim, &pos ) ) {
                 String chunk = substr;
                 chunk.len = pos + delim.len;
@@ -2929,7 +2936,7 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
         }
     } else {
         while( substr.len ) {
-            usize pos = 0;
+            size_t pos = 0;
             if( string_find_string( substr, delim, &pos ) ) {
                 String chunk = substr;
                 chunk.len    = pos;
@@ -2949,15 +2956,15 @@ String* string_split_delim( String src, String delim, b32 keep_delim ) {
     return res;
 }
 String* string_split_delim_ex(
-    String src, String delim, b32 keep_delim,
+    String src, String delim, bool keep_delim,
     StringSplitDelimFilterFN* filter, void* params
 ) {
     CB_EXPECT( filter, "no filter function provided!" );
 
-    usize  count  = 0;
+    size_t  count  = 0;
     String substr = src;
     while( substr.len ) {
-        usize pos = 0;
+        size_t pos = 0;
         if( string_find_string( substr, delim, &pos ) ) {
             count++;
             substr = string_advance_by( substr, pos + delim.len );
@@ -2979,11 +2986,11 @@ String* string_split_delim_ex(
         return res;
     }
 
-    usize index = 0;
+    size_t index = 0;
     substr = src;
     if( keep_delim ) {
         while( substr.len ) {
-            usize pos = 0;
+            size_t pos = 0;
             if( string_find_string( substr, delim, &pos ) ) {
                 String chunk = substr;
                 chunk.len    = pos + delim.len;
@@ -3009,7 +3016,7 @@ String* string_split_delim_ex(
         }
     } else {
         while( substr.len ) {
-            usize pos = 0;
+            size_t pos = 0;
             if( string_find_string( substr, delim, &pos ) ) {
                 String chunk = substr;
                 chunk.len    = pos;
@@ -3039,10 +3046,10 @@ String* string_split_delim_ex(
 
 }
 
-usize string_len_utf8( String str ) {
+size_t string_len_utf8( String str ) {
     const unsigned char* ucc = (const unsigned char*)str.cc;
-    usize res = 0;
-    for( usize i = 0; i < str.len; ++i ) {
+    size_t res = 0;
+    for( size_t i = 0; i < str.len; ++i ) {
         if( (ucc[i] & 0xC0) != 0x80 ) {
             res++;
         }
@@ -3050,14 +3057,14 @@ usize string_len_utf8( String str ) {
     return res;
 }
 
-DString* dstring_empty( usize cap ) {
-    usize capacity = cap ? cap : 1;
+DString* dstring_empty( size_t cap ) {
+    size_t capacity = cap ? cap : 1;
     struct DynamicString* res =
         (struct DynamicString*)memory_alloc( sizeof(*res) + capacity );
     res->cap = capacity;
     return res->buf;
 }
-DString* dstring_new( usize len, const char* str ) {
+DString* dstring_new( size_t len, const char* str ) {
     struct DynamicString* res = 
         (struct DynamicString*)dstring_head( dstring_empty( len + 1 ) );
     if( !res ) {
@@ -3091,10 +3098,10 @@ DString* dstring_fmt( const char* format, ... ) {
     va_end( va );
     return res;
 }
-DString* dstring_grow( DString* str, usize amount ) {
+DString* dstring_grow( DString* str, size_t amount ) {
     struct DynamicString* res = dstring_head( str );
-    usize old_size = sizeof(struct DynamicString) + res->cap;
-    usize new_size = old_size + amount;
+    size_t old_size = sizeof(struct DynamicString) + res->cap;
+    size_t new_size = old_size + amount;
 
     res = memory_realloc( res, old_size, new_size );
     if( !res ) {
@@ -3108,8 +3115,8 @@ DString* dstring_clone( const DString* src ) {
     return dstring_from_string( string_from_dstring( src ) );
 }
 DString* dstring_concat( String lhs, String rhs ) {
-    usize len        = lhs.len + rhs.len;
-    usize total_size = len + 8;
+    size_t len        = lhs.len + rhs.len;
+    size_t total_size = len + 8;
     struct DynamicString* res = dstring_head( dstring_empty( total_size ) );
 
     memory_copy( res->buf, lhs.cc, lhs.len );
@@ -3120,25 +3127,25 @@ DString* dstring_concat( String lhs, String rhs ) {
     return res->buf;
 }
 DString* dstring_concat_multi(
-    usize count, const String* strings, String opt_separator
+    size_t count, const String* strings, String opt_separator
 ) {
     CB_EXPECT( count, "did not provide any strings!" );
-    usize total_size = (count - 1) * opt_separator.len;
-    for( usize i = 0; i < count; ++i ) {
+    size_t total_size = (count - 1) * opt_separator.len;
+    for( size_t i = 0; i < count; ++i ) {
         total_size += strings[i].len;
     }
 
     DString* res = dstring_empty( total_size + 1 );
 
     if( opt_separator.len ) {
-        for( usize i = 0; i < count; ++i ) {
+        for( size_t i = 0; i < count; ++i ) {
             res = dstring_append( res, strings[i] );
             if( i + 1 != count ) {
                 res = dstring_append( res, opt_separator );
             }
         }
     } else {
-        for( usize i = 0; i < count; ++i ) {
+        for( size_t i = 0; i < count; ++i ) {
             res = dstring_append( res, strings[i] );
         }
     }
@@ -3146,12 +3153,12 @@ DString* dstring_concat_multi(
     return res;
 }
 DString* dstring_concat_multi_cstr(
-    usize count, const char** strings, const char* opt_separator
+    size_t count, const char** strings, const char* opt_separator
 ) {
     CB_EXPECT( count, "did not provide any strings!" );
-    usize seplen     = opt_separator ? strlen( opt_separator ) : 0;
-    usize total_size = (count - 1) * seplen;
-    for( usize i = 0; i < count; ++i ) {
+    size_t seplen     = opt_separator ? strlen( opt_separator ) : 0;
+    size_t total_size = (count - 1) * seplen;
+    for( size_t i = 0; i < count; ++i ) {
         const char* current = strings[i];
         if( !current ) {
             continue;
@@ -3163,7 +3170,7 @@ DString* dstring_concat_multi_cstr(
 
     if( opt_separator && seplen ) {
         String sep = string_new( seplen, opt_separator );
-        for( usize i = 0; i < count; ++i ) {
+        for( size_t i = 0; i < count; ++i ) {
             const char* current = strings[i];
             if( !current ) {
                 continue;
@@ -3175,7 +3182,7 @@ DString* dstring_concat_multi_cstr(
             }
         }
     } else {
-        for( usize i = 0; i < count; ++i ) {
+        for( size_t i = 0; i < count; ++i ) {
             const char* current = strings[i];
             if( !current ) {
                 continue;
@@ -3217,7 +3224,7 @@ DString* dstring_prepend( DString* str, String prepend ) {
     res->len += prepend.len;
     return res->buf;
 }
-DString* dstring_insert( DString* str, String insert, usize at ) {
+DString* dstring_insert( DString* str, String insert, size_t at ) {
     if( at == 0 ) {
         return dstring_prepend( str, insert );
     }
@@ -3258,10 +3265,10 @@ DString* dstring_push( DString* str, char c ) {
     res->buf[res->len]   = 0;
     return res->buf;
 }
-DString* dstring_emplace( DString* str, char c, usize at ) {
+DString* dstring_emplace( DString* str, char c, size_t at ) {
     return dstring_insert( str, string_new( 1, &c ), at );
 }
-b32 dstring_pop( DString* str, char* opt_out_c ) {
+bool dstring_pop( DString* str, char* opt_out_c ) {
     struct DynamicString* head = dstring_head( str );
     if( !head->len ) {
         return false;
@@ -3274,7 +3281,7 @@ b32 dstring_pop( DString* str, char* opt_out_c ) {
     }
     return true;
 }
-b32 dstring_remove( DString* str, usize index ) {
+bool dstring_remove( DString* str, size_t index ) {
     struct DynamicString* head = dstring_head( str );
     if( !head->len || index > head->len ) {
         CB_WARN(
@@ -3288,7 +3295,7 @@ b32 dstring_remove( DString* str, usize index ) {
 
     return true;
 }
-b32 dstring_remove_range( DString* str, usize from_inclusive, usize to_exclusive ) {
+bool dstring_remove_range( DString* str, size_t from_inclusive, size_t to_exclusive ) {
     CB_ASSERT( from_inclusive < to_exclusive,
         "dstring_remove_range: invalid range provided! (%zu, %zu]",
         from_inclusive, to_exclusive );
@@ -3300,7 +3307,7 @@ b32 dstring_remove_range( DString* str, usize from_inclusive, usize to_exclusive
         return false;
     }
 
-    usize span = to_exclusive - from_inclusive;
+    size_t span = to_exclusive - from_inclusive;
 
     memory_move(
         head->buf + from_inclusive,
@@ -3310,7 +3317,7 @@ b32 dstring_remove_range( DString* str, usize from_inclusive, usize to_exclusive
 
     return true;
 }
-void dstring_truncate( DString* str, usize max ) {
+void dstring_truncate( DString* str, size_t max ) {
     struct DynamicString* head = dstring_head( str );
     if( max >= head->len ) {
         return;
@@ -3318,8 +3325,8 @@ void dstring_truncate( DString* str, usize max ) {
     memory_zero( head->buf + max, head->len - max );
     head->len = max;
 }
-void dstring_trim( DString* str, usize amount ) {
-    usize len = dstring_len( str );
+void dstring_trim( DString* str, size_t amount ) {
+    size_t len = dstring_len( str );
     dstring_truncate( str, amount > len ? 0 : len - amount );
 }
 void dstring_clear( DString* str ) {
@@ -3328,26 +3335,26 @@ void dstring_clear( DString* str ) {
     memory_zero( head->buf, head->len );
     head->len = 0;
 }
-usize dstring_remaining( const DString* str ) {
+size_t dstring_remaining( const DString* str ) {
     // -1 to not include null-terminator
     return (dstring_cap( str ) - 1)  - dstring_len( str );
 }
-usize dstring_len( const DString* str ) {
+size_t dstring_len( const DString* str ) {
     return ((struct DynamicString*)str - 1)->len;
 }
-usize dstring_cap( const DString* str ) {
+size_t dstring_cap( const DString* str ) {
     return ((struct DynamicString*)str - 1)->cap;
 }
-usize dstring_total_size( const DString* str ) {
+size_t dstring_total_size( const DString* str ) {
     return dstring_cap( str ) + sizeof(struct DynamicString);
 }
-b32 dstring_is_empty( const DString* str ) {
+bool dstring_is_empty( const DString* str ) {
     return dstring_len( str ) == 0;
 }
-b32 dstring_is_full( const DString* str ) {
+bool dstring_is_full( const DString* str ) {
     return dstring_len( str ) == dstring_cap( str );
 }
-void dstring_set_len( DString* str, usize len ) {
+void dstring_set_len( DString* str, size_t len ) {
     struct DynamicString* head = dstring_head( str );
     CB_EXPECT( len < head->cap, "length exceeds string capacity!" );
     head->len            = len;
@@ -3370,7 +3377,7 @@ void dstring_free( DString* str ) {
     if( !head ) {
         return;
     }
-    usize total_size = head->cap + sizeof(*head);
+    size_t total_size = head->cap + sizeof(*head);
     memory_free( head, total_size );
 }
 
@@ -3382,12 +3389,12 @@ String path_home(void) {
     volatile struct GlobalBuffers* gb = get_global_buffers();
     return gb->home;
 }
-usize path_chunk_count( String path ) {
+size_t path_chunk_count( String path ) {
     String subpath = path;
-    usize  count   = 0;
+    size_t  count   = 0;
 
     while( subpath.len ) {
-        usize sep = 0;
+        size_t sep = 0;
         if( string_find( subpath, '/', &sep ) ) {
             String chunk = subpath;
             chunk.len    = sep;
@@ -3403,7 +3410,7 @@ usize path_chunk_count( String path ) {
     return count;
 }
 String* path_chunk_split( String path ) {
-    usize   cap = path_chunk_count( path );
+    size_t   cap = path_chunk_count( path );
     String* res = darray_empty( sizeof(*res), cap ? cap : 1 );
     if( !res ) {
         return NULL;
@@ -3411,7 +3418,7 @@ String* path_chunk_split( String path ) {
 
     String subpath = path;
     while( subpath.len ) {
-        usize sep = 0;
+        size_t sep = 0;
         if( string_find( subpath, '/', &sep ) ) {
             String chunk = subpath;
             chunk.len    = sep;
@@ -3427,7 +3434,7 @@ String* path_chunk_split( String path ) {
 
     return res;
 }
-b32 path_matches_glob( String path, String glob ) {
+bool path_matches_glob( String path, String glob ) {
     if( glob.len == 1 && glob.cc[0] == '*' ) {
         return true;
     }
@@ -3466,8 +3473,8 @@ b32 path_matches_glob( String path, String glob ) {
     return glob.len ? false : true;
 
 }
-static b32 path_walk_glob_filter_filter(
-    usize index, usize stride, const void* item, void* params
+static bool path_walk_glob_filter_filter(
+    size_t index, size_t stride, const void* item, void* params
 ) {
     CB_UNUSED(index, stride);
 
@@ -3484,9 +3491,9 @@ String* path_walk_glob_filter( const WalkDirectory* wd, String glob ) {
         path_walk_glob_filter_filter, &glob );
     return res;
 }
-b32 path_walk_dir(
-    const char* dir, b32 recursive,
-    b32 include_dirs, WalkDirectory* out_result
+bool path_walk_dir(
+    const char* dir, bool recursive,
+    bool include_dirs, WalkDirectory* out_result
 ) {
     CB_ASSERT( dir, "no path provided!" );
     CB_ASSERT( out_result, "no walk dir result provided!" );
@@ -3503,8 +3510,8 @@ b32 path_walk_dir(
         return false;
     }
 
-    usize count = 0;
-    b32 result = path_walk_dir_internal(
+    size_t count = 0;
+    bool result = path_walk_dir_internal(
         &path, recursive, include_dirs, &count, &buffer );
     dstring_free( path );
 
@@ -3518,7 +3525,7 @@ b32 path_walk_dir(
         return true;
     }
 
-    usize total = out_result->count + count;
+    size_t total = out_result->count + count;
     String* paths = darray_empty( sizeof(String), total );
     if( !paths ) {
         dstring_free( buffer );
@@ -3540,7 +3547,7 @@ b32 path_walk_dir(
 
     String rem = string_from_dstring( out_result->buf );
     while( rem.len ) {
-        usize nul = 0;
+        size_t nul = 0;
         if( string_find( rem, 0, &nul ) ) {
             String current = rem;
             current.len    = nul;
@@ -3573,7 +3580,7 @@ void path_walk_free( WalkDirectory* wd ) {
         memory_zero( wd, sizeof(*wd) );
     }
 }
-b32 dir_remove( const char* path, b32 recursive ) {
+bool dir_remove( const char* path, bool recursive ) {
     if( !recursive ) {
         return dir_remove_internal( path );
     }
@@ -3586,7 +3593,7 @@ b32 dir_remove( const char* path, b32 recursive ) {
         return false;
     }
 
-    for( usize i = 0; i < wd.count; ++i ) {
+    for( size_t i = 0; i < wd.count; ++i ) {
         if( !file_remove( wd.paths[i].cc ) ) {
             CB_ERROR( "dir_remove: failed to remove file '%s'!", wd.paths[i].cc );
 
@@ -3602,7 +3609,7 @@ b32 dir_remove( const char* path, b32 recursive ) {
         return false;
     }
 
-    for( usize i = 0; i < wd.count; ++i ) {
+    for( size_t i = 0; i < wd.count; ++i ) {
         if( !dir_remove_internal( wd.paths[i].cc ) ) {
             CB_ERROR( "dir_remove: failed to remove dir '%s'!", wd.paths[i].cc );
 
@@ -3615,19 +3622,19 @@ b32 dir_remove( const char* path, b32 recursive ) {
     return dir_remove_internal( path );
 }
 
-b32 fd_write_fmt_va( FD* file, const char* format, va_list va ) {
+bool fd_write_fmt_va( FD* file, const char* format, va_list va ) {
     char* formatted = local_fmt_va( format, va );
     return fd_write( file, strlen( formatted ), formatted, 0 );
 }
-b32 fd_write_fmt( FD* file, const char* format, ... ) {
+bool fd_write_fmt( FD* file, const char* format, ... ) {
     va_list va;
     va_start( va, format );
-    b32 res = fd_write_fmt_va( file, format, va );
+    bool res = fd_write_fmt_va( file, format, va );
     va_end( va );
     return res;
 }
 
-void* darray_empty( usize stride, usize cap ) {
+void* darray_empty( size_t stride, size_t cap ) {
     struct DynamicArray* res = memory_alloc( sizeof(*res) + (stride * cap) );
     if( !res ) {
         return NULL;
@@ -3636,7 +3643,7 @@ void* darray_empty( usize stride, usize cap ) {
     res->cap    = cap;
     return res->buf;
 }
-void* darray_from_array( usize stride, usize len, const void* buf ) {
+void* darray_from_array( size_t stride, size_t len, const void* buf ) {
     struct DynamicArray* res = darray_head( darray_empty( stride, len + 2 ) );
     if( !res ) {
         return NULL;
@@ -3647,18 +3654,18 @@ void* darray_from_array( usize stride, usize len, const void* buf ) {
 
     return res->buf;
 }
-usize darray_static_memory_requirement( usize stride, usize cap ) {
+size_t darray_static_memory_requirement( size_t stride, size_t cap ) {
     return (stride * cap) + sizeof(struct DynamicArray);
 }
-void* darray_static( usize stride, usize cap, void* buf ) {
+void* darray_static( size_t stride, size_t cap, void* buf ) {
     struct DynamicArray* res = buf;
     res->stride = stride;
     res->cap    = cap;
     res->len    = 0;
     return res->buf;
 }
-void* darray_join( usize stride,
-    usize lhs_len, const void* lhs, usize rhs_len, const void* rhs
+void* darray_join( size_t stride,
+    size_t lhs_len, const void* lhs, size_t rhs_len, const void* rhs
 ) {
     struct DynamicArray* res =
         darray_head( darray_empty( stride, lhs_len + rhs_len + 2 ) );
@@ -3673,18 +3680,18 @@ void* darray_join( usize stride,
     return res;
 }
 void* darray_from_filter(
-    usize stride, usize len, const void* src,
+    size_t stride, size_t len, const void* src,
     DarrayFilterFN* filter, void* filter_params
 ) {
-    const u8* src_bytes = src;
+    const uint8_t* src_bytes = src;
 
     void* res = darray_empty( stride, 10 );
     if( !res ) {
         return NULL;
     }
 
-    for( usize i = 0; i < len; ++i ) {
-        const u8* item = src_bytes + (stride * i);
+    for( size_t i = 0; i < len; ++i ) {
+        const uint8_t* item = src_bytes + (stride * i);
         if( filter( i, stride, item, filter_params ) ) {
             void* _new = darray_push( res, item );
             if( !_new ) {
@@ -3697,10 +3704,10 @@ void* darray_from_filter(
     return res;
 }
 
-void* darray_grow( void* darray, usize amount ) {
+void* darray_grow( void* darray, size_t amount ) {
     struct DynamicArray* res = darray_head( darray );
-    usize old_size = (res->stride * res->cap) + sizeof(*res);
-    usize new_size = (res->stride * amount) + old_size;
+    size_t old_size = (res->stride * res->cap) + sizeof(*res);
+    size_t new_size = (res->stride * amount) + old_size;
 
     res = memory_realloc( res, old_size, new_size );
     if( !res ) {
@@ -3719,9 +3726,9 @@ void darray_clear( void* darray ) {
     memory_zero( head->buf, head->len * head->stride );
     head->len = 0;
 }
-void* darray_set_len( void* darray, usize len ) {
+void* darray_set_len( void* darray, size_t len ) {
     if( len > darray_cap( darray ) ) {
-        usize diff = len - darray_cap( darray );
+        size_t diff = len - darray_cap( darray );
 
         struct DynamicArray* head = darray_head( darray_grow( darray, diff ) );
         if( !head ) {
@@ -3732,7 +3739,7 @@ void* darray_set_len( void* darray, usize len ) {
         return head->buf;
     } else if( len > darray_len( darray ) ) {
         struct DynamicArray* head = darray_head( darray );
-        usize diff = head->len - len;
+        size_t diff = head->len - len;
         memory_zero( head->buf + len, head->stride * diff );
         head->len = diff;
 
@@ -3742,20 +3749,20 @@ void* darray_set_len( void* darray, usize len ) {
         return darray;
     }
 }
-void darray_truncate( void* darray, usize max ) {
+void darray_truncate( void* darray, size_t max ) {
     struct DynamicArray* head = darray_head( darray );
     if( max >= head->len ) {
         return;
     }
-    usize diff = head->len - max;
+    size_t diff = head->len - max;
     memory_zero( head->buf + max, head->stride * diff );
     head->len = max;
 }
-void darray_trim( void* darray, usize amount ) {
+void darray_trim( void* darray, size_t amount ) {
     struct DynamicArray* head = darray_head( darray );
     darray_truncate( head->buf, amount > head->len ? 0 : head->len - amount );
 }
-b32 darray_try_push( void* darray, const void* item ) {
+bool darray_try_push( void* darray, const void* item ) {
     struct DynamicArray* head = darray_head( darray );
     if( head->len == head->cap ) {
         return false;
@@ -3766,7 +3773,7 @@ b32 darray_try_push( void* darray, const void* item ) {
 
     return true;
 }
-b32 darray_try_emplace( void* darray, const void* item, usize at ) {
+bool darray_try_emplace( void* darray, const void* item, size_t at ) {
     struct DynamicArray* head = darray_head( darray );
     if( head->len == head->cap ) {
         return false;
@@ -3787,7 +3794,7 @@ b32 darray_try_emplace( void* darray, const void* item, usize at ) {
 
     return true;
 }
-b32 darray_try_insert( void* darray, usize count, const void* items, usize at ) {
+bool darray_try_insert( void* darray, size_t count, const void* items, size_t at ) {
     struct DynamicArray* head = darray_head( darray );
     if( head->len + count > head->cap ) {
         return false;
@@ -3808,7 +3815,7 @@ b32 darray_try_insert( void* darray, usize count, const void* items, usize at ) 
 
     return true;
 }
-b32 darray_try_append( void* darray, usize count, const void* items ) {
+bool darray_try_append( void* darray, size_t count, const void* items ) {
     struct DynamicArray* head = darray_head( darray );
     if( head->len + count > head->cap ) {
         return false;
@@ -3821,7 +3828,7 @@ b32 darray_try_append( void* darray, usize count, const void* items ) {
 
     return true;
 }
-b32 darray_pop( void* darray, void* opt_out_item ) {
+bool darray_pop( void* darray, void* opt_out_item ) {
     struct DynamicArray* head = darray_head( darray );
     if( !head->len ) {
         return false;
@@ -3850,7 +3857,7 @@ void* darray_push( void* darray, const void* item ) {
     darray_try_push( res, item );
     return res;
 }
-void* darray_emplace( void* darray, const void* item, usize at ) {
+void* darray_emplace( void* darray, const void* item, size_t at ) {
     if( at >= darray_len( darray ) ) {
         CB_WARN(
             "darray_emplace: attempted to emplace past darray bounds! "
@@ -3871,7 +3878,7 @@ void* darray_emplace( void* darray, const void* item, usize at ) {
     darray_try_emplace( res, item, at );
     return res;
 }
-void* darray_insert( void* darray, usize count, const void* items, usize at ) {
+void* darray_insert( void* darray, size_t count, const void* items, size_t at ) {
     struct DynamicArray* res = darray_head( darray );
 
     if( at >= res->len ) {
@@ -3893,7 +3900,7 @@ void* darray_insert( void* darray, usize count, const void* items, usize at ) {
     darray_try_insert( res->buf, count, items, at );
     return res->buf;
 }
-void* darray_append( void* darray, usize count, const void* items ) {
+void* darray_append( void* darray, size_t count, const void* items ) {
     struct DynamicArray* res = darray_head( darray );
     if( darray_try_append( res->buf, count, items ) ) {
         return res;
@@ -3907,7 +3914,7 @@ void* darray_append( void* darray, usize count, const void* items ) {
     darray_try_append( res->buf, count, items );
     return res->buf;
 }
-b32 darray_remove( void* darray, usize index ) {
+bool darray_remove( void* darray, size_t index ) {
 
     struct DynamicArray* head = darray_head( darray );
     if( !head->len || index > head->len ) {
@@ -3921,8 +3928,8 @@ b32 darray_remove( void* darray, usize index ) {
     }
 
     void* item_to_remove = head->buf + (head->stride * index);
-    void* item_next      = (u8*)item_to_remove + head->stride;
-    usize move_size      = (head->buf + (head->stride * head->cap)) - (u8*)item_next;
+    void* item_next      = (uint8_t*)item_to_remove + head->stride;
+    size_t move_size      = (head->buf + (head->stride * head->cap)) - (uint8_t*)item_next;
 
     memory_move( item_to_remove, item_next, move_size );
     head->len--;
@@ -3930,7 +3937,7 @@ b32 darray_remove( void* darray, usize index ) {
 
     return true;
 }
-b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive ) {
+bool darray_remove_range( void* darray, size_t from_inclusive, size_t to_exclusive ) {
     CB_ASSERT( from_inclusive < to_exclusive,
         "darray_remove_range: invalid range provided! (%zu, %zu]",
         from_inclusive, to_exclusive );
@@ -3943,33 +3950,33 @@ b32 darray_remove_range( void* darray, usize from_inclusive, usize to_exclusive 
     }
 
     // TODO(alicia): reimplement this properly
-    for( usize i = from_inclusive; i < to_exclusive; ++i ) {
+    for( size_t i = from_inclusive; i < to_exclusive; ++i ) {
         darray_remove( darray, from_inclusive );
     }
 
     return true;
 }
-usize darray_remaining( const void* darray ) {
+size_t darray_remaining( const void* darray ) {
     return darray_cap( darray ) - darray_len( darray );
 }
-usize darray_len( const void* darray ) {
+size_t darray_len( const void* darray ) {
     return ((struct DynamicArray*)darray - 1)->len;
 }
-usize darray_cap( const void* darray ) {
+size_t darray_cap( const void* darray ) {
     return ((struct DynamicArray*)darray - 1)->cap;
 }
-usize darray_stride( const void* darray ) {
+size_t darray_stride( const void* darray ) {
     return ((struct DynamicArray*)darray - 1)->stride;
 }
-usize darray_total_size( const void* darray ) {
+size_t darray_total_size( const void* darray ) {
     return
         sizeof(struct DynamicArray) +
         (darray_cap( darray ) * darray_stride( darray ));
 }
-b32 darray_is_empty( const void* darray ) {
+bool darray_is_empty( const void* darray ) {
     return darray_len( darray ) == 0;
 }
-b32 darray_is_full( const void* darray ) {
+bool darray_is_full( const void* darray ) {
     return darray_len( darray ) == darray_cap( darray );
 }
 void* darray_head( void* darray ) {
@@ -3987,12 +3994,12 @@ const void* darray_head_const( const void* darray ) {
 void darray_free( void* darray ) {
     if( darray ) {
         struct DynamicArray* head = darray_head( darray );
-        usize total_size = (head->cap * head->stride) + sizeof(*head);
+        size_t total_size = (head->cap * head->stride) + sizeof(*head);
         memory_free( head, total_size );
     }
 }
 
-b32 job_enqueue( JobFN* job, void* params ) {
+bool job_enqueue( JobFN* job, void* params ) {
     volatile struct JobQueue* queue = get_job_queue();
 
     if( queue->pending >= CB_MAX_JOBS ) {
@@ -4018,7 +4025,7 @@ b32 job_enqueue( JobFN* job, void* params ) {
     semaphore_signal( (Semaphore*)&queue->wakeup );
     return true;
 }
-b32 job_enqueue_timed( JobFN* job, void* params, u32 ms ) {
+bool job_enqueue_timed( JobFN* job, void* params, uint32_t ms ) {
     volatile struct JobQueue* queue = get_job_queue();
 
     while( queue->pending >= CB_MAX_JOBS ) {
@@ -4031,10 +4038,10 @@ b32 job_enqueue_timed( JobFN* job, void* params, u32 ms ) {
         "enqueue unexpectedly failed!" );
     return true;
 }
-b32 job_wait_next( u32 ms ) {
+bool job_wait_next( uint32_t ms ) {
     volatile struct JobQueue* queue = get_job_queue();
 
-    u32 current = queue->pending;
+    uint32_t current = queue->pending;
     if( !current ) {
         return true;
     }
@@ -4044,7 +4051,7 @@ b32 job_wait_next( u32 ms ) {
             thread_sleep( 1 );
         }
         return true;
-    } else for( u32 i = 0; i < ms; ++i ) {
+    } else for( uint32_t i = 0; i < ms; ++i ) {
         if( queue->pending < current ) {
             return true;
         }
@@ -4053,7 +4060,7 @@ b32 job_wait_next( u32 ms ) {
 
     return false;
 }
-b32 job_wait_all( u32 ms ) {
+bool job_wait_all( uint32_t ms ) {
     volatile struct JobQueue* queue = get_job_queue();
 
     if( ms == MT_WAIT_INFINITE ) {
@@ -4061,7 +4068,7 @@ b32 job_wait_all( u32 ms ) {
             thread_sleep(1);
         }
         return true;
-    } else for( u32 i = 0; i < ms; ++i ) {
+    } else for( uint32_t i = 0; i < ms; ++i ) {
         if( !queue->pending ) {
             return true;
         }
@@ -4071,10 +4078,10 @@ b32 job_wait_all( u32 ms ) {
     return false;
 }
 
-u32 thread_id(void) {
+uint32_t thread_id(void) {
     return global_thread_id;
 }
-b32 command_builder_new( const char* exe, CommandBuilder* out_builder ) {
+bool command_builder_new( const char* exe, CommandBuilder* out_builder ) {
     out_builder->buf = darray_empty( sizeof(char), 128 );
     if( !out_builder->buf ) {
         return false;
@@ -4091,8 +4098,8 @@ void command_builder_clear( CommandBuilder* builder ) {
     darray_clear( builder->buf );
     darray_clear( builder->args );
 }
-b32 command_builder_push( CommandBuilder* builder, const char* arg ) {
-    usize arg_len = strlen( arg );
+bool command_builder_push( CommandBuilder* builder, const char* arg ) {
+    size_t arg_len = strlen( arg );
     if( darray_remaining( builder->buf ) < arg_len + 1 ) {
         Darray(char) new_buf = darray_grow( builder->buf, darray_cap( builder->buf ) );
         if( !new_buf ) {
@@ -4118,7 +4125,7 @@ b32 command_builder_push( CommandBuilder* builder, const char* arg ) {
 
     return true;
 }
-b32 __internal_command_builder_append(
+bool __internal_command_builder_append(
     CommandBuilder* builder, const char* first, ...
 ) {
     if( !command_builder_push( builder, first ) ) {
@@ -4142,10 +4149,10 @@ b32 __internal_command_builder_append(
     va_end(va);
     return true;
 }
-b32 command_builder_append_list(
-    CommandBuilder* builder, usize count, const char** args
+bool command_builder_append_list(
+    CommandBuilder* builder, size_t count, const char** args
 ) {
-    for( usize i = 0; i < count; ++i ) {
+    for( size_t i = 0; i < count; ++i ) {
         if( !command_builder_push( builder, args[i])) {
             return false;
         }
@@ -4164,8 +4171,8 @@ void command_builder_free( CommandBuilder* builder ) {
     memory_zero( builder, sizeof(*builder) );
 }
 DString* command_flatten_dstring( const Command* command ) {
-    usize total_len = 1;
-    for( usize i = 0; i < command->count; ++i ) {
+    size_t total_len = 1;
+    for( size_t i = 0; i < command->count; ++i ) {
         total_len += strlen( command->args[i] ) + 3; // to account for potential "" and space
     }
     DString* res = dstring_empty( total_len );
@@ -4173,18 +4180,18 @@ DString* command_flatten_dstring( const Command* command ) {
         return NULL;
     }
 
-    for( usize i = 0; i < command->count; ++i ) {
+    for( size_t i = 0; i < command->count; ++i ) {
         const char* current = command->args[i];
         if( !current ) {
             continue;
         }
 
-        usize current_len = strlen( current );
+        size_t current_len = strlen( current );
         if( !current_len ) {
             continue;
         }
 
-        b32 contains_space = false;
+        bool contains_space = false;
         String arg = string_new( current_len, current );
         if( string_find( arg, ' ', 0 ) ) {
             CB_EXPECT( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
@@ -4205,9 +4212,9 @@ DString* command_flatten_dstring( const Command* command ) {
     return res;
 }
 
-u8* local_byte_buffer() {
+uint8_t* local_byte_buffer() {
     fence();
-    return (u8*)get_next_local_buffer( thread_id() );
+    return (uint8_t*)get_next_local_buffer( thread_id() );
 }
 char* local_fmt_va( const char* format, va_list va ) {
     char* buf = (char*)local_byte_buffer();
@@ -4222,7 +4229,7 @@ char* local_fmt( const char* format, ... ) {
     return res;
 }
 
-static b32 logger_check_level( LoggerLevel level ) {
+static bool logger_check_level( LoggerLevel level ) {
     return level >= global_logger_level;
 }
 
@@ -4294,7 +4301,7 @@ void logger( LoggerLevel level, const char* format, ... ) {
 struct Win32ThreadParams {
     JobFN* proc;
     void*  params;
-    u32    id;
+    uint32_t    id;
 };
 
 #define CBUILD_LOCAL_WIDE_CAPACITY (CB_LOCAL_BUFFER_CAPACITY / 2)
@@ -4341,10 +4348,10 @@ static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
     wchar_t* dst = buf;
 
     const char* src = utf8.cc;
-    usize rem       = utf8.len;
+    size_t rem       = utf8.len;
 
     while( rem ) {
-        usize max_convert = rem;
+        size_t max_convert = rem;
         if( max_convert >= INT32_MAX ) {
             max_convert = INT32_MAX;
         }
@@ -4361,7 +4368,7 @@ static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
 
     return buf;
 }
-static String win32_local_wide_to_utf8( usize len, wchar_t* wide ) {
+static String win32_local_wide_to_utf8( size_t len, wchar_t* wide ) {
     CB_ASSERT( wide, "null pointer!" );
     CB_ASSERT(
         len < CBUILD_LOCAL_WIDE_CAPACITY,
@@ -4372,9 +4379,9 @@ static String win32_local_wide_to_utf8( usize len, wchar_t* wide ) {
     char* dst = buf;
 
     wchar_t* src = wide;
-    usize rem    = len;
+    size_t rem    = len;
     while( rem ) {
-        usize max_convert = rem;
+        size_t max_convert = rem;
         if( max_convert >= INT32_MAX ) {
             max_convert = INT32_MAX;
         }
@@ -4556,7 +4563,7 @@ static wchar_t* win32_local_path_canon( String path ) {
     return buf;
 }
 
-void* memory_alloc( usize size ) {
+void* memory_alloc( size_t size ) {
     void* res = HeapAlloc( get_process_heap(), HEAP_ZERO_MEMORY, size );
     if( !res ) {
         return NULL;
@@ -4570,13 +4577,13 @@ void* memory_alloc( usize size ) {
     }
     return res;
 }
-void* memory_realloc( void* memory, usize old_size, usize new_size ) {
+void* memory_realloc( void* memory, size_t old_size, size_t new_size ) {
     CB_ASSERT( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
     void* res = HeapReAlloc( get_process_heap(), HEAP_ZERO_MEMORY, memory, new_size );
     if( !res ) {
         return NULL;
     }
-    usize diff = new_size - old_size;
+    size_t diff = new_size - old_size;
     if( global_is_mt ) {
         atomic_add64( &global_memory_usage, diff );
         atomic_add64( &global_total_memory_usage, diff );
@@ -4586,7 +4593,7 @@ void* memory_realloc( void* memory, usize old_size, usize new_size ) {
     }
     return res;
 }
-void memory_free( void* memory, usize size ) {
+void memory_free( void* memory, size_t size ) {
     if( !memory ) {
         CB_WARN( "attempted to free null pointer!" );
         return;
@@ -4600,7 +4607,7 @@ void memory_free( void* memory, usize size ) {
         global_memory_usage += neg;
     }
 }
-b32 path_is_absolute( const char* path ) {
+bool path_is_absolute( const char* path ) {
     CB_ASSERT( path, "null path!" );
     if( !path[0] || !path[1] ) {
         return false;
@@ -4613,7 +4620,7 @@ static DWORD path_attributes( String path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     return GetFileAttributesW( wpath );
 }
-b32 path_is_directory( const char* path ) {
+bool path_is_directory( const char* path ) {
     String spath = string_from_cstr( path );
     DWORD attr   = path_attributes( spath );
 
@@ -4623,16 +4630,16 @@ b32 path_is_directory( const char* path ) {
         return attr & FILE_ATTRIBUTE_DIRECTORY;
     }
 }
-b32 path_exists( const char* path ) {
+bool path_exists( const char* path ) {
     CB_ASSERT( path, "null path!" );
     String spath = string_from_cstr( path );
     return path_attributes( spath ) != INVALID_FILE_ATTRIBUTES;
 }
-static b32 path_walk_dir_internal_long(
-    DString** path, b32 recursive, b32 include_dirs,
-    usize* out_count, DString** out_buffer
+static bool path_walk_dir_internal_long(
+    DString** path, bool recursive, bool include_dirs,
+    size_t* out_count, DString** out_buffer
 ) {
-    usize original_len = dstring_len( *path );
+    size_t original_len = dstring_len( *path );
     DString* _new = dstring_append( *path, string_text( "/*" ) );
     if( !_new ) {
         return false;
@@ -4666,7 +4673,7 @@ static b32 path_walk_dir_internal_long(
         }
         *path = _new;
 
-        usize name_len = wcslen( fd.cFileName );
+        size_t name_len = wcslen( fd.cFileName );
         String npath   = win32_local_wide_to_utf8( name_len, fd.cFileName );
 
         _new = dstring_append( *path, npath );
@@ -4716,9 +4723,9 @@ static b32 path_walk_dir_internal_long(
     FindClose( find_file );
     return true;
 }
-static b32 path_walk_dir_internal(
-    DString** path, b32 recursive, b32 include_dirs,
-    usize* out_count, DString** out_buffer
+static bool path_walk_dir_internal(
+    DString** path, bool recursive, bool include_dirs,
+    size_t* out_count, DString** out_buffer
 ) {
     return path_walk_dir_internal_long(
         path, recursive, include_dirs, out_count, out_buffer );
@@ -4743,7 +4750,7 @@ static DWORD fd_open_dwcreationdisposition( FileOpenFlags flags ) {
     }
     return res;
 }
-static b32 fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
+static bool fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
     DWORD dwDesiredAccess       = fd_open_dwaccess( flags );
     DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
     DWORD dwCreationDisposition = fd_open_dwcreationdisposition( flags );
@@ -4763,11 +4770,11 @@ static b32 fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
         return false;
     }
 
-    *out_file = (usize)handle;
+    *out_file = (size_t)handle;
     return true;
 }
 
-b32 fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
+bool fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
     if( !validate_file_flags( flags ) ) {
         return false;
     }
@@ -4779,11 +4786,11 @@ void fd_close( FD* file ) {
     *file = 0;
 }
 
-static b32 fd_write_32(
+static bool fd_write_32(
     FD* file, DWORD size, const void* buf, DWORD* opt_out_write_size
 ) {
     HANDLE hFile = (HANDLE)*file;
-    b32 is_console = GetFileType( hFile ) == FILE_TYPE_CHAR;
+    bool is_console = GetFileType( hFile ) == FILE_TYPE_CHAR;
 
     DWORD out_size = 0;
     BOOL res = FALSE;
@@ -4800,15 +4807,15 @@ static b32 fd_write_32(
     return res;
 }
 #if CB_ARCH_IS_64BIT
-static b32 fd_write_64(
-    FD* file, usize size, const void* buf, usize* opt_out_write_size
+static bool fd_write_64(
+    FD* file, size_t size, const void* buf, size_t* opt_out_write_size
 ) {
     DWORD size0 = size > UINT32_MAX ? UINT32_MAX : size;
     DWORD size1 = size > UINT32_MAX ? size - UINT32_MAX : 0;
 
-    usize write_total = 0;
+    size_t write_total = 0;
     DWORD write_size  = 0;
-    b32 res = fd_write_32( file, size0, buf, &write_size );
+    bool res = fd_write_32( file, size0, buf, &write_size );
     write_total = write_size;
 
     if( write_size != size0 ) {
@@ -4822,7 +4829,7 @@ static b32 fd_write_64(
     }
 
     if( size1 ) {
-        res = fd_write_32( file, size1, (const u8*)buf + size0, &write_size );
+        res = fd_write_32( file, size1, (const uint8_t*)buf + size0, &write_size );
         if( !res ) {
             return false;
         }
@@ -4836,7 +4843,7 @@ static b32 fd_write_64(
 }
 #endif
 
-static b32 fd_read_32(
+static bool fd_read_32(
     FD* file, DWORD size, void* buf, DWORD* opt_out_read_size
 ) {
     DWORD out_size = 0;
@@ -4847,15 +4854,15 @@ static b32 fd_read_32(
     return res;
 }
 #if CB_ARCH_IS_64BIT
-static b32 fd_read_64(
-    FD* file, usize size, void* buf, usize* opt_out_read_size
+static bool fd_read_64(
+    FD* file, size_t size, void* buf, size_t* opt_out_read_size
 ) {
     DWORD size0 = size > UINT32_MAX ? UINT32_MAX : size;
     DWORD size1 = size > UINT32_MAX ? size - UINT32_MAX : 0;
 
-    usize read_total = 0;
+    size_t read_total = 0;
     DWORD read_size  = 0;
-    b32 res = fd_read_32( file, size0, buf, &read_size );
+    bool res = fd_read_32( file, size0, buf, &read_size );
     read_total = read_size;
 
     if( read_size != size0 ) {
@@ -4869,7 +4876,7 @@ static b32 fd_read_64(
     }
 
     if( size1 ) {
-        res = fd_read_32( file, size1, (u8*)buf + size0, &read_size );
+        res = fd_read_32( file, size1, (uint8_t*)buf + size0, &read_size );
         if( !res ) {
             return false;
         }
@@ -4883,24 +4890,24 @@ static b32 fd_read_64(
 }
 #endif
 
-b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size ) {
+bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_size ) {
 #if CB_ARCH_IS_64BIT
     return fd_write_64( file, size, buf, opt_out_write_size );
 #else
     return fd_write_32( file, size, buf, (DWORD*)opt_out_write_size );
 #endif
 }
-b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size ) {
+bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size ) {
 #if CB_ARCH_IS_64BIT
     return fd_read_64( file, size, buf, opt_out_read_size );
 #else
     return fd_read_32( file, size, buf, (DWORD*)opt_out_read_size );
 #endif
 }
-b32 fd_truncate( FD* file ) {
+bool fd_truncate( FD* file ) {
     return SetEndOfFile( (HANDLE)*file ) != FALSE;
 }
-usize fd_query_size( FD* file ) {
+size_t fd_query_size( FD* file ) {
 #if CB_ARCH_IS_64BIT
     LARGE_INTEGER li;
     CB_EXPECT( GetFileSizeEx( (HANDLE)*file, &li ), "failed to get file size!" );
@@ -4910,7 +4917,7 @@ usize fd_query_size( FD* file ) {
     return res;
 #endif
 }
-void fd_seek( FD* file, FileSeek type, isize seek ) {
+void fd_seek( FD* file, FileSeek type, intptr_t seek ) {
     DWORD dwMoveMethod = 0;
     switch( type ) {
         case CB_FSEEK_CURRENT: {
@@ -4935,7 +4942,7 @@ void fd_seek( FD* file, FileSeek type, isize seek ) {
     SetFilePointer( (HANDLE)*file, seek, 0, dwMoveMethod );
 #endif
 }
-usize fd_query_position( FD* file ) {
+size_t fd_query_position( FD* file ) {
     DWORD dwMoveMethod = FILE_CURRENT;
 
 #if CB_ARCH_IS_64BIT 
@@ -4980,7 +4987,7 @@ time_t file_query_time_create( const char* path ) {
     FILETIME create;
     memory_zero( &create, sizeof(create) );
 
-    usize path_len = strlen( path );
+    size_t path_len = strlen( path );
     file_query_time_long( string_new( path_len, path ), &create, 0 );
 
     return win32_filetime_to_posix( create );
@@ -4989,53 +4996,53 @@ time_t file_query_time_modify( const char* path ) {
     FILETIME modify;
     memory_zero( &modify, sizeof(modify) );
 
-    usize path_len = strlen( path );
+    size_t path_len = strlen( path );
     file_query_time_long( string_new( path_len, path ), 0, &modify );
     return win32_filetime_to_posix( modify );
 }
 
-static b32 file_move_long( String dst, String src ) {
+static bool file_move_long( String dst, String src ) {
     wchar_t* dst_wide = win32_local_path_canon( dst );
     wchar_t* src_wide = win32_local_path_canon( src );
 
-    b32 res = MoveFileW( src_wide, dst_wide );
+    bool res = MoveFileW( src_wide, dst_wide );
     return res == TRUE;
 }
 
-b32 file_move( const char* dst, const char* src ) {
+bool file_move( const char* dst, const char* src ) {
     CB_ASSERT( dst && src, "null path provided!" );
-    usize dst_len = strlen( dst );
-    usize src_len = strlen( src );
+    size_t dst_len = strlen( dst );
+    size_t src_len = strlen( src );
 
     return
         file_move_long( string_new( dst_len, dst ), string_new( src_len, src ) );
 }
 
-static b32 file_copy_long( String dst, String src ) {
+static bool file_copy_long( String dst, String src ) {
     wchar_t* dst_wide = win32_local_path_canon( dst );
     wchar_t* src_wide = win32_local_path_canon( src );
 
-    b32 res = CopyFileW( src_wide, dst_wide, FALSE );
+    bool res = CopyFileW( src_wide, dst_wide, FALSE );
     return res == TRUE;
 }
 
-b32 file_copy( const char* dst, const char* src ) {
+bool file_copy( const char* dst, const char* src ) {
     CB_ASSERT( dst && src, "null path provided!" );
-    usize dst_len = strlen( dst );
-    usize src_len = strlen( src );
+    size_t dst_len = strlen( dst );
+    size_t src_len = strlen( src );
 
     return
         file_copy_long( string_new( dst_len, dst ), string_new( src_len, src ) );
 }
-static b32 file_remove_long( String path ) {
+static bool file_remove_long( String path ) {
     wchar_t* path_wide = win32_local_path_canon( path );
     return DeleteFileW( path_wide ) != FALSE;
 }
-b32 file_remove( const char* path ) {
-    usize path_len = strlen( path );
+bool file_remove( const char* path ) {
+    size_t path_len = strlen( path );
     return file_remove_long( string_new( path_len, path ) );
 }
-static b32 dir_create_long( String path ) {
+static bool dir_create_long( String path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     if( CreateDirectoryW( wpath, 0 ) ) {
         return true;
@@ -5044,16 +5051,16 @@ static b32 dir_create_long( String path ) {
         return res == ERROR_ALREADY_EXISTS;
     }
 }
-b32 dir_create( const char* path ) {
-    usize len = strlen( path );
+bool dir_create( const char* path ) {
+    size_t len = strlen( path );
     return dir_create_long( string_new( len, path ) );
 }
-static b32 dir_remove_internal_long( String path ) {
+static bool dir_remove_internal_long( String path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     return RemoveDirectoryW( wpath );
 }
-static b32 dir_remove_internal( const char* path ) {
-    usize len = strlen( path );
+static bool dir_remove_internal( const char* path ) {
+    size_t len = strlen( path );
     return dir_remove_internal_long( string_new( len, path ) );
 }
 
@@ -5074,18 +5081,18 @@ void fence(void) {
     MemoryBarrier();
 }
 
-f64 timer_milliseconds(void) {
+double timer_milliseconds(void) {
     return timer_seconds() * 1000.0;
 }
-f64 timer_seconds(void) {
+double timer_seconds(void) {
     LARGE_INTEGER qpf, qpc;
     QueryPerformanceFrequency( &qpf );
     QueryPerformanceCounter( &qpc );
 
-    return (f64)qpc.QuadPart / (f64)qpf.QuadPart;
+    return (double)qpc.QuadPart / (double)qpf.QuadPart;
 }
 
-b32 mutex_create( Mutex* out_mutex ) {
+bool mutex_create( Mutex* out_mutex ) {
     HANDLE handle = CreateMutexA( 0, 0, 0 );
     if( !handle ) {
         return false;
@@ -5093,13 +5100,13 @@ b32 mutex_create( Mutex* out_mutex ) {
     out_mutex->handle = (void*)handle;
     return true;
 }
-b32 mutex_is_valid( const Mutex* mutex ) {
+bool mutex_is_valid( const Mutex* mutex ) {
     return mutex->handle != NULL;
 }
 void mutex_lock( Mutex* mutex ) {
     WaitForSingleObject( mutex->handle, INFINITE );
 }
-b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
+bool mutex_lock_timed( Mutex* mutex, uint32_t ms ) {
     if( ms == INFINITE ) {
         mutex_lock( mutex );
         return true;
@@ -5115,7 +5122,7 @@ void mutex_destroy( Mutex* mutex ) {
     memory_zero( mutex, sizeof(*mutex) );
 }
 
-b32 semaphore_create( Semaphore* out_semaphore ) {
+bool semaphore_create( Semaphore* out_semaphore ) {
     HANDLE handle = CreateSemaphoreA( NULL, 0, INT32_MAX, 0 );
     if( !handle ) {
         return false;
@@ -5123,13 +5130,13 @@ b32 semaphore_create( Semaphore* out_semaphore ) {
     out_semaphore->handle = handle;
     return true;
 }
-b32 semaphore_is_valid( const Semaphore* semaphore ) {
+bool semaphore_is_valid( const Semaphore* semaphore ) {
     return semaphore->handle != NULL;
 }
 void semaphore_wait( Semaphore* semaphore ) {
     WaitForSingleObject( semaphore->handle, INFINITE );
 }
-b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms ) {
+bool semaphore_wait_timed( Semaphore* semaphore, uint32_t ms ) {
     if( ms == INFINITE ) {
         semaphore_wait( semaphore );
         return true;
@@ -5145,7 +5152,7 @@ void semaphore_destroy( Semaphore* semaphore ) {
     memory_zero( semaphore, sizeof(*semaphore) );
 }
 
-void thread_sleep( u32 ms ) {
+void thread_sleep( uint32_t ms ) {
     Sleep( ms );
 }
 
@@ -5159,19 +5166,19 @@ void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
 
     CB_EXPECT( CreatePipe( &read, &write, &sa, 0 ), "failed to create pipes!" );
 
-    *out_read  = (isize)read;
-    *out_write = (isize)write;
+    *out_read  = (intptr_t)read;
+    *out_write = (intptr_t)write;
 }
 void pipe_close( Pipe pipe ) {
     HANDLE handle = (HANDLE)pipe;
     CloseHandle( handle );
 }
-b32 process_in_path( const char* process_name ) {
+bool process_in_path( const char* process_name ) {
     char* cmd = local_fmt( "where.exe %s /Q", process_name );
     return system( cmd ) == 0;
 }
 PID process_exec(
-    Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
+    Command cmd, bool redirect_void, ReadPipe* opt_stdin,
     WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd
 ) {
     STARTUPINFOW        startup;
@@ -5212,26 +5219,26 @@ PID process_exec(
 
     DWORD flags = 0;
 
-    usize cmd_line_utf8_len = 0;
-    for( usize i = 0; i < cmd.count; ++i ) {
+    size_t cmd_line_utf8_len = 0;
+    for( size_t i = 0; i < cmd.count; ++i ) {
         cmd_line_utf8_len += strlen( cmd.args[i] );
     }
 
-    usize wide_cmd_line_cap  = cmd_line_utf8_len + 8 + cmd.count;
-    usize wide_cmd_line_size = sizeof(wchar_t) * wide_cmd_line_cap;
-    usize wide_cmd_line_len  = 0;
+    size_t wide_cmd_line_cap  = cmd_line_utf8_len + 8 + cmd.count;
+    size_t wide_cmd_line_size = sizeof(wchar_t) * wide_cmd_line_cap;
+    size_t wide_cmd_line_len  = 0;
     wchar_t* cmd_line = HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, wide_cmd_line_size );
 
     CB_EXPECT( cmd_line, "failed to allocate command line wide buffer!" );
 
-    for( usize i = 0; i < cmd.count; ++i ) {
+    for( size_t i = 0; i < cmd.count; ++i ) {
         String current = string_from_cstr( cmd.args[i] );
         if( !current.cc || !current.len ) {
             continue;
         }
 
-        b32 contains_space = false;
+        bool contains_space = false;
         if( string_find( current, ' ', 0 ) ) {
             cmd_line[wide_cmd_line_len++] = L'"';
             contains_space = true;
@@ -5266,7 +5273,7 @@ PID process_exec(
     CB_EXPECT( res, "failed to launch process '%s'!", cmd.args[0] );
 
     CloseHandle( info.hThread );
-    return (isize)info.hProcess;
+    return (intptr_t)info.hProcess;
 }
 int process_wait( PID pid ) {
     DWORD res = WaitForSingleObject( (HANDLE)pid, INFINITE );
@@ -5286,8 +5293,8 @@ int process_wait( PID pid ) {
     CloseHandle( (HANDLE)pid );
     return exit_code;
 }
-b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
-    b32 success = true;
+bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
+    bool success = true;
     DWORD res   = WaitForSingleObject( (HANDLE)pid, ms );
     switch( res ) {
         case WAIT_OBJECT_0: break;
@@ -5332,7 +5339,7 @@ void thread_create( JobFN* func, void* params ) {
         global_thread_id_source < (CB_THREAD_COUNT + 1),
         "exceeded maximum number of threads!" );
 
-    u32 id = atomic_add( &global_thread_id_source, 1 );
+    uint32_t id = atomic_add( &global_thread_id_source, 1 );
 
     struct Win32ThreadParams* p = global_win32_thread_params + (id - 1);
     p->id     = id;
@@ -5353,7 +5360,7 @@ char* internal_cwd(void) {
 
     GetCurrentDirectoryA( len, buf );
 
-    for( usize i = 0; i < len; ++i ) {
+    for( size_t i = 0; i < len; ++i ) {
         if( buf[i] == '\\' ) {
             buf[i] = '/';
         }
@@ -5370,8 +5377,8 @@ char* internal_home(void) {
     DString* buf = dstring_concat_cstr( drive, home );
     CB_EXPECT( buf, "failed to allocate home directory buffer!" );
 
-    usize len = dstring_len( buf );
-    for( usize i = 0; i < len; ++i ) {
+    size_t len = dstring_len( buf );
+    for( size_t i = 0; i < len; ++i ) {
         if( buf[i] == '\\' ) {
             buf[i] = '/';
         }
@@ -5396,14 +5403,14 @@ volatile atom global_semaphore_val = 0;
 struct PosixMutex {
     atom value;
 #if CB_ARCH_IS_64BIT
-    u32  __padding;
+    uint32_t  __padding;
 #endif
 };
 
 struct PosixThreadParams {
     JobFN* proc;
     void*  params;
-    u32    id;
+    uint32_t    id;
 };
 static struct PosixThreadParams global_posix_thread_params[CB_THREAD_COUNT];
 
@@ -5411,21 +5418,21 @@ void _platform_init_(void) {
     return;
 }
 
-static struct timespec ms_to_timespec( u32 ms ) {
+static struct timespec ms_to_timespec( uint32_t ms ) {
     struct timespec ts;
     ts.tv_sec  = ms / 1000;
     ts.tv_nsec = (ms % 1000) * 1000000;
     return ts;
 }
-static f64 timespec_to_ms( struct timespec* ts ) {
-    return ((f64)ts->tv_sec * 1000.0) + ((f64)ts->tv_nsec / 1000000.0);
+static double timespec_to_ms( struct timespec* ts ) {
+    return ((double)ts->tv_sec * 1000.0) + ((double)ts->tv_nsec / 1000000.0);
 }
 static const char* generate_semaphore_name(void) {
     atom val = atomic_add( &global_semaphore_val, 1 );
     return (const char*)local_fmt( "cbuild_sem%u", val );
 }
 
-void* memory_alloc( usize size ) {
+void* memory_alloc( size_t size ) {
     void* res = malloc( size );
     if( !res ) {
         return NULL;
@@ -5440,13 +5447,13 @@ void* memory_alloc( usize size ) {
     }
     return res;
 }
-void* memory_realloc( void* memory, usize old_size, usize new_size ) {
+void* memory_realloc( void* memory, size_t old_size, size_t new_size ) {
     CB_ASSERT( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
     void* res = realloc( memory, new_size );
     if( !res ) {
         return NULL;
     }
-    usize diff = new_size - old_size;
+    size_t diff = new_size - old_size;
     memset( res + old_size, 0, diff );
     if( global_is_mt ) {
         atomic_add64( &global_memory_usage, diff );
@@ -5457,7 +5464,7 @@ void* memory_realloc( void* memory, usize old_size, usize new_size ) {
     }
     return res;
 }
-void memory_free( void* memory, usize size ) {
+void memory_free( void* memory, size_t size ) {
     if( !memory ) {
         CB_WARN( "attempted to free null pointer!" );
         return;
@@ -5471,13 +5478,13 @@ void memory_free( void* memory, usize size ) {
         global_memory_usage += neg;
     }
 }
-b32 path_is_absolute( const char* path ) {
+bool path_is_absolute( const char* path ) {
     return *path == '/';
 }
-b32 path_exists( const char* path ) {
+bool path_exists( const char* path ) {
     return access( path, F_OK ) == 0;
 }
-b32 path_is_directory( const char* path ) {
+bool path_is_directory( const char* path ) {
     struct stat s;
     int res = stat( path, &s );
     if( res == -1 ) {
@@ -5486,9 +5493,9 @@ b32 path_is_directory( const char* path ) {
 
     return S_ISDIR( s.st_mode );
 }
-static b32 path_walk_dir_internal(
-    DString** path, b32 recursive, b32 include_dirs,
-    usize* out_count, DString** out_buffer
+static bool path_walk_dir_internal(
+    DString** path, bool recursive, bool include_dirs,
+    size_t* out_count, DString** out_buffer
 ) {
     struct dirent* entry;
     DIR* dir = opendir( *path );
@@ -5496,7 +5503,7 @@ static b32 path_walk_dir_internal(
         return false;
     }
 
-    usize original_len = dstring_len( *path );
+    size_t original_len = dstring_len( *path );
     long  pos = 0;
 
     while( (entry = readdir( dir )) ) {
@@ -5514,7 +5521,7 @@ static b32 path_walk_dir_internal(
         }
         *path = _new;
 
-        usize name_len = strlen( entry->d_name );
+        size_t name_len = strlen( entry->d_name );
         _new = dstring_append( *path, string_new( name_len, entry->d_name ) );
         if( !_new ) {
             closedir( dir );
@@ -5576,7 +5583,7 @@ static b32 path_walk_dir_internal(
     return true;
 }
 
-b32 fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
+bool fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
     if( !validate_file_flags( flags ) ) {
         return false;
     }
@@ -5613,8 +5620,8 @@ void fd_close( FD* file ) {
     close( *file );
     *file = 0;
 }
-b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size ) {
-    isize write_size = write( *file, buf, size );
+bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_size ) {
+    intptr_t write_size = write( *file, buf, size );
     if( write_size < 0 ) {
         return false;
     }
@@ -5624,8 +5631,8 @@ b32 fd_write( FD* file, usize size, const void* buf, usize* opt_out_write_size )
     }
     return true;
 }
-b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size ) {
-    isize read_size = read( *file, buf, size );
+bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size ) {
+    intptr_t read_size = read( *file, buf, size );
     if( read_size < 0 ) {
         return false;
     }
@@ -5636,11 +5643,11 @@ b32 fd_read( FD* file, usize size, void* buf, usize* opt_out_read_size ) {
 
     return true;
 }
-b32 fd_truncate( FD* file ) {
-    usize pos = fd_query_position( file ); // fd_query_position handles lseek fail
+bool fd_truncate( FD* file ) {
+    size_t pos = fd_query_position( file ); // fd_query_position handles lseek fail
     return ftruncate( *file, pos ) == 0;
 }
-usize fd_query_size( FD* file ) {
+size_t fd_query_size( FD* file ) {
     off_t pos = lseek( *file, 0, SEEK_CUR );
     CB_EXPECT( pos >= 0, "failed to query file descriptor size!" );
     off_t res = lseek( *file, 0, SEEK_END );
@@ -5650,7 +5657,7 @@ usize fd_query_size( FD* file ) {
 
     return res;
 }
-void fd_seek( FD* file, FileSeek type, isize seek ) {
+void fd_seek( FD* file, FileSeek type, intptr_t seek ) {
     static const int local_whence[] = {
         SEEK_CUR, // CB_FSEEK_CURRENT
         SEEK_SET, // CB_FSEEK_BEGIN
@@ -5658,7 +5665,7 @@ void fd_seek( FD* file, FileSeek type, isize seek ) {
     };
     CB_EXPECT( lseek( *file, seek, local_whence[type] ) >= 0, "failed to seek!" );
 }
-usize fd_query_position( FD* file ) {
+size_t fd_query_position( FD* file ) {
     off_t pos = lseek( *file, 0, SEEK_CUR );
     CB_EXPECT( pos >= 0, "failed to get current file position!" );
     return pos;
@@ -5675,10 +5682,10 @@ time_t file_query_time_modify( const char* path ) {
         "failed to query modify time for '%s'!", path );
     return st.st_mtime;
 }
-b32 file_move( const char* dst, const char* src ) {
+bool file_move( const char* dst, const char* src ) {
     return rename( src, dst ) == 0;
 }
-b32 file_copy( const char* dst, const char* src ) {
+bool file_copy( const char* dst, const char* src ) {
     FD src_file, dst_file;
     if( !fd_open( src, CB_FOPEN_READ, &src_file ) ) {
         return false;
@@ -5696,10 +5703,10 @@ b32 file_copy( const char* dst, const char* src ) {
     }
 
     char* buf = (char*)local_byte_buffer();
-    usize rem = fd_query_size( &src_file );
+    size_t rem = fd_query_size( &src_file );
 
     while( rem ) {
-        usize max_write = rem;
+        size_t max_write = rem;
         if( rem > CB_LOCAL_BUFFER_CAPACITY ) {
             max_write = CB_LOCAL_BUFFER_CAPACITY;
         }
@@ -5722,11 +5729,11 @@ b32 file_copy( const char* dst, const char* src ) {
     fd_close( &dst_file );
     return true;
 }
-b32 file_remove( const char* path ) {
+bool file_remove( const char* path ) {
     int res = remove( path );
     return res == 0;
 }
-b32 dir_create( const char* path ) {
+bool dir_create( const char* path ) {
     int res = mkdir( path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH );
     if( res == 0 ) {
         return true;
@@ -5736,7 +5743,7 @@ b32 dir_create( const char* path ) {
         default:     return false;
     }
 }
-static b32 dir_remove_internal( const char* path ) {
+static bool dir_remove_internal( const char* path ) {
     int res = rmdir( path );
     return res == 0;
 }
@@ -5763,12 +5770,12 @@ void fence(void) {
 #endif
 }
 
-b32 mutex_create( Mutex* out_mutex ) {
+bool mutex_create( Mutex* out_mutex ) {
     struct PosixMutex* mtx = (struct PosixMutex*)out_mutex;
     mtx->value = 0;
     return true;
 }
-b32 mutex_is_valid( const Mutex* mutex ) {
+bool mutex_is_valid( const Mutex* mutex ) {
     CB_UNUSED( mutex );
     return true;
 }
@@ -5778,7 +5785,7 @@ void mutex_lock( Mutex* mutex ) {
         thread_sleep(1);
     }
 }
-b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
+bool mutex_lock_timed( Mutex* mutex, uint32_t ms ) {
     if( ms == MT_WAIT_INFINITE ) {
         mutex_lock( mutex );
         return true;
@@ -5786,7 +5793,7 @@ b32 mutex_lock_timed( Mutex* mutex, u32 ms ) {
 
     struct PosixMutex* mtx = (struct PosixMutex*)mutex;
 
-    for( u32 i = 0; i < ms; ++i ) {
+    for( uint32_t i = 0; i < ms; ++i ) {
         if( atomic_compare_swap( &mtx->value, 0, mtx->value + 1 ) != 0 ) {
             thread_sleep(1);
             continue;
@@ -5804,7 +5811,7 @@ void mutex_destroy( Mutex* mutex ) {
     mutex->handle = 0;
 }
 
-b32 semaphore_create( Semaphore* out_semaphore ) {
+bool semaphore_create( Semaphore* out_semaphore ) {
     sem_t* s = sem_open( generate_semaphore_name(), O_CREAT, 0644, 0 );
     if( !s ) {
         const char* reason = "unknown";
@@ -5836,13 +5843,13 @@ b32 semaphore_create( Semaphore* out_semaphore ) {
     out_semaphore->handle = s;
     return true;
 }
-b32 semaphore_is_valid( const Semaphore* semaphore ) {
+bool semaphore_is_valid( const Semaphore* semaphore ) {
     return semaphore->handle != NULL;
 }
 void semaphore_wait( Semaphore* semaphore ) {
     CB_EXPECT( sem_wait( semaphore->handle ) == 0, "failed to wait on semaphore!" );
 }
-b32 semaphore_wait_timed( Semaphore* semaphore, u32 ms ) {
+bool semaphore_wait_timed( Semaphore* semaphore, uint32_t ms ) {
     if( ms == MT_WAIT_INFINITE ) {
         semaphore_wait( semaphore );
         return true;
@@ -5878,7 +5885,7 @@ void pipe_close( Pipe pipe ) {
     close( pipe );
 }
 
-b32 process_in_path( const char* process_name ) {
+bool process_in_path( const char* process_name ) {
     Command cmd = command_new( "which", process_name );
 
     PID pid = process_exec( cmd, true, 0, 0, 0, 0 );
@@ -5890,7 +5897,7 @@ void posix_process_replace( Command cmd ) {
     execvp( cmd.args[0], (char* const*)cmd.args );
 }
 PID process_exec(
-    Command cmd, b32 redirect_void, ReadPipe* opt_stdin,
+    Command cmd, bool redirect_void, ReadPipe* opt_stdin,
     WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd
 ) {
     ReadPipe   stdin_;
@@ -5949,7 +5956,7 @@ int process_wait( PID pid ) {
 
     return -1;
 }
-b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
+bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
     if( ms == MT_WAIT_INFINITE ) {
         int res = process_wait( pid );
         if( opt_out_res ) {
@@ -5958,7 +5965,7 @@ b32 process_wait_timed( PID pid, int* opt_out_res, u32 ms ) {
         return true;
     }
 
-    for( u32 i = 0; i < ms; ++i ) {
+    for( uint32_t i = 0; i < ms; ++i ) {
         int wstatus = 0;
         pid_t v = waitpid( pid, &wstatus, WNOHANG );
         CB_EXPECT( v != -1, "failed to wait for process!" );
@@ -5985,20 +5992,20 @@ void process_discard( PID pid ) {
     CB_UNUSED(pid); // this is not necessary on POSIX
 }
 
-f64 timer_milliseconds(void) {
+double timer_milliseconds(void) {
     struct timespec ts;
     clock_gettime( CLOCK_MONOTONIC, &ts );
     fence();
     return timespec_to_ms( &ts );
 }
-f64 timer_seconds(void) {
+double timer_seconds(void) {
     struct timespec ts;
     clock_gettime( CLOCK_MONOTONIC, &ts );
     fence();
     return timespec_to_ms( &ts ) / 1000.0;
 }
 
-void thread_sleep( u32 ms ) {
+void thread_sleep( uint32_t ms ) {
     struct timespec ts = ms_to_timespec( ms );
     struct timespec rem;
     memory_zero( &rem, sizeof(rem) );
@@ -6024,7 +6031,7 @@ void thread_create( JobFN* func, void* params ) {
         global_thread_id_source < (CB_THREAD_COUNT + 1),
         "exceeded maximum number of threads! max: %u", CB_THREAD_COUNT );
 
-    u32 id = atomic_add( &global_thread_id_source, 1 );
+    uint32_t id = atomic_add( &global_thread_id_source, 1 );
 
     struct PosixThreadParams* p = global_posix_thread_params + (id - 1);
     p->id     = id;
