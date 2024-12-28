@@ -22,9 +22,11 @@
  *      access to CB_ASSERT() macro. The CB_ASSERT() macro is otherwise defined
  *      to be CB_UNUSED( ... )
  *
- *    - define CB_PRE_FN( x ) to change function prefixes.
+ *    - define CB_DISABLE_TYPEDEF to not define integer and float types.
  *
- *    - defined CB_PRE_T( x ) to change type prefixes.
+ *    - define CBPFN( x ) to set function prefixes.
+ *
+ *    - defined CBPT( x ) to set type prefixes.
  * 
  * @author Alicia Amarilla (smushyaa@gmail.com)
  *
@@ -45,6 +47,26 @@
 // IWYU pragma: end_exports
 
 // NOTE(alicia): Macro Constants
+
+#if !defined(CBPFN)
+    /// @brief Generate identifier with prefix.
+    /// @param x (identifier) Identifier to prefix.
+    /// @return x
+    #define CBPFN(x) x
+#endif
+
+#if !defined(CBPT)
+    /// @brief Generate identifier with prefix.
+    /// @param x (identifier) Identifier to prefix.
+    /// @return x
+    #define CBPT(x) x
+#endif
+
+/// @brief Macro for marking a dynamic array.
+/// @details
+/// Just pastes @c T *
+/// @param T (type) Type of array.
+#define CB_DARRAY( T ) T *
 
 /// @brief C-Build major version.
 #define CB_VERSION_MAJOR 0
@@ -447,7 +469,14 @@
 
 #if defined(__cplusplus)
     #define restrict __restrict
+
+    /// @brief Define struct.
+    #define CB_STRUCT(x) x
+#else
+    /// @brief Define struct.
+    #define CB_STRUCT(x) (x)
 #endif
+
 
 // NOTE(alicia): Types
 
@@ -480,20 +509,6 @@
     typedef double f64;
 #endif
 
-#if !defined(CB_PRE_FN)
-    /// @brief Generate identifier with prefix.
-    /// @param x (identifier) Identifier to prefix.
-    /// @return x
-    #define CB_PRE_FN(x) x
-#endif
-
-#if !defined(CB_PRE_T)
-    /// @brief Generate identifier with prefix.
-    /// @param x (identifier) Identifier to prefix.
-    /// @return x
-    #define CB_PRE_T(x) x
-#endif
-
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Volatile 32-bit signed for atomic operations.
     typedef volatile long      atom;
@@ -508,12 +523,7 @@
 
 /// @brief String is dynamically allocated on the heap,
 /// UTF-8 encoded and null-terminated.
-typedef char DString;
-/// @brief Macro for marking a dynamic array.
-/// @details
-/// Just pastes @c T *
-/// @param T (type) Type of array.
-#define Darray(T) T *
+typedef char CBPT(DString);
 /// @brief String slice. Not necessarily null-terminated.
 /// @note When printing, use "%.*s" format specifier and
 /// provide length followed by pointer in args.
@@ -522,59 +532,59 @@ typedef struct {
     size_t len;
     /// @brief Pointer to start of string buffer.
     const char* cc;
-} String;
+} CBPT(String);
 /// @brief Logger levels.
 typedef enum {
     /// @brief Info level.
     /// @details
     /// Most permissive, all logger messages allowed.
-    CB_LOGGER_LEVEL_INFO,
+    CB_LOG_LEVEL_INFO,
     /// @brief Warning level.
     /// @details
     /// Warning, Error and Fatal messages allowed.
-    CB_LOGGER_LEVEL_WARNING,
+    CB_LOG_LEVEL_WARNING,
     /// @brief Error level.
     /// @details
     /// Error and Fatal messages allowed.
-    CB_LOGGER_LEVEL_ERROR,
+    CB_LOG_LEVEL_ERROR,
     /// @brief Fatal level.
     /// @details
     /// Most restrictive level, only fatal messages allowed.
-    CB_LOGGER_LEVEL_FATAL,
-} LoggerLevel;
+    CB_LOG_LEVEL_FATAL,
+} CBPT(LogLevel);
 /// @brief Types of file seek.
 typedef enum {
     /// @brief Seek from current position.
-    CB_FSEEK_CURRENT,
+    CB_SEEK_TYPE_CURRENT,
     /// @brief Seek from start of file.
-    CB_FSEEK_BEGIN,
+    CB_SEEK_TYPE_BEGIN,
     /// @brief Seek from end of file.
-    CB_FSEEK_END,
-} FileSeek;
+    CB_SEEK_TYPE_END,
+} CBPT(SeekType);
 /// @brief Flags for opening file.
 typedef enum {
     /// @brief Open file for reading.
-    CB_FOPEN_READ     = (1 << 0),
+    CB_FILE_OPEN_READ     = (1 << 0),
     /// @brief Open file for writing.
-    CB_FOPEN_WRITE    = (1 << 1),
+    CB_FILE_OPEN_WRITE    = (1 << 1),
     /// @brief Create file. File must not exist if using this flag.
-    CB_FOPEN_CREATE   = (1 << 2),
+    CB_FILE_OPEN_CREATE   = (1 << 2),
     /// @brief Open and truncate file. File can only be opened for writing.
-    CB_FOPEN_TRUNCATE = (1 << 3),
+    CB_FILE_OPEN_TRUNCATE = (1 << 3),
     /// @brief Open and set position to end of file. File must be opened for writing.
-    CB_FOPEN_APPEND   = (1 << 4),
-} FileOpenFlags;
+    CB_FILE_OPEN_APPEND   = (1 << 4),
+} CBPT(FileOpenFlag);
 
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Cross-platform file descriptor.
-    typedef intptr_t FD;
+    typedef intptr_t CBPT(FileID);
     /// @brief Cross-platform process ID.
-    typedef intptr_t PID;
+    typedef intptr_t CBPT(ProcessID);
 #else
     /// @brief Cross-platform file descriptor.
-    typedef int   FD;
+    typedef int   CBPT(FileID);
     /// @brief Cross-platform process ID.
-    typedef pid_t PID;
+    typedef pid_t CBPT(ProcessID);
 #endif
 /// @brief Opaque mutex handle.
 typedef struct {
@@ -587,33 +597,33 @@ typedef struct {
     void* handle;
 } Semaphore;
 /// @brief Cross-platform pipe for reading.
-typedef FD ReadPipe;
+typedef CBPT(FileID) CBPT(PipeRead);
 /// @brief Cross-platform pipe for writing.
-typedef FD WritePipe;
+typedef CBPT(FileID) CBPT(PipeWrite);
 /// @brief Cross-platform generic pipe (reading or writing).
-typedef FD Pipe;
+typedef CBPT(FileID) CBPT(Pipe);
 /// @brief Command line arguments for creating a process.
 typedef struct {
     /// @brief Number of arguments.
     size_t        count;
     /// @brief Array of arguments. Last item in array is a null-pointer.
     const char** args;
-} Command;
+} CBPT(Command);
 /// @brief Command line argument builder.
 typedef struct {
     /// @brief Character buffer.
-    Darray(char) buf;
+    CB_DARRAY(char) buf;
     /// @brief Array of strings.
-    Darray(const char*) args;
-} CommandBuilder;
+    CB_DARRAY(const char*) args;
+} CBPT(CommandBuilder);
 /// @brief Result of walking a directory.
 typedef struct {
     /// @brief Number of paths found in directory.
     size_t    count;
     /// @brief Dynamic array of paths found in directory.
-    Darray(String) paths;
+    CB_DARRAY(CBPT(String)) paths;
     /// @brief String buffer.
-    DString* buf;
+    CBPT(DString)* buf;
 } WalkDirectory;
 /// @brief Hang thread on wait.
 #define MT_WAIT_INFINITE (UINT32_MAX)
@@ -625,7 +635,8 @@ typedef void JobFN( void* params );
 /// @param     str    String to be filtered.
 /// @param[in] params (optional) Pointer to additional parameters.
 /// @return Filtered string.
-typedef String StringSplitDelimFilterFN( size_t index, String str, void* params );
+typedef CBPT(String) CBPT(StringSplitDelimFilterFN)(
+    size_t index, CBPT(String) str, void* params );
 /// @brief Filter prototype for dynamic array.
 /// @param     index       Index of item being tested.
 /// @param     item_stride Size of items in array.
@@ -634,7 +645,7 @@ typedef String StringSplitDelimFilterFN( size_t index, String str, void* params 
 /// @return
 ///     - @c True  : Item passed filter, will be kept in.
 ///     - @c False : Item failed filter, will be filtered out.
-typedef bool DarrayFilterFN(
+typedef bool CBPT(DarrayFilterFN)(
     size_t index, size_t item_stride, const void* item, void* params );
 
 // NOTE(alicia): Macro Functions
@@ -642,6 +653,18 @@ typedef bool DarrayFilterFN(
 /// @brief Mark any variables/parameters as unused.
 /// @param ... Variables to be marked as unused.
 #define CB_UNUSED( ... ) _INTERNAL_CB_UNUSED_FUNCTION( 0, __VA_ARGS__ )
+
+/// @brief Create a new string from string literal.
+/// @param literal (string literal) Literal to make string out of.
+/// @return New @c string.
+#define CB_STRING( literal ) \
+    CBPFN(string_new)( sizeof(literal) - 1, literal )
+
+/// @brief Create a new dynamic string from string literal.
+/// @param literal (string literal) Literal to make string from.
+/// @return New dynamic string.
+#define CB_DSTRING( literal ) \
+    CBPFN(dstring_new)( sizeof(literal) - 1, literal )
 
 #define _INTERNAL_CB_INSERT_PANIC() exit(-1)
 
@@ -787,16 +810,16 @@ typedef bool DarrayFilterFN(
 
 /// @brief Log an info level message to stdout.
 /// @param ... (format and format arguments) Message to log.
-#define CB_INFO( ... )  logger( CB_LOGGER_LEVEL_INFO, __VA_ARGS__ )
+#define CB_INFO( ... )  logger( CB_LOG_LEVEL_INFO, __VA_ARGS__ )
 /// @brief Log a warning level message to stdout.
 /// @param ... (format and format arguments) Message to log.
-#define CB_WARN( ... )  logger( CB_LOGGER_LEVEL_WARNING, __VA_ARGS__ )
+#define CB_WARN( ... )  logger( CB_LOG_LEVEL_WARNING, __VA_ARGS__ )
 /// @brief Log an error level message to stderr.
 /// @param ... (format and format arguments) Message to log.
-#define CB_ERROR( ... ) logger( CB_LOGGER_LEVEL_ERROR, __VA_ARGS__ )
+#define CB_ERROR( ... ) logger( CB_LOG_LEVEL_ERROR, __VA_ARGS__ )
 /// @brief Log a fatal level message to stderr.
 /// @param ... (format and format arguments) Message to log.
-#define CB_FATAL( ... ) logger( CB_LOGGER_LEVEL_FATAL, __VA_ARGS__ )
+#define CB_FATAL( ... ) logger( CB_LOG_LEVEL_FATAL, __VA_ARGS__ )
 
 /// @brief Calculate length of static array.
 /// @param array (any[]) Static array to calculate length of.
@@ -847,58 +870,58 @@ typedef bool DarrayFilterFN(
 /// @param[in] cbuild_executable_name  Name of cbuild executable (argv[0]).
 /// @param     reload                  Reloads cbuild after rebuilding. Only supported on POSIX platforms.
 CB_NO_RETURN
-void cbuild_rebuild(
+void CBPFN(rebuild_self)(
     const char* cbuild_source_file_name,
     const char* cbuild_executable_name, bool reload );
 
 /// @brief Allocate memory on the heap. Always returns zeroed memory.
 /// @warning
-/// Do not free with free(), use memory_free() instead!
-/// Do not reallocate with realloc(), use memory_realloc() instead!
+/// Do not free with free(), use heap_free() instead!
+/// Do not reallocate with realloc(), use heap_realloc() instead!
 /// @param size Size in bytes of memory to allocate.
 /// @return
 ///     - Pointer : Allocation succeeded, pointer to start of buffer.
 ///     - NULL    : Allocation failed.
-void* memory_alloc( size_t size );
+void* CBPFN(heap_alloc)( size_t size );
 /// @brief Reallocate memory on the heap. Always returns zeroed memory.
 /// @warning
-/// Do not free with free(), use memory_free() instead!
-/// Do not reallocate with realloc(), use memory_realloc() instead!
+/// Do not free with free(), use heap_free() instead!
+/// Do not reallocate with realloc(), use heap_realloc() instead!
 /// @param[in] memory   Pointer to block of memory to reallocate.
 /// @param     old_size Size in bytes of memory to reallocate.
 /// @param     new_size New size of memory to reallocate. Must be > @c old_size.
 /// @return
 ///     - Pointer : Allocation succeeded, pointer to start of buffer.
 ///     - NULL    : Allocation failed.
-void* memory_realloc( void* memory, size_t old_size, size_t new_size );
+void* CBPFN(heap_realloc)( void* memory, size_t old_size, size_t new_size );
 /// @brief Free memory allocated on the heap.
 /// @warning
-/// Only free pointers from memory_alloc() or memory_realloc()!
+/// Only free pointers from heap_alloc() or heap_realloc()!
 /// Do not use with pointer from malloc()!
 /// @param[in] memory Pointer to block of memory to free.
 /// @param     size   Size in bytes of block of memory.
-void  memory_free( void* memory, size_t size );
+void  CBPFN(heap_free)( void* memory, size_t size );
 /// @brief Query how many bytes are currently allocated.
 /// @return Bytes allocated.
-size_t memory_query_usage(void);
+size_t CBPFN(heap_query_usage)(void);
 /// @brief Query how many bytes have been allocated thus far.
 /// @return Bytes allocated in total.
-size_t memory_query_total_usage(void);
+size_t CBPFN(heap_query_total_usage)(void);
 /// @brief Copy value across block of memory.
 /// @param[in] memory     Block to modify, must be >= @c value_size in size.
 /// @param     value_size Size of value to stamp.
 /// @param[in] value      Pointer to value to stamp.
 /// @param     size       Total size of @c memory in bytes.
-void memory_stamp( void* memory, size_t value_size, const void* value, size_t size );
+void CBPFN(memory_stamp)( void* memory, size_t value_size, const void* value, size_t size );
 /// @brief Set bytes in block of memory to a value.
 /// @param[in] memory Block to modify.
 /// @param     value  Value to set bytes to.
 /// @param     size   Size of @c memory in bytes.
-void memory_set( void* memory, int8_t value, size_t size );
+void CBPFN(memory_set)( void* memory, int8_t value, size_t size );
 /// @brief Set bytes in block of memory to zero.
 /// @param[in] memory Block to modify.
 /// @param     size   Size of @c memory in bytes.
-void memory_zero( void* memory, size_t size );
+void CBPFN(memory_zero)( void* memory, size_t size );
 /// @brief Copy bytes from one block of memory to another.
 /// @details
 /// @c dst and @c src cannot be overlapping.
@@ -906,21 +929,21 @@ void memory_zero( void* memory, size_t size );
 /// @param[in] dst  Pointer to destination.
 /// @param[in] src  Pointer to source.
 /// @param     size Size of @c dst and @c src.
-void memory_copy( void* restrict dst, const void* restrict src, size_t size );
+void CBPFN(memory_copy)( void* restrict dst, const void* restrict src, size_t size );
 /// @brief Copy bytes from one block of memory to another.
 /// @details
 /// @c dst and @c src can be overlapping.
 /// @param[in] dst  Pointer to destination.
 /// @param[in] src  Pointer to source.
 /// @param     size Size of @c dst and @c src.
-void memory_move( void* dst, const void* src, size_t size );
+void CBPFN(memory_move)( void* dst, const void* src, size_t size );
 /// @brief Compare bytes from two blocks of memory for equality.
 /// @param[in] a, b Pointer to blocks of memory to compare.
 /// @param     size Size of @c dst and @c src.
 /// @return
 ///     - @c True  : @c a and @c b are equal.
 ///     - @c False : @c a and @c b are not equal.
-bool memory_cmp( const void* a, const void* b, size_t size );
+bool CBPFN(memory_cmp)( const void* a, const void* b, size_t size );
 
 /// @brief Check if character is in set.
 /// @param c   Character to check for.
@@ -928,59 +951,50 @@ bool memory_cmp( const void* a, const void* b, size_t size );
 /// @return
 ///     - @c True  : @c c is in @c set.
 ///     - @c False : @c c is not in @c set.
-bool char_in_set( char c, String set );
+bool CBPFN(char_in_set)( char c, CBPT(String) set );
 
 /// @brief Calculate UTF-8 length of null-terminated string.
 /// @note
 /// Does not check if @c string is a valid UTF-8 string!
 /// @param[in] string Pointer to character buffer.
 /// @return UTF-8 length of @c string.
-size_t strlen_utf8( const char* string );
+size_t CBPFN(strlen_utf8)( const char* string );
 
+/// @brief Create a new string from length and buffer.
+/// @param     length Length of string buffer.
+/// @param[in] buf    Pointer to start of buffer.
+/// @return New string.
+CBPT(String) CBPFN(string_new)( size_t len, const char* buf );
 /// @brief Create an empty string.
 /// @return Empty @c string.
-#define string_empty()\
-    (String){ .len=0, .cc=0 }
-/// @brief Create a new string from length and buffer.
-/// @param     length (size_t) Length of string buffer.
-/// @param[in] buf    (const char*) Pointer to start of buffer.
-/// @return New @c string.
-#define string_new( length, buf )\
-    (String){ .len=length, .cc=buf }
-/// @brief Create a new string from string literal.
-/// @param literal (string literal) Literal to make string out of.
-/// @return New @c string.
-#define string_text( literal )\
-    string_new( sizeof(literal) - 1, literal )
+CBPT(String) CBPFN(string_empty)();
 /// @brief Create a new string from null-terminated string.
-/// @param s (const char*) Null-terminated to make string out of.
+/// @param s Null-terminated to make string out of.
 /// @return New @c string.
-#define string_from_cstr( s )\
-    string_new( strlen( s ), s )
+CBPT(String) CBPFN(string_from_cstr)( const char* cstr );
 /// @brief Create a new string from dynamic string.
 /// @param d (const DString*) Dynamic string to make string out of.
 /// @return New @c string.
-#define string_from_dstring( d )\
-    string_new( dstring_len( d ), d )
+CBPT(String) CBPFN(string_from_dstring)( CBPT(DString)* dynamic );
 /// @brief Check if string is empty.
 /// @param str String to check.
 /// @return
 ///     - @c True  : @c str is empty.
 ///     - @c False : @c str is not empty.
-bool string_is_empty( String str );
+bool CBPFN(string_is_empty)( CBPT(String) str );
 /// @brief Check if string is null-terminated.
 /// @param str String to check.
 /// @return
 ///     - @c True  : @c str is null-terminated.
 ///     - @c False : @c str is not null-terminated.
-bool string_is_null_terminated( String str );
+bool CBPFN(string_is_null_terminated)( CBPT(String) str );
 /// @brief Compare two strings for equality.
 /// First compares string lengths, then compares contents.
 /// @param a, b Strings to compare.
 /// @return
 ///     - @c True  : Strings @c a and @c b are equal.
 ///     - @c False : Strings @c a and @c b are not equal.
-bool string_cmp( String a, String b );
+bool CBPFN(string_cmp)( CBPT(String) a, CBPT(String) b );
 /// @brief Search for character in string.
 /// @param      str           String to search in.
 /// @param      c             ASCII character to search for.
@@ -988,7 +1002,7 @@ bool string_cmp( String a, String b );
 /// @return
 ///     - @c True  : @c c was found in @c string.
 ///     - @c False : @c c was not found in @c string.
-bool string_find( String str, char c, size_t* opt_out_index );
+bool CBPFN(string_find)( CBPT(String) str, char c, size_t* opt_out_index );
 /// @brief Search for character in string from end of string.
 /// @param      str           String to search in.
 /// @param      c             ASCII character to search for.
@@ -996,7 +1010,7 @@ bool string_find( String str, char c, size_t* opt_out_index );
 /// @return
 ///     - @c True  : @c c was found in @c string.
 ///     - @c False : @c c was not found in @c string.
-bool string_find_rev( String str, char c, size_t* opt_out_index );
+bool CBPFN(string_find_rev)( CBPT(String) str, char c, size_t* opt_out_index );
 /// @brief Search for a set of characters in string.
 /// @param      str           String to search in.
 /// @param      set           Set of ASCII characters to search for.
@@ -1004,7 +1018,7 @@ bool string_find_rev( String str, char c, size_t* opt_out_index );
 /// @return
 ///     - @c True  : Character in @c set was found in @c string.
 ///     - @c False : Character in @c set was not found in @c string.
-bool string_find_set( String str, String set, size_t* opt_out_index );
+bool CBPFN(string_find_set)( CBPT(String) str, CBPT(String) set, size_t* opt_out_index );
 /// @brief Search for a set of characters in string from end of string.
 /// @param      str           String to search in.
 /// @param      set           Set of ASCII characters to search for.
@@ -1012,7 +1026,7 @@ bool string_find_set( String str, String set, size_t* opt_out_index );
 /// @return
 ///     - @c True  : Character in @c set was found in @c string.
 ///     - @c False : Character in @c set was not found in @c string.
-bool string_find_set_rev( String str, String set, size_t* opt_out_index );
+bool CBPFN(string_find_set_rev)( CBPT(String) str, CBPT(String) set, size_t* opt_out_index );
 /// @brief Search for substring in string.
 /// @param      str           String to search in.
 /// @param      substr        String to search for.
@@ -1020,7 +1034,7 @@ bool string_find_set_rev( String str, String set, size_t* opt_out_index );
 /// @return
 ///     - @c True  : @c substr was found in @c string.
 ///     - @c False : @c substr was not found in @c string.
-bool string_find_string( String str, String substr, size_t* opt_out_index );
+bool CBPFN(string_find_string)( CBPT(String) str, CBPT(String) substr, size_t* opt_out_index );
 /// @brief Search for substring in string from end of string.
 /// @param      str           String to search in.
 /// @param      substr        String to search for.
@@ -1028,32 +1042,32 @@ bool string_find_string( String str, String substr, size_t* opt_out_index );
 /// @return
 ///     - @c True  : @c substr was found in @c string.
 ///     - @c False : @c substr was not found in @c string.
-bool string_find_string_rev( String str, String substr, size_t* opt_out_index );
+bool CBPFN(string_find_string_rev)( CBPT(String) str, CBPT(String) substr, size_t* opt_out_index );
 /// @brief Get pointer to first character in string.
 /// @param str String to get character from.
 /// @return
 ///     - @c Pointer : @c str is not empty.
 ///     - @c NULL    : @c str is empty.
-char* string_first( String str );
+char* CBPFN(string_first)( CBPT(String) str );
 /// @brief Get pointer to last character in string.
 /// @param str String to get character from.
 /// @return
 ///     - @c Pointer : @c str is not empty.
 ///     - @c NULL    : @c str is empty.
-char* string_last( String str );
+char* CBPFN(string_last)( CBPT(String) str );
 /// @brief Advance string forward by one character.
 /// @param str String to advance.
 /// @return
 ///     - @c string       : String one character forward.
 ///     - @c empty string : String has no more characters.
-String string_advance( String str );
+CBPT(String) CBPFN(string_advance)( CBPT(String) str );
 /// @brief Advance string forward by given number of characters.
 /// @param str    String to advance.
 /// @param stride Number of characters to advance by.
 /// @return
 ///     - @c string       : String @c stride number of characters forward.
 ///     - @c empty string : String has no more characters or stride >= @c str.len.
-String string_advance_by( String str, size_t stride );
+CBPT(String) CBPFN(string_advance_by)( CBPT(String) str, size_t stride );
 /// @brief Shorten string length to maximum.
 /// @details
 /// Does nothing if max > str.len.
@@ -1061,7 +1075,7 @@ String string_advance_by( String str, size_t stride );
 /// @param str String to truncate.
 /// @param max Maximum length to truncate to.
 /// @return Truncated string.
-String string_truncate( String str, size_t max );
+CBPT(String) CBPFN(string_truncate)( CBPT(String) str, size_t max );
 /// @brief Subtract from string length.
 /// @details
 /// Does nothing if amount == 0. 
@@ -1069,19 +1083,19 @@ String string_truncate( String str, size_t max );
 /// @param str    String to trim.
 /// @param amount Number of characters to trim from the end.
 /// @return Trimmed string.
-String string_trim( String str, size_t amount );
+CBPT(String) CBPFN(string_trim)( CBPT(String) str, size_t amount );
 /// @brief Remove leading whitespace characters from string.
 /// @param str String to remove from.
 /// @return @c str without leading whitespace.
-String string_trim_leading_whitespace( String str );
+CBPT(String) CBPFN(string_trim_leading_whitespace)( CBPT(String) str );
 /// @brief Remove trailing whitespace characters from string.
 /// @param str String to remove from.
 /// @return @c str without trailing whitespace.
-String string_trim_trailing_whitespace( String str );
+CBPT(String) CBPFN(string_trim_trailing_whitespace)( CBPT(String) str );
 /// @brief Remove leading and trailing whitespace characters from string.
 /// @param str String to remove from.
 /// @return @c str without leading or trailing whitespace.
-String string_trim_surrounding_whitespace( String str );
+CBPT(String) CBPFN(string_trim_surrounding_whitespace)( CBPT(String) str );
 /// @brief Split string in two from given index.
 /// @warning
 /// CB_EXPECT() 's that @c at is <= @c str.len!
@@ -1090,9 +1104,9 @@ String string_trim_surrounding_whitespace( String str );
 /// @param      keep_split    True to keep index in right side, false to remove it.
 /// @param[out] opt_out_left  (optional) Pointer to write left side to.
 /// @param[out] opt_out_right (optional) Pointer to write right side to.
-void string_split_at(
-    String src, size_t at, bool keep_split,
-    String* opt_out_left, String* opt_out_right );
+void CBPFN(string_split_at)(
+    CBPT(String) src, size_t at, bool keep_split,
+    CBPT(String)* opt_out_left, CBPT(String)* opt_out_right );
 /// @brief Split string at first instance of character.
 /// @param      src           String to split.
 /// @param      c             Character to split at.
@@ -1102,9 +1116,9 @@ void string_split_at(
 /// @return
 ///     - @c True  : Character @c c was found in @c src and string was split.
 ///     - @c False : Character @c c was not found in @c src.
-bool string_split_char(
-    String src, char c, bool keep_split,
-    String* opt_out_left, String* opt_out_right );
+bool CBPFN(string_split_char)(
+    CBPT(String) src, char c, bool keep_split,
+    CBPT(String)* opt_out_left, CBPT(String)* opt_out_right );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param src        String to split.
 /// @param delim      Delimiter to split by.
@@ -1112,7 +1126,7 @@ bool string_split_char(
 /// @return
 ///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
 ///     - @c NULL : Failed to allocate dynamic array of splits.
-String* string_split_delim( String src, String delim, bool keep_delim );
+CBPT(String)* CBPFN(string_split_delim)( CBPT(String) src, CBPT(String) delim, bool keep_delim );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param src        String to split.
 /// @param delim      Delimiter character to split by.
@@ -1120,8 +1134,7 @@ String* string_split_delim( String src, String delim, bool keep_delim );
 /// @return
 ///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
 ///     - @c NULL : Failed to allocate dynamic array of splits.
-#define string_split_delim_char( src, delim, keep_delim )\
-    string_split_delim( src, string_new( 1, (char[]){ delim } ), keep_delim )
+CBPT(String)* CBPFN(string_split_delim_char)( CBPT(String) src, char delim, bool keep_delim );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param     src        String to split.
 /// @param     delim      Delimiter to split by.
@@ -1131,9 +1144,9 @@ String* string_split_delim( String src, String delim, bool keep_delim );
 /// @return
 ///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
 ///     - @c NULL : Failed to allocate dynamic array of splits.
-String* string_split_delim_ex(
-    String src, String delim, bool keep_delim,
-    StringSplitDelimFilterFN* filter, void* params );
+CBPT(String)* CBPFN(string_split_delim_ex)(
+    CBPT(String) src, CBPT(String) delim, bool keep_delim,
+    CBPT(StringSplitDelimFilterFN)* filter, void* params );
 /// @brief Split string by delimiter. Allocates dynamic array.
 /// @param     src        String to split.
 /// @param     delim      Delimiter character to split by.
@@ -1143,22 +1156,22 @@ String* string_split_delim_ex(
 /// @return
 ///     - @c Dynamic array of strings : Dynamic array was allocated with splits.
 ///     - @c NULL : Failed to allocate dynamic array of splits.
-#define string_split_delim_char_ex( src, delim, keep_delim, filter, params )\
-    string_split_delim_ex( src, string_new( 1, (char[]){ delim } ),\
-        keep_delim, filter, params )
+CBPT(String)* CBPFN(string_split_delim_char_ex)(
+    CBPT(String) src, char delim, bool keep_delim,
+    CBPT(StringSplitDelimFilterFN)* filter, void* params );
 /// @brief Calculate UTF-8 length of string.
 /// @note
 /// Does not check if @c string is a valid UTF-8 string!
 /// @param str String to get UTF-8 length of.
 /// @return UTF-8 length of @c str.
-size_t string_len_utf8( String str );
+size_t CBPFN(string_len_utf8)( CBPT(String) str );
 
 /// @brief Allocate an empty dynamic string with given capacity.
 /// @param cap Capacity to allocate.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_empty( size_t cap );
+CBPT(DString)* CBPFN(dstring_empty)( size_t cap );
 /// @brief Create new dynamic string from string buffer.
 /// @details
 /// Allocates appropriately sized dynamic string and
@@ -1169,7 +1182,7 @@ DString* dstring_empty( size_t cap );
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_new( size_t len, const char* str );
+CBPT(DString)* CBPFN(dstring_new)( size_t len, const char* str );
 /// @brief Create a new dynamic string from null-terminated string.
 /// @details
 /// Allocates appropriately sized dynamic string and
@@ -1179,7 +1192,7 @@ DString* dstring_new( size_t len, const char* str );
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-#define dstring_from_cstr( str ) dstring_new( strlen( str ), str )
+CBPT(DString)* CBPFN(dstring_from_cstr)( const char* str );
 /// @brief Create a new dynamic string from string.
 /// @details
 /// Allocates appropriately sized dynamic string and
@@ -1189,72 +1202,46 @@ DString* dstring_new( size_t len, const char* str );
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-#define dstring_from_string( str ) dstring_new( str.len, str.cc )
-/// @brief Create a new dynamic string from string.
-/// @details
-/// Allocates appropriately sized dynamic string and
-/// copies characters from @c str into it.
-/// This function only exists so that string pointers
-/// do not have to be dereferenced.
-/// Dynamic strings are always null-terminated.
-/// @param[in] str (string) Pointer to string.
-/// @return
-///     - @c Dynamic String : Buffer was successfully allocated.
-///     - @c NULL : Failed to allocate dynamic string.
-#define dstring_from_string_ptr( str ) dstring_new( (str)->len, (str)->cc )
-/// @brief Create a new dynamic string from string literal.
-/// @details
-/// Allocates appropriately sized dynamic string and
-/// copies characters from @c literal into it.
-/// @param literal (string literal) Literal.
-/// @return
-///     - @c Dynamic String : Buffer was successfully allocated.
-///     - @c NULL : Failed to allocate dynamic string.
-#define dstring_text( literal ) dstring_new( sizeof(literal)-1, literal )
-/// @brief Create string from dynamic string.
-/// @param dstr (DString*) Dynamic string to create string from.
-/// @return (string) String.
-#define dstring_to_string( dstr ) string_from_dstring( dstr )
+CBPT(DString)* CBPFN(dstring_from_string)( CBPT(String) str );
 /// @brief Create a formatted dynamic string.
 /// @param[in] format Format string literal.
 /// @param     va     Variadic list of formatting arguments.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_fmt_va( const char* format, va_list va );
+CBPT(DString)* CBPFN(dstring_fmt_va)( const char* format, va_list va );
 /// @brief Create a formatted dynamic string.
 /// @param[in] format Format string literal.
 /// @param     ...    Format arguments.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_fmt( const char* format, ... );
+CBPT(DString)* CBPFN(dstring_fmt)( const char* format, ... );
 /// @brief Attempt to reallocate dynamic string buffer.
 /// @param[in] str    Dynamic string to reallocate.
 /// @param     amount Additional capacity to reallocate. Gets added to existing capacity.
 /// @return 
 ///     - @c Dynamic String : Buffer was successfully reallocated.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_grow( DString* str, size_t amount );
+CBPT(DString)* CBPFN(dstring_grow)( CBPT(DString)* str, size_t amount );
 /// @brief Create a new dynamic string from existing dynamic string.
 /// @param[in] src Dynamic string to clone.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_clone( const DString* src );
+CBPT(DString)* CBPFN(dstring_clone)( const CBPT(DString)* src );
 /// @brief Create dynamic string by concatenating two strings.
 /// @param lhs, rhs Strings to concatenate.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_concat( String lhs, String rhs );
+CBPT(DString)* CBPFN(dstring_concat)( CBPT(String) lhs, CBPT(String) rhs );
 /// @brief Create dynamic string by concatenating two null-terminated strings.
 /// @param[in] lhs, rhs (const char*) Strings to concatenate.
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-#define dstring_concat_cstr( lhs, rhs )\
-    dstring_concat( string_from_cstr( lhs ), string_from_cstr( rhs ) )
+CBPT(DString)* CBPFN(dstring_concat_cstr)( const char* lhs, const char* rhs );
 /// @brief Create dynamic string by concatenating multiple strings.
 /// @param     count         Number of strings to concatenate.
 /// @param[in] strings       Pointer to strings to concatenate.
@@ -1262,8 +1249,8 @@ DString* dstring_concat( String lhs, String rhs );
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_concat_multi(
-    size_t count, const String* strings, String opt_separator );
+CBPT(DString)* CBPFN(dstring_concat_multi)(
+    size_t count, const CBPT(String)* strings, CBPT(String) opt_separator );
 /// @brief Create dynamic string by concatenating multiple null-terminated strings.
 /// @param     count         Number of strings to concatenate.
 /// @param[in] strings       Pointer to strings to concatenate.
@@ -1271,7 +1258,7 @@ DString* dstring_concat_multi(
 /// @return
 ///     - @c Dynamic String : Buffer was successfully allocated.
 ///     - @c NULL : Failed to allocate dynamic string.
-DString* dstring_concat_multi_cstr(
+CBPT(DString)* CBPFN(dstring_concat_multi_cstr)(
     size_t count, const char** strings, const char* opt_separator );
 /// @brief Append string to end of dynamic string.
 /// @param[in] str    Dynamic string to append to.
@@ -1279,7 +1266,7 @@ DString* dstring_concat_multi_cstr(
 /// @return
 ///     - @c Dynamic String : Append was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_append( DString* str, String append );
+CBPT(DString)* CBPFN(dstring_append)( CBPT(DString)* str, CBPT(String) append );
 /// @brief Append null-terminated string to end of dynamic string.
 /// @param[in] str    Dynamic string to append to.
 /// @param[in] append Null-terminated string to append.
@@ -1295,14 +1282,14 @@ DString* dstring_append( DString* str, String append );
 ///     - @c Dynamic String : Append was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
 #define dstring_append_text( str, literal )\
-    dstring_append( str, string_text( literal ) )
+    dstring_append( str, CB_STRING( literal ) )
 /// @brief Prepend string to start of dynamic string.
 /// @param[in] str     Dynamic string to prepend to.
 /// @param     prepend String to append.
 /// @return
 ///     - @c Dynamic String : Prepend was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_prepend( DString* str, String prepend );
+CBPT(DString)* CBPFN(dstring_prepend)( CBPT(DString)* str, CBPT(String) prepend );
 /// @brief Prepend null-terminated string to end of dynamic string.
 /// @param[in] str     Dynamic string to prepend to.
 /// @param[in] prepend Null-terminated string to prepend.
@@ -1318,7 +1305,7 @@ DString* dstring_prepend( DString* str, String prepend );
 ///     - @c Dynamic String : Prepend was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
 #define dstring_prepend_text( str, literal )\
-    dstring_prepend( str, string_text( literal ) )
+    dstring_prepend( str, CB_STRING( literal ) )
 /// @brief Insert string inside dynamic string.
 /// @param[in] str    Dynamic string to insert in.
 /// @param     insert String to insert.
@@ -1326,7 +1313,7 @@ DString* dstring_prepend( DString* str, String prepend );
 /// @return
 ///     - @c Dynamic String : Insert was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_insert( DString* str, String insert, size_t at );
+CBPT(DString)* CBPFN(dstring_insert)( CBPT(DString)* str, CBPT(String) insert, size_t at );
 /// @brief Insert null-terminated string inside dynamic string.
 /// @param[in] str    Dynamic string to insert in.
 /// @param[in] insert String to insert.
@@ -1344,14 +1331,14 @@ DString* dstring_insert( DString* str, String insert, size_t at );
 ///     - @c Dynamic String : Insert was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
 #define dstring_insert_text( str, literal, at )\
-    dstring_insert( str, string_text( literal ), at )
+    dstring_insert( str, CB_STRING( literal ), at )
 /// @brief Append character to end of dynamic string.
 /// @param[in] str Dynamic string to push into.
 /// @param     c   Character to push.
 /// @return
 ///     - @c Dynamic String : Push was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_push( DString* str, char c );
+CBPT(DString)* CBPFN(dstring_push)( CBPT(DString)* str, char c );
 /// @brief Emplace character inside of dynamic string.
 /// @param[in] str Dynamic string to emplace into.
 /// @param     c   Character to emplace.
@@ -1359,21 +1346,21 @@ DString* dstring_push( DString* str, char c );
 /// @return
 ///     - @c Dynamic String : Push was successful.
 ///     - @c NULL : Failed to reallocate dynamic string.
-DString* dstring_emplace( DString* str, char c, size_t at );
+CBPT(DString)* CBPFN(dstring_emplace)( CBPT(DString)* str, char c, size_t at );
 /// @brief Pop last character from dynamic string, if available.
 /// @param[in]  str       Dynamic string to pop character from.
 /// @param[out] opt_out_c (optional) Pointer to write popped character to.
 /// @return
 ///     - @c True  : @c str has a character to pop.
 ///     - @c False : @c str is empty.
-bool dstring_pop( DString* str, char* opt_out_c );
+bool CBPFN(dstring_pop)( CBPT(DString)* str, char* opt_out_c );
 /// @brief Remove character from dynamic string.
 /// @param[in] str   Dynamic string to remove character from.
 /// @param     index Index of character to remove.
 /// @return
 ///     - @c True  : @c index was in bounds of @c str and was removed.
 ///     - @c False : @c index was out of bounds.
-bool dstring_remove( DString* str, size_t index );
+bool CBPFN(dstring_remove)( CBPT(DString)* str, size_t index );
 /// @brief Remove range of characters from dynamic string.
 /// @details
 /// With assertions on, asserts that from < to.
@@ -1383,53 +1370,53 @@ bool dstring_remove( DString* str, size_t index );
 /// @return
 ///     - @c True  : Range was in bounds of @c str and was removed.
 ///     - @c False : Range was out of bounds.
-bool dstring_remove_range( DString* str, size_t from_inclusive, size_t to_exclusive );
+bool CBPFN(dstring_remove_range)( CBPT(DString)* str, size_t from_inclusive, size_t to_exclusive );
 /// @brief Shorten dynamic string length to maximum.
 /// @details
 /// Does nothing if max > str.len.
 /// Returns empty string if max == 0.
 /// @param[in] str Dynamic string to truncate.
 /// @param     max Maximum length to truncate to.
-void dstring_truncate( DString* str, size_t max );
+void CBPFN(dstring_truncate)( CBPT(DString)* str, size_t max );
 /// @brief Subtract from dynamic string length.
 /// @details
 /// Does nothing if amount == 0. 
 /// Returns empty string if amount >= str.len.
 /// @param[in] str    Dynamic string to trim.
 /// @param     amount Number of characters to trim from the end.
-void dstring_trim( DString* str, size_t amount );
+void CBPFN(dstring_trim)( CBPT(DString)* str, size_t amount );
 /// @brief Set length of dynamic string to zero and zero out memory.
 /// @note This does not free the string!
 /// @param[in] str Dynamic string to clear.
-void dstring_clear( DString* str );
+void CBPFN(dstring_clear)( CBPT(DString)* str );
 /// @brief Calculate remaining capacity in dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Remaining capacity. Does not include null byte.
-size_t dstring_remaining( const DString* str );
+size_t CBPFN(dstring_remaining)( const CBPT(DString)* str );
 /// @brief Get length of dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Length not including null byte.
-size_t dstring_len( const DString* str );
+size_t CBPFN(dstring_len)( const CBPT(DString)* str );
 /// @brief Get capacity of dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Total capacity, includes null byte.
-size_t dstring_cap( const DString* str );
+size_t CBPFN(dstring_cap)( const CBPT(DString)* str );
 /// @brief Get total heap memory usage of dynamic string.
 /// @param[in] str Dynamic string.
 /// @return Total memory usage.
-size_t dstring_total_size( const DString* str );
+size_t CBPFN(dstring_total_size)( const CBPT(DString)* str );
 /// @brief Check if dynamic string is empty.
 /// @param[in] str Dynamic string.
 /// @return
 ///     - @c True  : Length is zero.
 ///     - @c False : Length is not zero.
-bool dstring_is_empty( const DString* str );
+bool CBPFN(dstring_is_empty)( const CBPT(DString)* str );
 /// @brief Check if dynamic string is full.
 /// @param[in] str Dynamic string.
 /// @return
 ///     - @c True  : Length equals capacity - 1.
 ///     - @c False : Dynamic string has remaining capacity.
-bool dstring_is_full( const DString* str );
+bool CBPFN(dstring_is_full)( const CBPT(DString)* str );
 /// @brief Set length of dstring.
 /// @details
 /// Panics if @c len exceeds string capacity.
@@ -1437,27 +1424,27 @@ bool dstring_is_full( const DString* str );
 /// This function also sets null-terminator.
 /// @param[in] str Dynamic string.
 /// @param     len Length to set.
-void dstring_set_len( DString* str, size_t len );
+void CBPFN(dstring_set_len)( CBPT(DString)* str, size_t len );
 /// @brief Get mutable pointer to start of dynamic string buffer.
 /// @details
 /// Used internally.
 /// Returns NULL if @c str is NULL.
 /// @param[in] str Dynamic string.
 /// @return Start of dynamic string.
-void* dstring_head( DString* str );
+void* CBPFN(dstring_head)( CBPT(DString)* str );
 /// @brief Get pointer to start of dynamic string buffer.
 /// @details
 /// Used internally.
 /// Returns NULL if @c str is NULL.
 /// @param str Dynamic string.
 /// @return Start of dynamic string.
-const void* dstring_head_const( const DString* str );
+const void* CBPFN(dstring_head_const)( const CBPT(DString)* str );
 /// @brief Free a dynamic string.
 /// @details
-/// Use this function instead of memory_free() as string pointer
+/// Use this function instead of heap_free() as string pointer
 /// is not the pointer allocated from system.
 /// @param[in] str Dynamic string.
-void dstring_free( DString* str );
+void CBPFN(dstring_free)( CBPT(DString)* str );
 
 /// @brief Allocate an empty dynamic array.
 /// @param stride Size of items in dynamic array.
@@ -1524,7 +1511,7 @@ void* darray_join( size_t stride,
 ///     - @c NULL    : Failed to allocate dynamic array.
 void* darray_from_filter(
     size_t stride, size_t len, const void* src,
-    DarrayFilterFN* filter, void* filter_params );
+    CBPT(DarrayFilterFN)* filter, void* filter_params );
 /// @brief Grow dynamic array by @c amount number of items.
 /// @param[in] darray Dynamic array to grow.
 /// @param     amount Number of items to grow by.
@@ -1702,16 +1689,16 @@ void* darray_head( void* darray );
 const void* darray_head_const( const void* darray );
 /// @brief Free a dynamic array.
 /// @details
-/// Use this function instead of memory_free().
+/// Use this function instead of heap_free().
 /// @param[in] darray Dynamic array.
 void darray_free( void* darray );
 
 /// @brief Get read-only string containing current working directory.
 /// @return Read-only string containing current working directory.
-String path_cwd(void);
+CBPT(String) path_cwd(void);
 /// @brief Get read-only string containing home directory.
 /// @return Read-only string containing home directory.
-String path_home(void);
+CBPT(String) path_home(void);
 /// @brief Check if path is absolute.
 /// @param[in] path Path to check.
 /// @return
@@ -1736,13 +1723,13 @@ bool path_is_directory( const char* path );
 /// @brief Count number of path chunks in path.
 /// @param path Path to count.
 /// @return Number of chunks.
-size_t path_chunk_count( String path );
+size_t path_chunk_count( CBPT(String) path );
 /// @brief Split path into chunks.
 /// @param path Path to split.
 /// @return
 ///     - Dynamic array of chunks. Free with darray_free()
 ///     - NULL : Failed to allocate chunks array.
-String* path_chunk_split( String path );
+CBPT(String)* path_chunk_split( CBPT(String) path );
 /// @brief Check if path matches glob pattern.
 /// @details
 /// This is a very simple glob pattern.
@@ -1755,7 +1742,7 @@ String* path_chunk_split( String path );
 /// @return
 ///     - @c True  : @c path matches @c glob.
 ///     - @c False : @c path does not match @c glob.
-bool path_matches_glob( String path, String glob );
+bool path_matches_glob( CBPT(String) path, CBPT(String) glob );
 /// @brief Walk a directory, collecting all files/directories.
 /// @details
 /// If @c out_result is empty, allocates new buffers for it.
@@ -1777,7 +1764,7 @@ bool path_walk_dir(
 /// @return
 ///     - Dynamic array of paths that match pattern.
 ///     - NULL : Failed to allocate result.
-Darray(String) path_walk_glob_filter( const WalkDirectory* wd, String glob );
+CB_DARRAY(CBPT(String)) path_walk_glob_filter( const WalkDirectory* wd, CBPT(String) glob );
 /// @brief Free result of path_walk_dir().
 /// @param[in] wd Walk directory result to free.
 void path_walk_free( WalkDirectory* wd );
@@ -1792,10 +1779,10 @@ void path_walk_free( WalkDirectory* wd );
 /// @return
 ///     - @c True  : File was opened successfully.
 ///     - @c False : Failed to open file. Check log for more details.
-bool fd_open( const char* path, FileOpenFlags flags, FD* out_file );
+bool fd_open( const char* path, CBPT(FileOpenFlag) flags, CBPT(FileID)* out_file );
 /// @brief Close a file descriptor.
 /// @param[in] file Pointer to file descriptor to close.
-void fd_close( FD* file );
+void fd_close( CBPT(FileID)* file );
 /// @brief Write to file.
 /// @param[in]  file               File descriptor to write to.
 /// @param      size               Size of buffer to write.
@@ -1804,7 +1791,7 @@ void fd_close( FD* file );
 /// @return
 ///     - @c True  : Successfully wrote to file.
 ///     - @c False : Failed to write file.
-bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_size );
+bool fd_write( CBPT(FileID)* file, size_t size, const void* buf, size_t* opt_out_write_size );
 /// @brief Write formatted string to file.
 /// @param[in] file   File descriptor to write to.
 /// @param[in] format Format string literal.
@@ -1812,7 +1799,7 @@ bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_siz
 /// @return
 ///     - @c True  : Successfully wrote to file.
 ///     - @c False : Failed to write file.
-bool fd_write_fmt_va( FD* file, const char* format, va_list va );
+bool fd_write_fmt_va( CBPT(FileID)* file, const char* format, va_list va );
 /// @brief Write formatted string to file.
 /// @param[in] file   File descriptor to write to.
 /// @param[in] format Format string literal.
@@ -1820,7 +1807,7 @@ bool fd_write_fmt_va( FD* file, const char* format, va_list va );
 /// @return
 ///     - @c True  : Successfully wrote to file.
 ///     - @c False : Failed to write file.
-bool fd_write_fmt( FD* file, const char* format, ... );
+bool fd_write_fmt( CBPT(FileID)* file, const char* format, ... );
 /// @brief Read bytes from file.
 /// @param[in]  file              File descriptor to read from.
 /// @param      size              Size of read buffer.
@@ -1829,26 +1816,26 @@ bool fd_write_fmt( FD* file, const char* format, ... );
 /// @return
 ///     - @c True  : Successfully read from file.
 ///     - @c False : Failed to read file.
-bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size );
+bool fd_read( CBPT(FileID)* file, size_t size, void* buf, size_t* opt_out_read_size );
 /// @brief Set file size to current position.
 /// @param[in] file File descriptor.
 /// @return
 ///     - @c True  : Successfully set file size.
 ///     - @c False : Failed to set file size.
-bool fd_truncate( FD* file );
+bool fd_truncate( CBPT(FileID)* file );
 /// @brief Query file size.
 /// @param[in] file File descriptor.
 /// @return Size of @c file.
-size_t fd_query_size( FD* file );
+size_t fd_query_size( CBPT(FileID)* file );
 /// @brief Seek to file position.
 /// @param[in] file File descriptor.
 /// @param     type Type of seek.
 /// @param     seek Bytes to seek. Can be negative to seek in reverse.
-void fd_seek( FD* file, FileSeek type, intptr_t seek );
+void fd_seek( CBPT(FileID)* file, CBPT(SeekType) type, intptr_t seek );
 /// @brief Query current seek position.
 /// @param[in] file File descriptor.
 /// @return Bytes from start of file.
-size_t fd_query_position( FD* file );
+size_t fd_query_position( CBPT(FileID)* file );
 /// @brief Query creation time of file at given path.
 /// @param[in] path Null-terminated path to file. Length must be <= 4096.
 /// @return Creation time in POSIX time.
@@ -2039,20 +2026,20 @@ uint32_t thread_id(void);
 #else
     /// @brief Create empty command.
     /// @return Empty command.
-    #define command_null() (Command){ .args=0, .count=0 }
+    #define command_null() (CBPT(Command)){ .args=0, .count=0 }
 #endif
 /// @brief Create new command.
 /// @param ... Null-terminated strings of arguments. First argument must be path to process to execute.
 /// @return New command.
 #define command_new( ... )\
-    (Command){ .args=(const char*[]){ __VA_ARGS__, 0 },\
+    (CBPT(Command)){ .args=(const char*[]){ __VA_ARGS__, 0 },\
         .count=sizeof((const char*[]){ __VA_ARGS__ }) / sizeof(const char*) }
 /// @brief Convert command to dynamic string.
 /// @param[in] command Command to convert.
 /// @return
 ///     - Dynamic string, free with dstring_free().
 ///     - NULL : Failed to allocate result.
-DString* command_flatten_dstring( const Command* command );
+CBPT(DString)* command_flatten_dstring( const CBPT(Command)* command );
 
 /// @brief Create command builder.
 /// @param[in]  exe         Name of executable.
@@ -2060,18 +2047,18 @@ DString* command_flatten_dstring( const Command* command );
 /// @return
 ///     - true  : Allocated new command builder.
 ///     - false : Failed to allocate new command builder.
-bool command_builder_new( const char* exe, CommandBuilder* out_builder );
+bool command_builder_new( const char* exe, CBPT(CommandBuilder)* out_builder );
 /// @brief Clear command builder.
 /// @param[in] builder Builder to clear.
-void command_builder_clear( CommandBuilder* builder );
+void command_builder_clear( CBPT(CommandBuilder)* builder );
 /// @brief Push argument to end of command builder.
 /// @param[in] builder Builder to push to.
 /// @param[in] arg     Argument to push.
 /// @return
 ///     - true  : Pushed argument successfully.
 ///     - false : Failed to reallocate command builder.
-bool command_builder_push( CommandBuilder* builder, const char* arg );
-bool __internal_command_builder_append( CommandBuilder* builder, const char* first, ... );
+bool command_builder_push( CBPT(CommandBuilder)* builder, const char* arg );
+bool __internal_command_builder_append( CBPT(CommandBuilder)* builder, const char* first, ... );
 /// @brief Append arguments to end of command builder.
 /// @param[in] builder Builder to append to.
 /// @param     args... Arguments to append.
@@ -2088,14 +2075,14 @@ bool __internal_command_builder_append( CommandBuilder* builder, const char* fir
 ///     - true  : Appended arguments successfully.
 ///     - false : Failed to reallocate command builder.
 bool command_builder_append_list(
-    CommandBuilder* builder, size_t count, const char** args );
+    CBPT(CommandBuilder)* builder, size_t count, const char** args );
 /// @brief Convert builder to command.
 /// @param[in] builder Builder to convert.
 /// @return Command.
-Command command_builder_cmd( CommandBuilder* builder );
+CBPT(Command) command_builder_cmd( CBPT(CommandBuilder)* builder );
 /// @brief Free command builder.
 /// @param[in] builder Builder to free.
-void command_builder_free( CommandBuilder* builder );
+void command_builder_free( CBPT(CommandBuilder)* builder );
 
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     /// @brief Create null pipe.
@@ -2109,7 +2096,7 @@ void command_builder_free( CommandBuilder* builder );
 /// @brief Open read and write pipes.
 /// @param[out] out_read  Pointer to write read end of pipe to.
 /// @param[out] out_write Pointer to write write end of pipe to.
-void pipe_open( ReadPipe* out_read, WritePipe* out_write );
+void pipe_open( CBPT(PipeRead)* out_read, CBPT(PipeWrite)* out_write );
 /// @brief Read from read end of pipe.
 /// @param[in]  read_pipe         Pointer to read end of pipe.
 /// @param      size              Size of buffer to read to.
@@ -2131,8 +2118,8 @@ void pipe_open( ReadPipe* out_read, WritePipe* out_write );
 #define pipe_write( write_pipe, size, buf, opt_out_write_size )\
     fd_write( write_pipe, size, buf, opt_out_write_size )
 /// @brief Close pipe.
-/// @param pipe Pipe to close (ReadPipe or WritePipe).
-void pipe_close( Pipe pipe );
+/// @param pipe Pipe to close (CBPT(PipeRead) or CBPT(PipeWrite)).
+void pipe_close( CBPT(Pipe) pipe );
 
 /// @brief Create null process ID.
 /// @return Null process ID.
@@ -2153,9 +2140,9 @@ bool process_in_path( const char* process_name );
 /// @return ID of process executed.
 /// Process ID must be discarded using process_discard(),
 /// process_wait() or successful process_wait_timed().
-PID process_exec(
-    Command cmd, bool redirect_void, ReadPipe* opt_stdin,
-    WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd );
+CBPT(ProcessID) process_exec(
+    CBPT(Command) cmd, bool redirect_void, CBPT(PipeRead)* opt_stdin,
+    CBPT(PipeWrite)* opt_stdout, CBPT(PipeWrite)* opt_stderr, const char* opt_cwd );
 /// @brief Wait indefinitely for process to complete.
 /// @details
 /// This function discards @c pid.
@@ -2163,7 +2150,7 @@ PID process_exec(
 /// @return
 ///     - >= 0 : Process exited normally, return code from process.
 ///     - <  0 : Process did not exit normally.
-int process_wait( PID pid );
+int process_wait( CBPT(ProcessID) pid );
 /// @brief Wait for process to complete.
 /// @details
 /// If return code is >= 0 that means process exited normally.
@@ -2175,13 +2162,13 @@ int process_wait( PID pid );
 /// @return
 ///     - @c True  : Process completed in time.
 ///     - @c False : Timed out.
-bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms );
+bool process_wait_timed( CBPT(ProcessID) pid, int* opt_out_res, uint32_t ms );
 /// @brief Discard process ID.
 /// @details
 /// While not necessary on POSIX, pid should always
 /// be discard with process_wait(), proces_wait_timed() or this function.
 /// @param pid Process ID to discard.
-void process_discard( PID pid );
+void process_discard( CBPT(ProcessID) pid );
 
 /// @brief Get current time in milliseconds.
 /// @return Time in milliseconds.
@@ -2233,32 +2220,32 @@ char* local_fmt( const char* format, ... );
 /// This function is not MT-safe so only
 /// call it before using jobs system.
 /// @param level Level to set logger to.
-void logger_set_level( LoggerLevel level );
+void logger_set_level( CBPT(LogLevel) level );
 /// @brief Get current logging level.
 /// @return Current logging level.
-LoggerLevel logger_get_level(void);
+CBPT(LogLevel) logger_get_level(void);
 /// @brief Write formatted logging message.
 /// @param     level  Logger level of message.
 /// @param[in] format Format string literal.
 /// @param     va     Variadic list of format arguments.
-void logger_va( LoggerLevel level, const char* format, va_list va );
+void logger_va( CBPT(LogLevel) level, const char* format, va_list va );
 /// @brief Write formatted logging message.
 /// @param     level  Logger level of message.
 /// @param[in] format Format string literal.
 /// @param     ...    Format arguments.
-void logger( LoggerLevel level, const char* format, ... );
+void logger( CBPT(LogLevel) level, const char* format, ... );
 
 /// @brief Query name of compiler used to compile this instance of cbuild.
 /// @details
 /// This name corresponds to the command used to compiler cbuild.
 /// @return String containing name of compiler.
-String cbuild_query_compiler(void);
+CBPT(String) cbuild_query_compiler(void);
 /// @brief Query command line arguments used in this instance of cbuild.
 /// @return Pointer to command.
-const Command* cbuild_query_command_line(void);
+const CBPT(Command)* cbuild_query_command_line(void);
 
 void _init_(
-    LoggerLevel logger_level,
+    CBPT(LogLevel) logger_level,
     const char* executable_name,
     const char* source_name,
     int argc, const char** argv );
@@ -2276,17 +2263,17 @@ static inline void _INTERNAL_CB_UNUSED_FUNCTION( int _, ... ) {(void)_;}
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     #include <process.h>
 #else
-    void posix_process_replace( Command cmd );
+    void posix_process_replace( CBPT(Command) cmd );
 #endif
 
 struct GlobalBuffers {
     atom obtained; // atomic boolean
 
-    String cwd;
-    String home;
+    CBPT(String) cwd;
+    CBPT(String) home;
 
-    ReadPipe  void_read;
-    WritePipe void_write;
+    CBPT(PipeRead)  void_read;
+    CBPT(PipeWrite) void_write;
 };
 struct LocalBuffers {
     char buffers[CB_THREAD_COUNT + 1]
@@ -2323,9 +2310,9 @@ atom            global_thread_id_source = 1; // 0 is main thread
 CB_TLS( uint32_t ) global_thread_id        = 0;
 
 static Mutex       global_logger_mutex = mutex_null();
-static LoggerLevel global_logger_level = CB_LOGGER_LEVEL_INFO;
+static CBPT(LogLevel) global_logger_level = CB_LOG_LEVEL_INFO;
 
-static Command global_command_line;
+static CBPT(Command) global_command_line;
 
 volatile struct LocalBuffers* global_local_buffers = NULL;
 #if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
@@ -2339,8 +2326,8 @@ void  thread_create( JobFN* func, void* params );
 char* internal_cwd(void);
 char* internal_home(void);
 static bool path_walk_dir_internal(
-    DString** path, bool recursive, bool include_dirs,
-    size_t* out_count, DString** out_buffer );
+    CBPT(DString)** path, bool recursive, bool include_dirs,
+    size_t* out_count, CBPT(DString)** out_buffer );
 
 static bool job_dequeue( struct JobQueue* queue, struct JobEntry* out_entry ) {
     if( !queue->len ) {
@@ -2361,7 +2348,7 @@ void job_queue_proc( void* params ) {
 
     for( ;; ) {
         struct JobEntry entry;
-        memory_zero( &entry, sizeof(entry) );
+        CBPFN(memory_zero)( &entry, sizeof(entry) );
 
         semaphore_wait( &queue->wakeup );
         fence();
@@ -2382,7 +2369,7 @@ static void initialize_job_queue(void) {
     atomic_add( &global_is_mt, 1 );
 
     size_t queue_size       = sizeof(*global_queue);
-    struct JobQueue* queue = memory_alloc( queue_size );
+    struct JobQueue* queue = CBPFN(heap_alloc)( queue_size );
 
     CB_EXPECT( queue, "failed to allocate job queue!" );
 
@@ -2408,7 +2395,7 @@ static volatile struct JobQueue* get_job_queue(void) {
 }
 static volatile struct LocalBuffers* get_local_buffers(void) {
     if( !global_local_buffers ) {
-        global_local_buffers = memory_alloc( sizeof(*global_local_buffers) );
+        global_local_buffers = CBPFN(heap_alloc)( sizeof(*global_local_buffers) );
         CB_EXPECT( global_local_buffers,
             "failed to allocate local buffers! size: %zu",
             sizeof(*global_local_buffers) );
@@ -2429,7 +2416,7 @@ static volatile char* get_next_local_buffer( uint32_t id ) {
     }
 
     volatile char* result = b->buffers[id][index];
-    memory_zero( (void*)result, CB_LOCAL_BUFFER_CAPACITY );
+    CBPFN(memory_zero)( (void*)result, CB_LOCAL_BUFFER_CAPACITY );
     return result;
 }
 static volatile struct GlobalBuffers* get_global_buffers(void) {
@@ -2442,22 +2429,22 @@ static volatile struct GlobalBuffers* get_global_buffers(void) {
         global_buffers.home = string_from_cstr( home );
 
         pipe_open(
-            (ReadPipe*)&global_buffers.void_read,
-            (WritePipe*)&global_buffers.void_write );
+            (CBPT(PipeRead)*)&global_buffers.void_read,
+            (CBPT(PipeWrite)*)&global_buffers.void_write );
     }
     return &global_buffers;
 }
-static bool validate_file_flags( FileOpenFlags flags ) {
-    if( !( flags & CB_FOPEN_READ | CB_FOPEN_WRITE ) ) {
+static bool validate_file_flags( CBPT(FileOpenFlag) flags ) {
+    if( !( flags & CB_FILE_OPEN_READ | CB_FILE_OPEN_WRITE ) ) {
         CB_ERROR( "FD flags must have READ and/or WRITE set!" );
         return false;
     }
-    if( flags & CB_FOPEN_TRUNCATE ) {
-        if( flags & CB_FOPEN_APPEND ) {
+    if( flags & CB_FILE_OPEN_TRUNCATE ) {
+        if( flags & CB_FILE_OPEN_APPEND ) {
             CB_ERROR( "FD flag APPEND and TRUNCATE cannot be set at the same time!" );
             return false;
         }
-        if( flags & CB_FOPEN_READ ) {
+        if( flags & CB_FILE_OPEN_READ ) {
             CB_ERROR( "FD flag TRUNCATE and READ cannot be set at the same time!" );
             return false;
         }
@@ -2483,16 +2470,16 @@ static bool dir_remove_internal( const char* path );
     #define CBUILD_POSIX_FLAGS "-lpthread"
 #endif
 
-String cbuild_query_compiler(void) {
-    return string_text( CBUILD_COMPILER_NAME );
+CBPT(String) cbuild_query_compiler(void) {
+    return CB_STRING( CBUILD_COMPILER_NAME );
 }
-const Command* cbuild_query_command_line(void) {
+const CBPT(Command)* cbuild_query_command_line(void) {
     return &global_command_line;
 }
 
 void _platform_init_(void);
 void _init_(
-    LoggerLevel logger_level,
+    CBPT(LogLevel) logger_level,
     const char* executable_name,
     const char* source_name,
     int argc, const char** argv
@@ -2543,9 +2530,9 @@ void _init_(
     // rebuild
 
     CB_INFO( "changes detected in cbuild source, rebuilding . . ." );
-    cbuild_rebuild( source_name, executable_name, true );
+    CBPFN(rebuild_self)( source_name, executable_name, true );
 }
-CB_NO_RETURN void cbuild_rebuild(
+CB_NO_RETURN void CBPFN(rebuild_self)(
     const char* cbuild_source_file_name,
     const char* cbuild_executable_name,
     bool reload
@@ -2564,7 +2551,7 @@ CB_NO_RETURN void cbuild_rebuild(
     const char* additional[]  = { CBUILD_ADDITIONAL_FLAGS };
     size_t arg_count = 0;
     const char* args[6 + CB_ARRAY_LEN( additional ) + CB_ARRAY_LEN( posix_flags )];
-    memory_zero( (void*)args, sizeof(args) );
+    CBPFN(memory_zero)( (void*)args, sizeof(args) );
 
     args[arg_count++] = CBUILD_COMPILER_NAME;
     args[arg_count++] = cbuild_source_file_name;
@@ -2588,7 +2575,7 @@ CB_NO_RETURN void cbuild_rebuild(
         }
     }
 
-    Command rebuild_cmd;
+    CBPT(Command) rebuild_cmd;
     rebuild_cmd.count = arg_count;
     rebuild_cmd.args  = args;
 
@@ -2607,7 +2594,7 @@ CB_NO_RETURN void cbuild_rebuild(
 
     fence();
 
-    PID pid = process_exec( rebuild_cmd, false, 0, 0, 0, 0 );
+    CBPT(ProcessID) pid = process_exec( rebuild_cmd, false, 0, 0, 0, 0 );
     int res = process_wait( pid );
     if( res != 0 ) {
         CB_FATAL( "failed to rebuild!" );
@@ -2618,11 +2605,11 @@ CB_NO_RETURN void cbuild_rebuild(
 
 #if CB_COMPILER_CURRENT == CB_COMPILER_MSVC
     /* attempt to remove annoying .obj file generated by msvc */ {
-        String exe = string_from_cstr( cbuild_executable_name );
+        CBPT(String) exe = string_from_cstr( cbuild_executable_name );
         char* local = (char*)local_byte_buffer();
-        memory_copy( local, exe.cc, exe.len );
+        CBPFN(memory_copy)( local, exe.cc, exe.len );
         size_t dot = 0;
-        if( string_find_rev( exe, '.', &dot ) ) {
+        if( CBPFN(string_find_rev)( exe, '.', &dot ) ) {
             local[++dot] = 'o';
             local[++dot] = 'b';
             local[++dot] = 'j';
@@ -2657,19 +2644,19 @@ CB_NO_RETURN void cbuild_rebuild(
 #endif
 }
 
-size_t memory_query_usage(void) {
+size_t CBPFN(heap_query_usage)(void) {
     return global_memory_usage;
 }
-size_t memory_query_total_usage(void) {
+size_t CBPFN(heap_query_total_usage)(void) {
     return global_total_memory_usage;
 }
-void memory_set( void* memory, int8_t value, size_t size ) {
+void CBPFN(memory_set)( void* memory, int8_t value, size_t size ) {
     memset( memory, value, size );
 }
-void memory_zero( void* memory, size_t size ) {
-    memory_set( memory, 0, size );
+void CBPFN(memory_zero)( void* memory, size_t size ) {
+    CBPFN(memory_set)( memory, 0, size );
 }
-void memory_stamp( void* memory, size_t value_size, const void* value, size_t size ) {
+void CBPFN(memory_stamp)( void* memory, size_t value_size, const void* value, size_t size ) {
     uint8_t*   dst = (uint8_t*)memory;
     size_t rem = size;
     while( rem ) {
@@ -2677,21 +2664,21 @@ void memory_stamp( void* memory, size_t value_size, const void* value, size_t si
             break;
         }
 
-        memory_copy( dst, value, value_size );
+        CBPFN(memory_copy)( dst, value, value_size );
         dst += value_size;
     }
 }
-void memory_copy( void* restrict dst, const void* restrict src, size_t size ) {
+void CBPFN(memory_copy)( void* restrict dst, const void* restrict src, size_t size ) {
     memcpy( dst, src, size );
 }
-void memory_move( void* dst, const void* src, size_t size ) {
+void CBPFN(memory_move)( void* dst, const void* src, size_t size ) {
     memmove( dst, src, size );
 }
-bool memory_cmp( const void* a, const void* b, size_t size ) {
+bool CBPFN(memory_cmp)( const void* a, const void* b, size_t size ) {
     return memcmp( a, b, size ) == 0;
 }
 
-bool char_in_set( char c, String set ) {
+bool CBPFN(char_in_set)( char c, CBPT(String) set ) {
     for( size_t i = 0; i < set.len; ++i ) {
         if( c == set.cc[i] ) {
             return true;
@@ -2700,14 +2687,29 @@ bool char_in_set( char c, String set ) {
     return false;
 }
 
-size_t strlen_utf8( const char* str ) {
-    return string_len_utf8( string_from_cstr( str ) );
+size_t CBPFN(strlen_utf8)( const char* str ) {
+    return CBPFN(string_len_utf8)( string_from_cstr( str ) );
 }
 
-bool string_is_empty( String str ) {
+CBPT(String) CBPFN(string_new)( size_t len, const char* buf ) {
+    CBPT(String) result;
+    result.len = len;
+    result.buf = (char*)buf;
+    return result;
+}
+CBPT(String) CBPFN(string_empty)() {
+    return CBPFN(string_new)( 0, 0 );
+}
+CBPT(String) CBPFN(string_from_cstr)( const char* cstr ) {
+    return CBPFN(string_new)( cstr ? strlen(cstr) : 0, cstr );
+}
+CBPT(String) CBPFN(string_from_dstring)( CBPT(DString)* dynamic ) {
+    return CBPFN(string_new)( dynamic ? CBPFN(dstring_len)(dynamic) : 0, dynamic );
+}
+bool CBPFN(string_is_empty)( CBPT(String) str ) {
     return !(str.cc && str.len);
 }
-bool string_is_null_terminated( String str ) {
+bool CBPFN(string_is_null_terminated)( CBPT(String) str ) {
     if( !str.cc[str.len] ) {
         return true;
     }
@@ -2716,13 +2718,13 @@ bool string_is_null_terminated( String str ) {
     }
     return false;
 }
-bool string_cmp( String a, String b ) {
+bool CBPFN(string_cmp)( CBPT(String) a, CBPT(String) b ) {
     if( a.len != b.len ) {
         return false;
     }
-    return memory_cmp( a.cc, b.cc, a.len );
+    return CBPFN(memory_cmp)( a.cc, b.cc, a.len );
 }
-bool string_find( String str, char c, size_t* opt_out_index ) {
+bool CBPFN(string_find)( CBPT(String) str, char c, size_t* opt_out_index ) {
     const char* ptr = memchr( str.cc, c, str.len );
     if( !ptr ) {
         return false;
@@ -2732,7 +2734,7 @@ bool string_find( String str, char c, size_t* opt_out_index ) {
     }
     return true;
 }
-bool string_find_rev( String str, char c, size_t* opt_out_index ) {
+bool CBPFN(string_find_rev)( CBPT(String) str, char c, size_t* opt_out_index ) {
     for( size_t i = str.len; i-- > 0; ) {
         if( str.cc[i] == c ) {
             if( opt_out_index ) {
@@ -2743,17 +2745,17 @@ bool string_find_rev( String str, char c, size_t* opt_out_index ) {
     }
     return false;
 }
-bool string_find_set( String str, String set, size_t* opt_out_index ) {
+bool CBPFN(string_find_set)( CBPT(String) str, CBPT(String) set, size_t* opt_out_index ) {
     for( size_t i = 0; i < set.len; ++i ) {
-        if( string_find( str, set.cc[i], opt_out_index ) ) {
+        if( CBPFN(string_find)( str, set.cc[i], opt_out_index ) ) {
             return true;
         }
     }
     return false;
 }
-bool string_find_set_rev( String str, String set, size_t* opt_out_index ) {
+bool CBPFN(string_find_set_rev)( CBPT(String) str, CBPT(String) set, size_t* opt_out_index ) {
     for( size_t i = str.len; i-- > 0; ) {
-        if( char_in_set( str.cc[i], set ) ) {
+        if( CBPFN(char_in_set)( str.cc[i], set ) ) {
             if( opt_out_index ) {
                 *opt_out_index = i;
             }
@@ -2762,34 +2764,34 @@ bool string_find_set_rev( String str, String set, size_t* opt_out_index ) {
     }
     return false;
 }
-bool string_find_string( String str, String substr, size_t* opt_out_index ) {
-    String rem = str;
+bool CBPFN(string_find_string)( CBPT(String) str, CBPT(String) substr, size_t* opt_out_index ) {
+    CBPT(String) rem = str;
     if( rem.len < substr.len ) {
         return false;
     }
 
     while( rem.len ) {
         size_t start = 0;
-        if( string_find( rem, substr.cc[0], &start ) ) {
-            rem = string_advance_by( rem, start );
+        if( CBPFN(string_find)( rem, substr.cc[0], &start ) ) {
+            rem = CBPFN(string_advance_by)( rem, start );
             if( rem.len < substr.len ) {
                 return false;
             }
 
-            if( string_cmp( string_truncate(rem, substr.len), substr ) ) {
+            if( CBPFN(string_cmp)( CBPFN(string_truncate)(rem, substr.len), substr ) ) {
                 if( opt_out_index ) {
                     *opt_out_index = rem.cc - str.cc;
                 }
                 return true;
             }
-            rem = string_advance( rem );
+            rem = CBPFN(string_advance)( rem );
         } else {
             break;
         }
     }
     return false;
 }
-bool string_find_string_rev( String str, String substr, size_t* opt_out_index ) {
+bool CBPFN(string_find_string_rev)( CBPT(String) str, CBPT(String) substr, size_t* opt_out_index ) {
     if( str.len < substr.len ) {
         return false;
     }
@@ -2800,9 +2802,9 @@ bool string_find_string_rev( String str, String substr, size_t* opt_out_index ) 
         if( str.len - i < substr.len ) {
             break;
         }
-        String part = string_new( substr.len, str.cc + i );
+        CBPT(String) part = CBPFN(string_new)( substr.len, str.cc + i );
 
-        if( string_cmp( part, substr ) ) {
+        if( CBPFN(string_cmp)( part, substr ) ) {
             if( opt_out_index ) {
                 *opt_out_index = i;
             }
@@ -2811,57 +2813,57 @@ bool string_find_string_rev( String str, String substr, size_t* opt_out_index ) 
     }
     return false;
 }
-char* string_first( String str ) {
-    if( string_is_empty( str ) ) {
+char* CBPFN(string_first)( CBPT(String) str ) {
+    if( CBPFN(string_is_empty)( str ) ) {
         return NULL;
     }
     return (char*)str.cc;
 }
-char* string_last( String str ) {
-    if( string_is_empty( str ) ) {
+char* CBPFN(string_last)( CBPT(String) str ) {
+    if( CBPFN(string_is_empty)( str ) ) {
         return NULL;
     }
     return (char*)( str.cc + (str.len - 1) );
 }
-String string_advance( String str ) {
-    if( string_is_empty( str ) ) {
+CBPT(String) CBPFN(string_advance)( CBPT(String) str ) {
+    if( CBPFN(string_is_empty)( str ) ) {
         return str;
     }
-    return string_new( str.len - 1, str.cc + 1 );
+    return CBPFN(string_new)( str.len - 1, str.cc + 1 );
 }
-String string_advance_by( String str, size_t stride ) {
-    if( string_is_empty( str ) ) {
+CBPT(String) CBPFN(string_advance_by)( CBPT(String) str, size_t stride ) {
+    if( CBPFN(string_is_empty)( str ) ) {
         return str;
     }
     if( str.len <= stride ) {
-        return string_new( 0, str.cc + (str.len - 1) );
+        return CBPFN(string_new)( 0, str.cc + (str.len - 1) );
     }
-    return string_new( str.len - stride, str.cc + stride );
+    return CBPFN(string_new)( str.len - stride, str.cc + stride );
 }
-String string_truncate( String str, size_t max ) {
-    return string_new( max > str.len ? str.len : max, str.cc );
+CBPT(String) CBPFN(string_truncate)( CBPT(String) str, size_t max ) {
+    return CBPFN(string_new)( max > str.len ? str.len : max, str.cc );
 }
-String string_trim( String str, size_t amount ) {
+CBPT(String) CBPFN(string_trim)( CBPT(String) str, size_t amount ) {
     if( amount >= str.len ) {
-        return string_new( 0, str.cc );
+        return CBPFN(string_new)( 0, str.cc );
     }
-    return string_new( str.len - amount, str.cc );
+    return CBPFN(string_new)( str.len - amount, str.cc );
 }
-String string_trim_leading_whitespace( String str ) {
-    String res = str;
+CBPT(String) CBPFN(string_trim_leading_whitespace)( CBPT(String) str ) {
+    CBPT(String) res = str;
     while( res.len ) {
         if( isspace( *res.cc ) ) {
-            res = string_advance( res );
+            res = CBPFN(string_advance)( res );
         } else {
             break;
         }
     }
     return res;
 }
-String string_trim_trailing_whitespace( String str ) {
-    String res = str;
+CBPT(String) CBPFN(string_trim_trailing_whitespace)( CBPT(String) str ) {
+    CBPT(String) res = str;
     while( res.len ) {
-        if( isspace( *string_last( res ) ) ) {
+        if( isspace( *CBPFN(string_last)( res ) ) ) {
             res.len--;
         } else {
             break;
@@ -2869,65 +2871,65 @@ String string_trim_trailing_whitespace( String str ) {
     }
     return res;
 }
-String string_trim_surrounding_whitespace( String str ) {
-    return string_trim_leading_whitespace( string_trim_trailing_whitespace( str ) );
+CBPT(String) CBPFN(string_trim_surrounding_whitespace)( CBPT(String) str ) {
+    return CBPFN(string_trim_leading_whitespace)( CBPFN(string_trim_trailing_whitespace)( str ) );
 }
-void string_split_at(
-    String src, size_t at, bool keep_split, String* opt_out_left, String* opt_out_right
+void CBPFN(string_split_at)(
+    CBPT(String) src, size_t at, bool keep_split, CBPT(String)* opt_out_left, CBPT(String)* opt_out_right
 ) {
     CB_EXPECT( at <= src.len,
         "index provided is outside string bounds! at: %zu", at );
 
     if( opt_out_left ) {
-        *opt_out_left = string_truncate( src, at );
+        *opt_out_left = CBPFN(string_truncate)( src, at );
     }
     if( opt_out_right ) {
-        *opt_out_right = string_advance_by( src, at + (keep_split ? 0 : 1) );
+        *opt_out_right = CBPFN(string_advance_by)( src, at + (keep_split ? 0 : 1) );
     }
 }
-bool string_split_char(
-    String src, char c, bool keep_split, String* opt_out_left, String* opt_out_right
+bool CBPFN(string_split_char)(
+    CBPT(String) src, char c, bool keep_split, CBPT(String)* opt_out_left, CBPT(String)* opt_out_right
 ) {
     size_t at = 0;
-    if( !string_find( src, c, &at ) ) {
+    if( !CBPFN(string_find)( src, c, &at ) ) {
         return false;
     }
-    string_split_at( src, at, keep_split, opt_out_left, opt_out_right );
+    CBPFN(string_split_at)( src, at, keep_split, opt_out_left, opt_out_right );
     return true;
 }
-String* string_split_delim( String src, String delim, bool keep_delim ) {
+CBPT(String)* CBPFN(string_split_delim)( CBPT(String) src, CBPT(String) delim, bool keep_delim ) {
     size_t  count  = 0;
-    String substr = src;
+    CBPT(String) substr = src;
     while( substr.len ) {
         size_t pos = 0;
-        if( string_find_string( substr, delim, &pos ) ) {
+        if( CBPFN(string_find_string)( substr, delim, &pos ) ) {
             count++;
-            substr = string_advance_by( substr, pos + delim.len );
+            substr = CBPFN(string_advance_by)( substr, pos + delim.len );
         } else {
             count++;
             break;
         }
     }
 
-    String* res = (String*)darray_empty( sizeof(String), count );
+    CBPT(String)* res = (CBPT(String)*)darray_empty( sizeof(CBPT(String)), count );
     CB_EXPECT( res, "failed to allocate string buffer!" );
 
     if( count == 1 ) {
-        return (String*)darray_push( res, &src );
+        return (CBPT(String)*)darray_push( res, &src );
     }
 
     substr = src;
     if( keep_delim ) {
         while( substr.len ) {
             size_t pos = 0;
-            if( string_find_string( substr, delim, &pos ) ) {
-                String chunk = substr;
+            if( CBPFN(string_find_string)( substr, delim, &pos ) ) {
+                CBPT(String) chunk = substr;
                 chunk.len = pos + delim.len;
 
                 CB_EXPECT( darray_try_push( res, &chunk ),
                     "misallocated result!" );
 
-                substr = string_advance_by( substr, chunk.len );
+                substr = CBPFN(string_advance_by)( substr, chunk.len );
             } else {
                 CB_EXPECT( darray_try_push( res, &substr ),
                     "misallocated result!" );
@@ -2937,14 +2939,14 @@ String* string_split_delim( String src, String delim, bool keep_delim ) {
     } else {
         while( substr.len ) {
             size_t pos = 0;
-            if( string_find_string( substr, delim, &pos ) ) {
-                String chunk = substr;
+            if( CBPFN(string_find_string)( substr, delim, &pos ) ) {
+                CBPT(String) chunk = substr;
                 chunk.len    = pos;
 
                 CB_EXPECT( darray_try_push( res, &chunk ),
                     "misallocated result!" );
 
-                substr = string_advance_by( substr, chunk.len + delim.len );
+                substr = CBPFN(string_advance_by)( substr, chunk.len + delim.len );
             } else {
                 CB_EXPECT( darray_try_push( res, &substr ),
                     "misallocated result!" );
@@ -2955,30 +2957,47 @@ String* string_split_delim( String src, String delim, bool keep_delim ) {
 
     return res;
 }
-String* string_split_delim_ex(
-    String src, String delim, bool keep_delim,
-    StringSplitDelimFilterFN* filter, void* params
+CBPT(String)* CBPFN(string_split_delim_char)(
+    CBPT(String) src, char delim, bool keep_delim
+) {
+    char delim_[1] = { delim };
+    return CBPFN(string_split_delim)( src, CBPFN(string_new)( 1, delim_ ), keep_delim );
+}
+CBPT(String)* CBPFN(string_split_delim_char_ex)(
+    CBPT(String) src,
+    char delim,
+    bool keep_delim,
+    CBPT(StringSplitDelimFilterFN)* filter,
+    void* params
+) {
+    char delim_[1] = { delim };
+    return CBPFN(string_split_delim_ex)(
+        src, CBPFN(string_new)( 1, delim_ ), keep_delim, filter, params );
+}
+CBPT(String)* CBPFN(string_split_delim_ex)(
+    CBPT(String) src, CBPT(String) delim, bool keep_delim,
+    CBPT(StringSplitDelimFilterFN)* filter, void* params
 ) {
     CB_EXPECT( filter, "no filter function provided!" );
 
     size_t  count  = 0;
-    String substr = src;
+    CBPT(String) substr = src;
     while( substr.len ) {
         size_t pos = 0;
-        if( string_find_string( substr, delim, &pos ) ) {
+        if( CBPFN(string_find_string)( substr, delim, &pos ) ) {
             count++;
-            substr = string_advance_by( substr, pos + delim.len );
+            substr = CBPFN(string_advance_by)( substr, pos + delim.len );
         } else {
             count++;
             break;
         }
     }
 
-    String* res = (String*)darray_empty( sizeof(String), count );
+    CBPT(String)* res = (CBPT(String)*)darray_empty( sizeof(CBPT(String)), count );
     CB_EXPECT( res, "failed to allocate string buffer!" );
 
     if( count == 1 ) {
-        String filtered = filter( 0, src, params );
+        CBPT(String) filtered = filter( 0, src, params );
         if( filtered.len ) {
             CB_EXPECT( darray_try_push( res, &filtered ),
                 "misallocated result!" );
@@ -2991,8 +3010,8 @@ String* string_split_delim_ex(
     if( keep_delim ) {
         while( substr.len ) {
             size_t pos = 0;
-            if( string_find_string( substr, delim, &pos ) ) {
-                String chunk = substr;
+            if( CBPFN(string_find_string)( substr, delim, &pos ) ) {
+                CBPT(String) chunk = substr;
                 chunk.len    = pos + delim.len;
 
                 chunk = filter( index, chunk, params );
@@ -3003,9 +3022,9 @@ String* string_split_delim_ex(
                     index++;
                 }
 
-                substr = string_advance_by( substr, chunk.len );
+                substr = CBPFN(string_advance_by)( substr, chunk.len );
             } else {
-                String filtered = filter( index++, substr, params );
+                CBPT(String) filtered = filter( index++, substr, params );
 
                 if( filtered.len ) {
                     CB_EXPECT( darray_try_push( res, &filtered ),
@@ -3017,8 +3036,8 @@ String* string_split_delim_ex(
     } else {
         while( substr.len ) {
             size_t pos = 0;
-            if( string_find_string( substr, delim, &pos ) ) {
-                String chunk = substr;
+            if( CBPFN(string_find_string)( substr, delim, &pos ) ) {
+                CBPT(String) chunk = substr;
                 chunk.len    = pos;
 
                 chunk = filter( index, chunk, params );
@@ -3029,9 +3048,9 @@ String* string_split_delim_ex(
                     index++;
                 }
 
-                substr = string_advance_by( substr, chunk.len + delim.len );
+                substr = CBPFN(string_advance_by)( substr, chunk.len + delim.len );
             } else {
-                String filtered = filter( index++, substr, params );
+                CBPT(String) filtered = filter( index++, substr, params );
 
                 if( filtered.len ) {
                     CB_EXPECT( darray_try_push( res, &filtered ),
@@ -3046,7 +3065,7 @@ String* string_split_delim_ex(
 
 }
 
-size_t string_len_utf8( String str ) {
+size_t CBPFN(string_len_utf8)( CBPT(String) str ) {
     const unsigned char* ucc = (const unsigned char*)str.cc;
     size_t res = 0;
     for( size_t i = 0; i < str.len; ++i ) {
@@ -3057,31 +3076,37 @@ size_t string_len_utf8( String str ) {
     return res;
 }
 
-DString* dstring_empty( size_t cap ) {
+CBPT(DString)* CBPFN(dstring_empty)( size_t cap ) {
     size_t capacity = cap ? cap : 1;
     struct DynamicString* res =
-        (struct DynamicString*)memory_alloc( sizeof(*res) + capacity );
+        (struct DynamicString*)CBPFN(heap_alloc)( sizeof(*res) + capacity );
     res->cap = capacity;
     return res->buf;
 }
-DString* dstring_new( size_t len, const char* str ) {
+CBPT(DString)* CBPFN(dstring_new)( size_t len, const char* str ) {
     struct DynamicString* res = 
-        (struct DynamicString*)dstring_head( dstring_empty( len + 1 ) );
+        (struct DynamicString*)CBPFN(dstring_head)( CBPFN(dstring_empty)( len + 1 ) );
     if( !res ) {
         return NULL;
     }
-    memory_copy( res->buf, str, len );
+    CBPFN(memory_copy)( res->buf, str, len );
     res->len = len;
     return res->buf;
 }
-DString* dstring_fmt_va( const char* format, va_list va ) {
+CBPT(DString)* CBPFN(dstring_from_cstr)( const char* cstr ) {
+    return CBPFN(dstring_new)( cstr ? strlen(cstr) : 0, cstr );
+}
+CBPT(DString)* CBPFN(dstring_from_string)( CBPT(String) str ) {
+    return CBPFN(dstring_new)( str.len, str.cc );
+}
+CBPT(DString)* CBPFN(dstring_fmt_va)( const char* format, va_list va ) {
     va_list va2;
     va_copy( va2, va );
 
     int msg_len = vsnprintf( 0, 0, format, va2 );
     va_end( va2 );
 
-    struct DynamicString* res = dstring_head( dstring_empty( msg_len + 8 ) );
+    struct DynamicString* res = CBPFN(dstring_head)( CBPFN(dstring_empty)( msg_len + 8 ) );
     if( !res ) {
         return NULL;
     }
@@ -3091,19 +3116,19 @@ DString* dstring_fmt_va( const char* format, va_list va ) {
 
     return res->buf;
 }
-DString* dstring_fmt( const char* format, ... ) {
+CBPT(DString)* CBPFN(dstring_fmt)( const char* format, ... ) {
     va_list va;
     va_start( va, format );
-    DString* res = dstring_fmt_va( format, va );
+    CBPT(DString)* res = CBPFN(dstring_fmt_va)( format, va );
     va_end( va );
     return res;
 }
-DString* dstring_grow( DString* str, size_t amount ) {
-    struct DynamicString* res = dstring_head( str );
+CBPT(DString)* CBPFN(dstring_grow)( CBPT(DString)* str, size_t amount ) {
+    struct DynamicString* res = CBPFN(dstring_head)( str );
     size_t old_size = sizeof(struct DynamicString) + res->cap;
     size_t new_size = old_size + amount;
 
-    res = memory_realloc( res, old_size, new_size );
+    res = CBPFN(heap_realloc)( res, old_size, new_size );
     if( !res ) {
         return NULL;
     }
@@ -3111,23 +3136,27 @@ DString* dstring_grow( DString* str, size_t amount ) {
     res->cap += amount;
     return res->buf;
 }
-DString* dstring_clone( const DString* src ) {
-    return dstring_from_string( string_from_dstring( src ) );
+CBPT(DString)* CBPFN(dstring_clone)( const CBPT(DString)* src ) {
+    return CBPFN(dstring_from_string)( string_from_dstring( src ) );
 }
-DString* dstring_concat( String lhs, String rhs ) {
+CBPT(DString)* CBPFN(dstring_concat)( CBPT(String) lhs, CBPT(String) rhs ) {
     size_t len        = lhs.len + rhs.len;
     size_t total_size = len + 8;
-    struct DynamicString* res = dstring_head( dstring_empty( total_size ) );
+    struct DynamicString* res = CBPFN(dstring_head)( CBPFN(dstring_empty)( total_size ) );
 
-    memory_copy( res->buf, lhs.cc, lhs.len );
-    memory_copy( res->buf + lhs.len, rhs.cc, rhs.len );
+    CBPFN(memory_copy)( res->buf, lhs.cc, lhs.len );
+    CBPFN(memory_copy)( res->buf + lhs.len, rhs.cc, rhs.len );
 
     res->len = len;
 
     return res->buf;
 }
-DString* dstring_concat_multi(
-    size_t count, const String* strings, String opt_separator
+CBPT(DString)* CBPFN(dstring_concat_cstr)( const char* lhs, const char* rhs ) {
+    return CBPFN(dstring_concat)(
+        CBPFN(string_from_cstr)( lhs ), CBPFN(string_from_cstr)( rhs ) );
+}
+CBPT(DString)* CBPFN(dstring_concat_multi)(
+    size_t count, const CBPT(String)* strings, CBPT(String) opt_separator
 ) {
     CB_EXPECT( count, "did not provide any strings!" );
     size_t total_size = (count - 1) * opt_separator.len;
@@ -3135,24 +3164,24 @@ DString* dstring_concat_multi(
         total_size += strings[i].len;
     }
 
-    DString* res = dstring_empty( total_size + 1 );
+    CBPT(DString)* res = CBPFN(dstring_empty)( total_size + 1 );
 
     if( opt_separator.len ) {
         for( size_t i = 0; i < count; ++i ) {
-            res = dstring_append( res, strings[i] );
+            res = CBPFN(dstring_append)( res, strings[i] );
             if( i + 1 != count ) {
-                res = dstring_append( res, opt_separator );
+                res = CBPFN(dstring_append)( res, opt_separator );
             }
         }
     } else {
         for( size_t i = 0; i < count; ++i ) {
-            res = dstring_append( res, strings[i] );
+            res = CBPFN(dstring_append)( res, strings[i] );
         }
     }
 
     return res;
 }
-DString* dstring_concat_multi_cstr(
+CBPT(DString)* CBPFN(dstring_concat_multi_cstr)(
     size_t count, const char** strings, const char* opt_separator
 ) {
     CB_EXPECT( count, "did not provide any strings!" );
@@ -3166,19 +3195,19 @@ DString* dstring_concat_multi_cstr(
         total_size += strlen( current );
     }
 
-    DString* res = dstring_empty( total_size + 1 );
+    CBPT(DString)* res = CBPFN(dstring_empty)( total_size + 1 );
 
     if( opt_separator && seplen ) {
-        String sep = string_new( seplen, opt_separator );
+        CBPT(String) sep = CBPFN(string_new)( seplen, opt_separator );
         for( size_t i = 0; i < count; ++i ) {
             const char* current = strings[i];
             if( !current ) {
                 continue;
             }
 
-            res = dstring_append_cstr( res, current );
+            res = CBPFN(dstring_append_cstr)( res, current );
             if( i + 1 != count ) {
-                res = dstring_append( res, sep );
+                res = CBPFN(dstring_append)( res, sep );
             }
         }
     } else {
@@ -3187,50 +3216,50 @@ DString* dstring_concat_multi_cstr(
             if( !current ) {
                 continue;
             }
-            res = dstring_append_cstr( res, current );
+            res = CBPFN(dstring_append_cstr)( res, current );
         }
     }
 
     return res;
 }
-DString* dstring_append( DString* str, String append ) {
-    struct DynamicString* res = dstring_head( str );
+CBPT(DString)* CBPFN(dstring_append)( CBPT(DString)* str, CBPT(String) append ) {
+    struct DynamicString* res = CBPFN(dstring_head)( str );
 
     if( res->len + append.len + 1 > res->cap ) {
-        res = dstring_head( dstring_grow( res->buf, append.len + 8 ) );
+        res = CBPFN(dstring_head)( CBPFN(dstring_grow)( res->buf, append.len + 8 ) );
         if( !res ) {
             return NULL;
         }
     }
 
-    memory_copy( res->buf + res->len, append.cc, append.len );
+    CBPFN(memory_copy)( res->buf + res->len, append.cc, append.len );
     res->len += append.len;
     res->buf[res->len] = 0;
     return res->buf;
 }
-DString* dstring_prepend( DString* str, String prepend ) {
-    struct DynamicString* res = dstring_head( str );
+CBPT(DString)* CBPFN(dstring_prepend)( CBPT(DString)* str, CBPT(String) prepend ) {
+    struct DynamicString* res = CBPFN(dstring_head)( str );
 
     if( res->len + prepend.len + 1 > res->cap ) {
-        res = dstring_head( dstring_grow( res->buf, prepend.len + 8 ) );
+        res = CBPFN(dstring_head)( CBPFN(dstring_grow)( res->buf, prepend.len + 8 ) );
         if( !res ) {
             return NULL;
         }
     }
 
-    memory_move( res->buf + prepend.len, res->buf, res->len + 1 );
-    memory_copy( res->buf, prepend.cc, prepend.len );
+    CBPFN(memory_move)( res->buf + prepend.len, res->buf, res->len + 1 );
+    CBPFN(memory_copy)( res->buf, prepend.cc, prepend.len );
 
     res->len += prepend.len;
     return res->buf;
 }
-DString* dstring_insert( DString* str, String insert, size_t at ) {
+CBPT(DString)* CBPFN(dstring_insert)( CBPT(DString)* str, CBPT(String) insert, size_t at ) {
     if( at == 0 ) {
-        return dstring_prepend( str, insert );
+        return CBPFN(dstring_prepend)( str, insert );
     }
-    struct DynamicString* res = dstring_head( str );
+    struct DynamicString* res = CBPFN(dstring_head)( str );
     if( res->len && res->len - 1 == at ) {
-        return dstring_append( str, insert );
+        return CBPFN(dstring_append)( str, insert );
     }
     if( at >= res->len ) {
         CB_WARN(
@@ -3240,22 +3269,22 @@ DString* dstring_insert( DString* str, String insert, size_t at ) {
     }
 
     if( res->len + insert.len + 1 > res->cap ) {
-        res = dstring_head( dstring_grow( res->buf, insert.len + 8 ) );
+        res = CBPFN(dstring_head)( CBPFN(dstring_grow)( res->buf, insert.len + 8 ) );
         if( !res ) {
             return NULL;
         }
     }
 
-    memory_move( res->buf + at + insert.len, res->buf + at, (res->len + 1) - at );
-    memory_copy( res->buf + at, insert.cc, insert.len );
+    CBPFN(memory_move)( res->buf + at + insert.len, res->buf + at, (res->len + 1) - at );
+    CBPFN(memory_copy)( res->buf + at, insert.cc, insert.len );
     res->len += insert.len;
 
     return res->buf;
 }
-DString* dstring_push( DString* str, char c ) {
-    struct DynamicString* res = dstring_head( str );
+CBPT(DString)* CBPFN(dstring_push)( CBPT(DString)* str, char c ) {
+    struct DynamicString* res = CBPFN(dstring_head)( str );
     if( res->len + 2 >= res->cap ) {
-        res = dstring_head( dstring_grow( str, 8 ) );
+        res = CBPFN(dstring_head)( CBPFN(dstring_grow)( str, 8 ) );
         if( !res ) {
             return NULL;
         }
@@ -3265,11 +3294,11 @@ DString* dstring_push( DString* str, char c ) {
     res->buf[res->len]   = 0;
     return res->buf;
 }
-DString* dstring_emplace( DString* str, char c, size_t at ) {
-    return dstring_insert( str, string_new( 1, &c ), at );
+CBPT(DString)* CBPFN(dstring_emplace)( CBPT(DString)* str, char c, size_t at ) {
+    return CBPFN(dstring_insert)( str, CBPFN(string_new)( 1, &c ), at );
 }
-bool dstring_pop( DString* str, char* opt_out_c ) {
-    struct DynamicString* head = dstring_head( str );
+bool CBPFN(dstring_pop)( CBPT(DString)* str, char* opt_out_c ) {
+    struct DynamicString* head = CBPFN(dstring_head)( str );
     if( !head->len ) {
         return false;
     }
@@ -3281,8 +3310,8 @@ bool dstring_pop( DString* str, char* opt_out_c ) {
     }
     return true;
 }
-bool dstring_remove( DString* str, size_t index ) {
-    struct DynamicString* head = dstring_head( str );
+bool CBPFN(dstring_remove)( CBPT(DString)* str, size_t index ) {
+    struct DynamicString* head = CBPFN(dstring_head)( str );
     if( !head->len || index > head->len ) {
         CB_WARN(
             "dstring_remove: attempted to remove past dstring bounds! "
@@ -3290,16 +3319,16 @@ bool dstring_remove( DString* str, size_t index ) {
         return false;
     }
 
-    memory_move( head->buf + index, head->buf + index + 1, (head->len + 1) - index );
+    CBPFN(memory_move)( head->buf + index, head->buf + index + 1, (head->len + 1) - index );
     head->len--;
 
     return true;
 }
-bool dstring_remove_range( DString* str, size_t from_inclusive, size_t to_exclusive ) {
+bool CBPFN(dstring_remove_range)( CBPT(DString)* str, size_t from_inclusive, size_t to_exclusive ) {
     CB_ASSERT( from_inclusive < to_exclusive,
         "dstring_remove_range: invalid range provided! (%zu, %zu]",
         from_inclusive, to_exclusive );
-    struct DynamicString* head = dstring_head( str );
+    struct DynamicString* head = CBPFN(dstring_head)( str );
     if( !head->len || from_inclusive >= head->len || to_exclusive > head->len ) {
         CB_WARN(
             "dstring_remove_range: attempted to remove past dstring bounds! "
@@ -3309,7 +3338,7 @@ bool dstring_remove_range( DString* str, size_t from_inclusive, size_t to_exclus
 
     size_t span = to_exclusive - from_inclusive;
 
-    memory_move(
+    CBPFN(memory_move)(
         head->buf + from_inclusive,
         head->buf + to_exclusive,
         (head->len + 1) - span );
@@ -3317,89 +3346,89 @@ bool dstring_remove_range( DString* str, size_t from_inclusive, size_t to_exclus
 
     return true;
 }
-void dstring_truncate( DString* str, size_t max ) {
-    struct DynamicString* head = dstring_head( str );
+void CBPFN(dstring_truncate)( CBPT(DString)* str, size_t max ) {
+    struct DynamicString* head = CBPFN(dstring_head)( str );
     if( max >= head->len ) {
         return;
     }
-    memory_zero( head->buf + max, head->len - max );
+    CBPFN(memory_zero)( head->buf + max, head->len - max );
     head->len = max;
 }
-void dstring_trim( DString* str, size_t amount ) {
-    size_t len = dstring_len( str );
-    dstring_truncate( str, amount > len ? 0 : len - amount );
+void CBPFN(dstring_trim)( CBPT(DString)* str, size_t amount ) {
+    size_t len = CBPFN(dstring_len)( str );
+    CBPFN(dstring_truncate)( str, amount > len ? 0 : len - amount );
 }
-void dstring_clear( DString* str ) {
-    struct DynamicString* head = dstring_head( str );
+void CBPFN(dstring_clear)( CBPT(DString)* str ) {
+    struct DynamicString* head = CBPFN(dstring_head)( str );
 
-    memory_zero( head->buf, head->len );
+    CBPFN(memory_zero)( head->buf, head->len );
     head->len = 0;
 }
-size_t dstring_remaining( const DString* str ) {
+size_t CBPFN(dstring_remaining)( const CBPT(DString)* str ) {
     // -1 to not include null-terminator
-    return (dstring_cap( str ) - 1)  - dstring_len( str );
+    return (CBPFN(dstring_cap)( str ) - 1)  - CBPFN(dstring_len)( str );
 }
-size_t dstring_len( const DString* str ) {
+size_t CBPFN(dstring_len)( const CBPT(DString)* str ) {
     return ((struct DynamicString*)str - 1)->len;
 }
-size_t dstring_cap( const DString* str ) {
+size_t CBPFN(dstring_cap)( const CBPT(DString)* str ) {
     return ((struct DynamicString*)str - 1)->cap;
 }
-size_t dstring_total_size( const DString* str ) {
-    return dstring_cap( str ) + sizeof(struct DynamicString);
+size_t CBPFN(dstring_total_size)( const CBPT(DString)* str ) {
+    return CBPFN(dstring_cap)( str ) + sizeof(struct DynamicString);
 }
-bool dstring_is_empty( const DString* str ) {
-    return dstring_len( str ) == 0;
+bool CBPFN(dstring_is_empty)( const CBPT(DString)* str ) {
+    return CBPFN(dstring_len)( str ) == 0;
 }
-bool dstring_is_full( const DString* str ) {
-    return dstring_len( str ) == dstring_cap( str );
+bool CBPFN(dstring_is_full)( const CBPT(DString)* str ) {
+    return CBPFN(dstring_len)( str ) == CBPFN(dstring_cap)( str );
 }
-void dstring_set_len( DString* str, size_t len ) {
-    struct DynamicString* head = dstring_head( str );
+void CBPFN(dstring_set_len)( CBPT(DString)* str, size_t len ) {
+    struct DynamicString* head = CBPFN(dstring_head)( str );
     CB_EXPECT( len < head->cap, "length exceeds string capacity!" );
     head->len            = len;
     head->buf[head->len] = 0;
 }
-void* dstring_head( DString* str ) {
+void* CBPFN(dstring_head)( CBPT(DString)* str ) {
     if( !str ) {
         return NULL;
     }
     return str - sizeof(struct DynamicString);
 }
-const void* dstring_head_const( const DString* str ) {
+const void* CBPFN(dstring_head_const)( const CBPT(DString)* str ) {
     if( !str ) {
         return NULL;
     }
     return str - sizeof(struct DynamicString);
 }
-void dstring_free( DString* str ) {
-    struct DynamicString* head = dstring_head( str );
+void CBPFN(dstring_free)( CBPT(DString)* str ) {
+    struct DynamicString* head = CBPFN(dstring_head)( str );
     if( !head ) {
         return;
     }
     size_t total_size = head->cap + sizeof(*head);
-    memory_free( head, total_size );
+    CBPFN(heap_free)( head, total_size );
 }
 
-String path_cwd(void) {
+CBPT(String) path_cwd(void) {
     volatile struct GlobalBuffers* gb = get_global_buffers();
     return gb->cwd;
 }
-String path_home(void) {
+CBPT(String) path_home(void) {
     volatile struct GlobalBuffers* gb = get_global_buffers();
     return gb->home;
 }
-size_t path_chunk_count( String path ) {
-    String subpath = path;
+size_t path_chunk_count( CBPT(String) path ) {
+    CBPT(String) subpath = path;
     size_t  count   = 0;
 
     while( subpath.len ) {
         size_t sep = 0;
-        if( string_find( subpath, '/', &sep ) ) {
-            String chunk = subpath;
+        if( CBPFN(string_find)( subpath, '/', &sep ) ) {
+            CBPT(String) chunk = subpath;
             chunk.len    = sep;
 
-            subpath = string_advance_by( subpath, sep + 1 );
+            subpath = CBPFN(string_advance_by)( subpath, sep + 1 );
             count++;
         } else {
             count++;
@@ -3409,23 +3438,23 @@ size_t path_chunk_count( String path ) {
 
     return count;
 }
-String* path_chunk_split( String path ) {
+CBPT(String)* path_chunk_split( CBPT(String) path ) {
     size_t   cap = path_chunk_count( path );
-    String* res = darray_empty( sizeof(*res), cap ? cap : 1 );
+    CBPT(String)* res = darray_empty( sizeof(*res), cap ? cap : 1 );
     if( !res ) {
         return NULL;
     }
 
-    String subpath = path;
+    CBPT(String) subpath = path;
     while( subpath.len ) {
         size_t sep = 0;
-        if( string_find( subpath, '/', &sep ) ) {
-            String chunk = subpath;
+        if( CBPFN(string_find)( subpath, '/', &sep ) ) {
+            CBPT(String) chunk = subpath;
             chunk.len    = sep;
 
             CB_EXPECT( darray_try_push( res, &chunk ), "push should have worked!" );
 
-            subpath = string_advance_by( subpath, sep + 1 );
+            subpath = CBPFN(string_advance_by)( subpath, sep + 1 );
         } else {
             CB_EXPECT( darray_try_push( res, &subpath ), "push should have worked!" );
             break;
@@ -3434,7 +3463,7 @@ String* path_chunk_split( String path ) {
 
     return res;
 }
-bool path_matches_glob( String path, String glob ) {
+bool path_matches_glob( CBPT(String) path, CBPT(String) glob ) {
     if( glob.len == 1 && glob.cc[0] == '*' ) {
         return true;
     }
@@ -3443,32 +3472,32 @@ bool path_matches_glob( String path, String glob ) {
         if( *glob.cc != *path.cc && *glob.cc != '?' ) {
             return false;
         }
-        glob = string_advance( glob );
-        path = string_advance( path );
+        glob = CBPFN(string_advance)( glob );
+        path = CBPFN(string_advance)( path );
     }
 
-    String mp, cp;
+    CBPT(String) mp, cp;
     while( path.len ) {
         if( *glob.cc == '*' ) {
-            glob = string_advance( glob );
+            glob = CBPFN(string_advance)( glob );
             if( !glob.len ) {
                 return true;
             }
 
             mp = glob;
-            cp = string_advance( path );
+            cp = CBPFN(string_advance)( path );
         } else if( *glob.cc == *path.cc || *glob.cc == '?' ) {
-            glob = string_advance( glob );
-            path = string_advance( path );
+            glob = CBPFN(string_advance)( glob );
+            path = CBPFN(string_advance)( path );
         } else {
             glob = mp;
-            cp   = string_advance( cp );
+            cp   = CBPFN(string_advance)( cp );
             path = cp;
         }
     }
 
     while( glob.len && *glob.cc == '*' ) {
-        glob = string_advance( glob );
+        glob = CBPFN(string_advance)( glob );
     }
     return glob.len ? false : true;
 
@@ -3478,16 +3507,16 @@ static bool path_walk_glob_filter_filter(
 ) {
     CB_UNUSED(index, stride);
 
-    String glob = *(String*)params;
-    String path = *(String*)item;
+    CBPT(String) glob = *(CBPT(String)*)params;
+    CBPT(String) path = *(CBPT(String)*)item;
 
     return path_matches_glob( path, glob );
 }
-String* path_walk_glob_filter( const WalkDirectory* wd, String glob ) {
+CBPT(String)* path_walk_glob_filter( const WalkDirectory* wd, CBPT(String) glob ) {
     CB_ASSERT( wd && wd->paths, "walk result is null!" );
 
-    String* res = darray_from_filter(
-        sizeof(String), wd->count, wd->paths,
+    CBPT(String)* res = darray_from_filter(
+        sizeof(CBPT(String)), wd->count, wd->paths,
         path_walk_glob_filter_filter, &glob );
     return res;
 }
@@ -3498,14 +3527,14 @@ bool path_walk_dir(
     CB_ASSERT( dir, "no path provided!" );
     CB_ASSERT( out_result, "no walk dir result provided!" );
 
-    DString* path = dstring_from_cstr( dir );
+    CBPT(DString)* path = CBPFN(dstring_from_cstr)( dir );
     if( !path ) {
         return false;
     }
 
-    DString* buffer = dstring_empty( 255 );
+    CBPT(DString)* buffer = CBPFN(dstring_empty)( 255 );
     if( !buffer ) {
-        dstring_free( path );
+        CBPFN(dstring_free)( path );
         CB_ERROR( "path_walk_dir: failed to allocate buffer!" );
         return false;
     }
@@ -3513,29 +3542,29 @@ bool path_walk_dir(
     size_t count = 0;
     bool result = path_walk_dir_internal(
         &path, recursive, include_dirs, &count, &buffer );
-    dstring_free( path );
+    CBPFN(dstring_free)( path );
 
     if( !result ) {
-        dstring_free( buffer );
+        CBPFN(dstring_free)( buffer );
         return false;
     }
 
     if( !count ) {
-        dstring_free( buffer );
+        CBPFN(dstring_free)( buffer );
         return true;
     }
 
     size_t total = out_result->count + count;
-    String* paths = darray_empty( sizeof(String), total );
+    CBPT(String)* paths = darray_empty( sizeof(CBPT(String)), total );
     if( !paths ) {
-        dstring_free( buffer );
+        CBPFN(dstring_free)( buffer );
         return false;
     }
 
     if( out_result->buf ) {
-        DString* concat =
-            dstring_append( out_result->buf, string_from_dstring( buffer ) );
-        dstring_free( buffer );
+        CBPT(DString)* concat =
+            CBPFN(dstring_append)( out_result->buf, string_from_dstring( buffer ) );
+        CBPFN(dstring_free)( buffer );
         if( !concat ) {
             return false;
         }
@@ -3545,16 +3574,16 @@ bool path_walk_dir(
 
     out_result->count = total;
 
-    String rem = string_from_dstring( out_result->buf );
+    CBPT(String) rem = string_from_dstring( out_result->buf );
     while( rem.len ) {
         size_t nul = 0;
-        if( string_find( rem, 0, &nul ) ) {
-            String current = rem;
+        if( CBPFN(string_find)( rem, 0, &nul ) ) {
+            CBPT(String) current = rem;
             current.len    = nul;
 
             CB_EXPECT( darray_try_push( paths, &current ), "miscalculated path count!" );
 
-            rem = string_advance_by( rem, nul + 1 );
+            rem = CBPFN(string_advance_by)( rem, nul + 1 );
         } else {
             CB_EXPECT( darray_try_push( paths, &rem ), "miscalculated path count!" );
             break;
@@ -3574,10 +3603,10 @@ void path_walk_free( WalkDirectory* wd ) {
             darray_free( wd->paths );
         }
         if( wd->buf ) {
-            dstring_free( wd->buf );
+            CBPFN(dstring_free)( wd->buf );
         }
 
-        memory_zero( wd, sizeof(*wd) );
+        CBPFN(memory_zero)( wd, sizeof(*wd) );
     }
 }
 bool dir_remove( const char* path, bool recursive ) {
@@ -3586,7 +3615,7 @@ bool dir_remove( const char* path, bool recursive ) {
     }
 
     WalkDirectory wd;
-    memory_zero( &wd, sizeof(wd) );
+    CBPFN(memory_zero)( &wd, sizeof(wd) );
 
     if( !path_walk_dir( path, true, false, &wd ) ) {
         CB_ERROR( "dir_remove: failed to walk directory '%s'!", path );
@@ -3622,11 +3651,11 @@ bool dir_remove( const char* path, bool recursive ) {
     return dir_remove_internal( path );
 }
 
-bool fd_write_fmt_va( FD* file, const char* format, va_list va ) {
+bool fd_write_fmt_va( CBPT(FileID)* file, const char* format, va_list va ) {
     char* formatted = local_fmt_va( format, va );
     return fd_write( file, strlen( formatted ), formatted, 0 );
 }
-bool fd_write_fmt( FD* file, const char* format, ... ) {
+bool fd_write_fmt( CBPT(FileID)* file, const char* format, ... ) {
     va_list va;
     va_start( va, format );
     bool res = fd_write_fmt_va( file, format, va );
@@ -3635,7 +3664,7 @@ bool fd_write_fmt( FD* file, const char* format, ... ) {
 }
 
 void* darray_empty( size_t stride, size_t cap ) {
-    struct DynamicArray* res = memory_alloc( sizeof(*res) + (stride * cap) );
+    struct DynamicArray* res = CBPFN(heap_alloc)( sizeof(*res) + (stride * cap) );
     if( !res ) {
         return NULL;
     }
@@ -3649,7 +3678,7 @@ void* darray_from_array( size_t stride, size_t len, const void* buf ) {
         return NULL;
     }
 
-    memory_copy( res->buf, buf, len * stride );
+    CBPFN(memory_copy)( res->buf, buf, len * stride );
     res->len = len;
 
     return res->buf;
@@ -3673,15 +3702,15 @@ void* darray_join( size_t stride,
         return NULL;
     }
 
-    memory_copy( res->buf, lhs, stride * lhs_len );
-    memory_copy( res->buf + (stride * lhs_len), rhs, rhs_len );
+    CBPFN(memory_copy)( res->buf, lhs, stride * lhs_len );
+    CBPFN(memory_copy)( res->buf + (stride * lhs_len), rhs, rhs_len );
     res->len = lhs_len + rhs_len;
 
     return res;
 }
 void* darray_from_filter(
     size_t stride, size_t len, const void* src,
-    DarrayFilterFN* filter, void* filter_params
+    CBPT(DarrayFilterFN)* filter, void* filter_params
 ) {
     const uint8_t* src_bytes = src;
 
@@ -3709,7 +3738,7 @@ void* darray_grow( void* darray, size_t amount ) {
     size_t old_size = (res->stride * res->cap) + sizeof(*res);
     size_t new_size = (res->stride * amount) + old_size;
 
-    res = memory_realloc( res, old_size, new_size );
+    res = CBPFN(heap_realloc)( res, old_size, new_size );
     if( !res ) {
         return NULL;
     }
@@ -3723,7 +3752,7 @@ void* darray_clone( const void* darray ) {
 }
 void darray_clear( void* darray ) {
     struct DynamicArray* head = darray_head( darray );
-    memory_zero( head->buf, head->len * head->stride );
+    CBPFN(memory_zero)( head->buf, head->len * head->stride );
     head->len = 0;
 }
 void* darray_set_len( void* darray, size_t len ) {
@@ -3740,7 +3769,7 @@ void* darray_set_len( void* darray, size_t len ) {
     } else if( len > darray_len( darray ) ) {
         struct DynamicArray* head = darray_head( darray );
         size_t diff = head->len - len;
-        memory_zero( head->buf + len, head->stride * diff );
+        CBPFN(memory_zero)( head->buf + len, head->stride * diff );
         head->len = diff;
 
         return head->buf;
@@ -3755,7 +3784,7 @@ void darray_truncate( void* darray, size_t max ) {
         return;
     }
     size_t diff = head->len - max;
-    memory_zero( head->buf + max, head->stride * diff );
+    CBPFN(memory_zero)( head->buf + max, head->stride * diff );
     head->len = max;
 }
 void darray_trim( void* darray, size_t amount ) {
@@ -3768,7 +3797,7 @@ bool darray_try_push( void* darray, const void* item ) {
         return false;
     }
 
-    memory_copy( head->buf + (head->stride * head->len), item, head->stride );
+    CBPFN(memory_copy)( head->buf + (head->stride * head->len), item, head->stride );
     head->len++;
 
     return true;
@@ -3785,11 +3814,11 @@ bool darray_try_emplace( void* darray, const void* item, size_t at ) {
         return false;
     }
 
-    memory_move(
+    CBPFN(memory_move)(
         head->buf + ( head->stride * ( at + 1 ) ),
         head->buf + ( head->stride * at ),
         head->stride * ( ( head->len + 1 ) - at ) );
-    memory_copy( head->buf + ( head->stride * at ), item, head->stride );
+    CBPFN(memory_copy)( head->buf + ( head->stride * at ), item, head->stride );
     head->len++;
 
     return true;
@@ -3806,11 +3835,11 @@ bool darray_try_insert( void* darray, size_t count, const void* items, size_t at
         return false;
     }
 
-    memory_move(
+    CBPFN(memory_move)(
         head->buf + ( head->stride * ( at + count ) ),
         head->buf + ( head->stride * at ),
         head->stride * ( ( head->len + 1 ) - at ) );
-    memory_copy( head->buf + ( head->stride * at ), items, head->stride * count );
+    CBPFN(memory_copy)( head->buf + ( head->stride * at ), items, head->stride * count );
     head->len += count;
 
     return true;
@@ -3821,7 +3850,7 @@ bool darray_try_append( void* darray, size_t count, const void* items ) {
         return false;
     }
 
-    memory_copy(
+    CBPFN(memory_copy)(
         head->buf + (head->stride * head->len),
         items, head->stride * count );
     head->len += count;
@@ -3836,11 +3865,11 @@ bool darray_pop( void* darray, void* opt_out_item ) {
 
     head->len--;
     if( opt_out_item ) {
-        memory_copy(
+        CBPFN(memory_copy)(
             opt_out_item, head->buf + (head->stride * head->len), head->stride );
     }
 
-    memory_zero( head->buf + (head->stride * head->len), head->stride );
+    CBPFN(memory_zero)( head->buf + (head->stride * head->len), head->stride );
     return true;
 }
 void* darray_push( void* darray, const void* item ) {
@@ -3931,9 +3960,9 @@ bool darray_remove( void* darray, size_t index ) {
     void* item_next      = (uint8_t*)item_to_remove + head->stride;
     size_t move_size      = (head->buf + (head->stride * head->cap)) - (uint8_t*)item_next;
 
-    memory_move( item_to_remove, item_next, move_size );
+    CBPFN(memory_move)( item_to_remove, item_next, move_size );
     head->len--;
-    memory_zero( head->buf + (head->stride * head->len), head->stride );
+    CBPFN(memory_zero)( head->buf + (head->stride * head->len), head->stride );
 
     return true;
 }
@@ -3995,7 +4024,7 @@ void darray_free( void* darray ) {
     if( darray ) {
         struct DynamicArray* head = darray_head( darray );
         size_t total_size = (head->cap * head->stride) + sizeof(*head);
-        memory_free( head, total_size );
+        CBPFN(heap_free)( head, total_size );
     }
 }
 
@@ -4081,7 +4110,7 @@ bool job_wait_all( uint32_t ms ) {
 uint32_t thread_id(void) {
     return global_thread_id;
 }
-bool command_builder_new( const char* exe, CommandBuilder* out_builder ) {
+bool command_builder_new( const char* exe, CBPT(CommandBuilder)* out_builder ) {
     out_builder->buf = darray_empty( sizeof(char), 128 );
     if( !out_builder->buf ) {
         return false;
@@ -4094,21 +4123,21 @@ bool command_builder_new( const char* exe, CommandBuilder* out_builder ) {
     command_builder_push( out_builder, exe );
     return true;
 }
-void command_builder_clear( CommandBuilder* builder ) {
+void command_builder_clear( CBPT(CommandBuilder)* builder ) {
     darray_clear( builder->buf );
     darray_clear( builder->args );
 }
-bool command_builder_push( CommandBuilder* builder, const char* arg ) {
+bool command_builder_push( CBPT(CommandBuilder)* builder, const char* arg ) {
     size_t arg_len = strlen( arg );
     if( darray_remaining( builder->buf ) < arg_len + 1 ) {
-        Darray(char) new_buf = darray_grow( builder->buf, darray_cap( builder->buf ) );
+        CB_DARRAY(char) new_buf = darray_grow( builder->buf, darray_cap( builder->buf ) );
         if( !new_buf ) {
             return false;
         }
         builder->buf = new_buf;
     }
     if( darray_remaining( builder->args ) < 1 ) {
-        Darray(const char*) new_buf =
+        CB_DARRAY(const char*) new_buf =
             darray_grow( builder->args, darray_cap( builder->args ) );
         if( !new_buf ) {
             return false;
@@ -4126,7 +4155,7 @@ bool command_builder_push( CommandBuilder* builder, const char* arg ) {
     return true;
 }
 bool __internal_command_builder_append(
-    CommandBuilder* builder, const char* first, ...
+    CBPT(CommandBuilder)* builder, const char* first, ...
 ) {
     if( !command_builder_push( builder, first ) ) {
         return false;
@@ -4150,7 +4179,7 @@ bool __internal_command_builder_append(
     return true;
 }
 bool command_builder_append_list(
-    CommandBuilder* builder, size_t count, const char** args
+    CBPT(CommandBuilder)* builder, size_t count, const char** args
 ) {
     for( size_t i = 0; i < count; ++i ) {
         if( !command_builder_push( builder, args[i])) {
@@ -4159,23 +4188,23 @@ bool command_builder_append_list(
     }
     return true;
 }
-Command command_builder_cmd( CommandBuilder* builder ) {
-    return (Command){
+CBPT(Command) command_builder_cmd( CBPT(CommandBuilder)* builder ) {
+    return (CBPT(Command)){
         .count = darray_len(builder->args) - 1,
         .args  = builder->args,
     };
 }
-void command_builder_free( CommandBuilder* builder ) {
+void command_builder_free( CBPT(CommandBuilder)* builder ) {
     darray_free( builder->buf );
     darray_free( builder->args );
-    memory_zero( builder, sizeof(*builder) );
+    CBPFN(memory_zero)( builder, sizeof(*builder) );
 }
-DString* command_flatten_dstring( const Command* command ) {
+CBPT(DString)* command_flatten_dstring( const CBPT(Command)* command ) {
     size_t total_len = 1;
     for( size_t i = 0; i < command->count; ++i ) {
         total_len += strlen( command->args[i] ) + 3; // to account for potential "" and space
     }
-    DString* res = dstring_empty( total_len );
+    CBPT(DString)* res = CBPFN(dstring_empty)( total_len );
     if( !res ) {
         return NULL;
     }
@@ -4192,20 +4221,20 @@ DString* command_flatten_dstring( const Command* command ) {
         }
 
         bool contains_space = false;
-        String arg = string_new( current_len, current );
-        if( string_find( arg, ' ', 0 ) ) {
-            CB_EXPECT( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
+        CBPT(String) arg = CBPFN(string_new)( current_len, current );
+        if( CBPFN(string_find)( arg, ' ', 0 ) ) {
+            CB_EXPECT( CBPFN(dstring_push)( res, '"' ) == res, "miscalculated total_len!" );
             contains_space = true;
         }
 
-        CB_EXPECT( dstring_append( res, arg ) == res, "miscalculated total_len!" );
+        CB_EXPECT( CBPFN(dstring_append)( res, arg ) == res, "miscalculated total_len!" );
 
         if( contains_space ) {
-            CB_EXPECT( dstring_push( res, '"' ) == res, "miscalculated total_len!" );
+            CB_EXPECT( CBPFN(dstring_push)( res, '"' ) == res, "miscalculated total_len!" );
         }
 
         if( i + 1 != command->count ) {
-            CB_EXPECT( dstring_push( res, ' ' ) == res, "miscalculated total_len!" );
+            CB_EXPECT( CBPFN(dstring_push)( res, ' ' ) == res, "miscalculated total_len!" );
         }
     }
 
@@ -4229,40 +4258,40 @@ char* local_fmt( const char* format, ... ) {
     return res;
 }
 
-static bool logger_check_level( LoggerLevel level ) {
+static bool logger_check_level( CBPT(LogLevel) level ) {
     return level >= global_logger_level;
 }
 
-void logger_set_level( LoggerLevel level ) {
+void logger_set_level( CBPT(LogLevel) level ) {
     global_logger_level = level;
 }
-LoggerLevel logger_get_level(void) {
+CBPT(LogLevel) logger_get_level(void) {
     return global_logger_level;
 }
-void logger_va( LoggerLevel level, const char* format, va_list va ) {
+void logger_va( CBPT(LogLevel) level, const char* format, va_list va ) {
     if( !logger_check_level( level ) ) {
         return;
     }
 
     static const char local_level_letters[] = {
-        'I', // CB_LOGGER_LEVEL_INFO
-        'W', // CB_LOGGER_LEVEL_WARNING
-        'E', // CB_LOGGER_LEVEL_ERROR
-        'F', // CB_LOGGER_LEVEL_FATAL
+        'I', // CB_LOG_LEVEL_INFO
+        'W', // CB_LOG_LEVEL_WARNING
+        'E', // CB_LOG_LEVEL_ERROR
+        'F', // CB_LOG_LEVEL_FATAL
     };
 
     static const char* local_level_colors[] = {
-        "",           // CB_LOGGER_LEVEL_INFO
-        "\033[1;33m", // CB_LOGGER_LEVEL_WARNING
-        "\033[1;31m", // CB_LOGGER_LEVEL_ERROR
-        "\033[1;35m", // CB_LOGGER_LEVEL_FATAL
+        "",           // CB_LOG_LEVEL_INFO
+        "\033[1;33m", // CB_LOG_LEVEL_WARNING
+        "\033[1;31m", // CB_LOG_LEVEL_ERROR
+        "\033[1;35m", // CB_LOG_LEVEL_FATAL
     };
 
     FILE* const level_output[] = {
-        stdout, // CB_LOGGER_LEVEL_INFO
-        stdout, // CB_LOGGER_LEVEL_WARNING
-        stderr, // CB_LOGGER_LEVEL_ERROR
-        stderr, // CB_LOGGER_LEVEL_FATAL
+        stdout, // CB_LOG_LEVEL_INFO
+        stdout, // CB_LOG_LEVEL_WARNING
+        stderr, // CB_LOG_LEVEL_ERROR
+        stderr, // CB_LOG_LEVEL_FATAL
     };
 
     if( global_is_mt ) {
@@ -4282,7 +4311,7 @@ void logger_va( LoggerLevel level, const char* format, va_list va ) {
         mutex_unlock( &global_logger_mutex );
     }
 }
-void logger( LoggerLevel level, const char* format, ... ) {
+void logger( CBPT(LogLevel) level, const char* format, ... ) {
     va_list va;
     va_start( va, format );
     logger_va( level, format, va );
@@ -4337,7 +4366,7 @@ static time_t win32_filetime_to_posix( FILETIME ft ) {
     
     return res;
 }
-static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
+static wchar_t* win32_local_utf8_to_wide( CBPT(String) utf8 ) {
     CB_ASSERT( utf8.cc, "null pointer!" );
     CB_ASSERT(
         utf8.len < CBUILD_LOCAL_WIDE_CAPACITY,
@@ -4368,7 +4397,7 @@ static wchar_t* win32_local_utf8_to_wide( String utf8 ) {
 
     return buf;
 }
-static String win32_local_wide_to_utf8( size_t len, wchar_t* wide ) {
+static CBPT(String) win32_local_wide_to_utf8( size_t len, wchar_t* wide ) {
     CB_ASSERT( wide, "null pointer!" );
     CB_ASSERT(
         len < CBUILD_LOCAL_WIDE_CAPACITY,
@@ -4401,9 +4430,9 @@ static String win32_local_wide_to_utf8( size_t len, wchar_t* wide ) {
         rem -= max_convert;
     }
 
-    return string_new( dst - buf, buf );
+    return CBPFN(string_new)( dst - buf, buf );
 }
-static String win32_local_error_message( DWORD error_code ) {
+static CBPT(String) win32_local_error_message( DWORD error_code ) {
     char* buf = (char*)local_byte_buffer();
 
     FormatMessageA(
@@ -4412,7 +4441,7 @@ static String win32_local_error_message( DWORD error_code ) {
 
     return string_from_cstr( buf );
 }
-static wchar_t* win32_local_path_canon( String path ) {
+static wchar_t* win32_local_path_canon( CBPT(String) path ) {
     #define PATH_RELATIVE 0
     #define PATH_HOME     1
     #define PATH_ABSOLUTE 2
@@ -4427,7 +4456,7 @@ static wchar_t* win32_local_path_canon( String path ) {
         path_type = PATH_HOME;
     }
 
-    String subpath = path;
+    CBPT(String) subpath = path;
 
     size_t min    = sizeof("\\\\?\\A:");
     size_t offset = sizeof("\\\\?\\") - 1;
@@ -4454,7 +4483,7 @@ static wchar_t* win32_local_path_canon( String path ) {
     }
 
     wchar_t* buf = (wchar_t*)local_byte_buffer();
-    memory_copy( buf, L"\\\\?\\", sizeof(L"\\\\?\\") - sizeof(wchar_t) );
+    CBPFN(memory_copy)( buf, L"\\\\?\\", sizeof(L"\\\\?\\") - sizeof(wchar_t) );
     switch( path_type ) {
         case PATH_RELATIVE:  {
             offset += GetCurrentDirectoryW(
@@ -4471,7 +4500,7 @@ static wchar_t* win32_local_path_canon( String path ) {
                 buf + offset, CBUILD_LOCAL_WIDE_CAPACITY - offset );
             offset += home_len;
 
-            subpath = string_advance( subpath );
+            subpath = CBPFN(string_advance)( subpath );
         } break;
         default: break;
     }
@@ -4479,21 +4508,21 @@ static wchar_t* win32_local_path_canon( String path ) {
     size_t last_chunk_len = 0;
     while( subpath.len ) {
         size_t sep = 0;
-        if( string_find( subpath, '/', &sep ) ) {
+        if( CBPFN(string_find)( subpath, '/', &sep ) ) {
             if( !sep ) {
-                subpath = string_advance( subpath );
+                subpath = CBPFN(string_advance)( subpath );
                 continue;
             }
 
-            String chunk = subpath;
+            CBPT(String) chunk = subpath;
             chunk.len    = sep;
 
             if( chunk.len < 3 ) {
-                if( string_cmp( chunk, string_text( "." ) ) ) {
-                    subpath = string_advance_by( subpath, chunk.len + 1 );
+                if( CBPFN(string_cmp)( chunk, CB_STRING( "." ) ) ) {
+                    subpath = CBPFN(string_advance_by)( subpath, chunk.len + 1 );
                     continue;
                 }
-                if( string_cmp( chunk, string_text( ".." ) ) ) {
+                if( CBPFN(string_cmp)( chunk, CB_STRING( ".." ) ) ) {
                     for( size_t i = offset; i-- > 0; ) {
                         wchar_t c = buf[i];
                         if( c == '\\' ) {
@@ -4505,7 +4534,7 @@ static wchar_t* win32_local_path_canon( String path ) {
                         offset = min;
                     }
                     buf[offset] = 0;
-                    subpath = string_advance_by( subpath, chunk.len + 1 );
+                    subpath = CBPFN(string_advance_by)( subpath, chunk.len + 1 );
                     continue;
                 }
             }
@@ -4522,12 +4551,12 @@ static wchar_t* win32_local_path_canon( String path ) {
             offset += chunk.len;
             last_chunk_len = chunk.len;
 
-            subpath = string_advance_by( subpath, chunk.len + 1 );
+            subpath = CBPFN(string_advance_by)( subpath, chunk.len + 1 );
         } else {
-            if( string_cmp( subpath, string_text( "." ) ) ) {
+            if( CBPFN(string_cmp)( subpath, CB_STRING( "." ) ) ) {
                 break;
             }
-            if( string_cmp( subpath, string_text( ".." ) ) ) {
+            if( CBPFN(string_cmp)( subpath, CB_STRING( ".." ) ) ) {
                 for( size_t i = offset; i-- > 0; ) {
                     wchar_t c = buf[i];
                     if( c == '\\' ) {
@@ -4563,7 +4592,7 @@ static wchar_t* win32_local_path_canon( String path ) {
     return buf;
 }
 
-void* memory_alloc( size_t size ) {
+void* CBPFN(heap_alloc)( size_t size ) {
     void* res = HeapAlloc( get_process_heap(), HEAP_ZERO_MEMORY, size );
     if( !res ) {
         return NULL;
@@ -4577,7 +4606,7 @@ void* memory_alloc( size_t size ) {
     }
     return res;
 }
-void* memory_realloc( void* memory, size_t old_size, size_t new_size ) {
+void* CBPFN(heap_realloc)( void* memory, size_t old_size, size_t new_size ) {
     CB_ASSERT( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
     void* res = HeapReAlloc( get_process_heap(), HEAP_ZERO_MEMORY, memory, new_size );
     if( !res ) {
@@ -4593,7 +4622,7 @@ void* memory_realloc( void* memory, size_t old_size, size_t new_size ) {
     }
     return res;
 }
-void memory_free( void* memory, size_t size ) {
+void CBPFN(heap_free)( void* memory, size_t size ) {
     if( !memory ) {
         CB_WARN( "attempted to free null pointer!" );
         return;
@@ -4616,12 +4645,12 @@ bool path_is_absolute( const char* path ) {
         isalpha( path[0] ) &&
         path[1] == ':';
 }
-static DWORD path_attributes( String path ) {
+static DWORD path_attributes( CBPT(String) path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     return GetFileAttributesW( wpath );
 }
 bool path_is_directory( const char* path ) {
-    String spath = string_from_cstr( path );
+    CBPT(String) spath = string_from_cstr( path );
     DWORD attr   = path_attributes( spath );
 
     if( attr == INVALID_FILE_ATTRIBUTES ) {
@@ -4632,15 +4661,15 @@ bool path_is_directory( const char* path ) {
 }
 bool path_exists( const char* path ) {
     CB_ASSERT( path, "null path!" );
-    String spath = string_from_cstr( path );
+    CBPT(String) spath = string_from_cstr( path );
     return path_attributes( spath ) != INVALID_FILE_ATTRIBUTES;
 }
 static bool path_walk_dir_internal_long(
-    DString** path, bool recursive, bool include_dirs,
-    size_t* out_count, DString** out_buffer
+    CBPT(DString)** path, bool recursive, bool include_dirs,
+    size_t* out_count, CBPT(DString)** out_buffer
 ) {
-    size_t original_len = dstring_len( *path );
-    DString* _new = dstring_append( *path, string_text( "/*" ) );
+    size_t original_len = CBPFN(dstring_len)( *path );
+    CBPT(DString)* _new = CBPFN(dstring_append)( *path, CB_STRING( "/*" ) );
     if( !_new ) {
         return false;
     }
@@ -4649,9 +4678,9 @@ static bool path_walk_dir_internal_long(
     wchar_t* wpath = win32_local_path_canon( string_from_dstring( *path ) );
 
     WIN32_FIND_DATAW fd;
-    memory_zero( &fd, sizeof( fd ) );
+    CBPFN(memory_zero)( &fd, sizeof( fd ) );
     HANDLE find_file = FindFirstFileW( wpath, &fd );
-    dstring_truncate( *path, original_len );
+    CBPFN(dstring_truncate)( *path, original_len );
 
     if( find_file == INVALID_HANDLE_VALUE ) {
         return false;
@@ -4666,7 +4695,7 @@ static bool path_walk_dir_internal_long(
             continue;
         }
 
-        _new = dstring_push( *path, '/' );
+        _new = CBPFN(dstring_push)( *path, '/' );
         if( !_new ) {
             FindClose( find_file );
             return false;
@@ -4674,9 +4703,9 @@ static bool path_walk_dir_internal_long(
         *path = _new;
 
         size_t name_len = wcslen( fd.cFileName );
-        String npath   = win32_local_wide_to_utf8( name_len, fd.cFileName );
+        CBPT(String) npath   = win32_local_wide_to_utf8( name_len, fd.cFileName );
 
-        _new = dstring_append( *path, npath );
+        _new = CBPFN(dstring_append)( *path, npath );
         if( !_new ) {
             FindClose( find_file );
             return false;
@@ -4685,8 +4714,8 @@ static bool path_walk_dir_internal_long(
 
         if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
             if( include_dirs ) {
-                _new = dstring_append(
-                    *out_buffer, string_new( dstring_len( *path ) + 1 , *path ) );
+                _new = CBPFN(dstring_append)(
+                    *out_buffer, CBPFN(string_new)( CBPFN(dstring_len)( *path ) + 1 , *path ) );
                 if( !_new ) {
                     FindClose( find_file );
                     return false;
@@ -4704,12 +4733,12 @@ static bool path_walk_dir_internal_long(
                 }
             }
 
-            dstring_truncate( *path, original_len );
+            CBPFN(dstring_truncate)( *path, original_len );
             continue;
         }
 
-        _new = dstring_append(
-            *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
+        _new = CBPFN(dstring_append)(
+            *out_buffer, CBPFN(string_new)( CBPFN(dstring_len)( *path ) + 1, *path ) );
         if( !_new ) {
             FindClose( find_file );
             return false;
@@ -4717,40 +4746,40 @@ static bool path_walk_dir_internal_long(
         *out_buffer = _new;
         *out_count += 1;
 
-        dstring_truncate( *path, original_len );
+        CBPFN(dstring_truncate)( *path, original_len );
     } while( FindNextFileW( find_file, &fd ) != FALSE );
 
     FindClose( find_file );
     return true;
 }
 static bool path_walk_dir_internal(
-    DString** path, bool recursive, bool include_dirs,
-    size_t* out_count, DString** out_buffer
+    CBPT(DString)** path, bool recursive, bool include_dirs,
+    size_t* out_count, CBPT(DString)** out_buffer
 ) {
     return path_walk_dir_internal_long(
         path, recursive, include_dirs, out_count, out_buffer );
 }
 
-static DWORD fd_open_dwaccess( FileOpenFlags flags ) {
+static DWORD fd_open_dwaccess( CBPT(FileOpenFlag) flags ) {
     DWORD res = 0;
-    if( flags & CB_FOPEN_READ ) {
+    if( flags & CB_FILE_OPEN_READ ) {
         res |= GENERIC_READ;
     }
-    if( flags & CB_FOPEN_WRITE ) {
+    if( flags & CB_FILE_OPEN_WRITE ) {
         res |= GENERIC_WRITE;
     }
     return res;
 }
-static DWORD fd_open_dwcreationdisposition( FileOpenFlags flags ) {
+static DWORD fd_open_dwcreationdisposition( CBPT(FileOpenFlag) flags ) {
     DWORD res = OPEN_EXISTING;
-    if( flags & CB_FOPEN_CREATE ) {
+    if( flags & CB_FILE_OPEN_CREATE ) {
         res = CREATE_ALWAYS;
-    } else if( flags & CB_FOPEN_TRUNCATE ) {
+    } else if( flags & CB_FILE_OPEN_TRUNCATE ) {
         res = TRUNCATE_EXISTING;
     }
     return res;
 }
-static bool fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
+static bool fd_open_long( CBPT(String) path, CBPT(FileOpenFlag) flags, CBPT(FileID)* out_file ) {
     DWORD dwDesiredAccess       = fd_open_dwaccess( flags );
     DWORD dwShareMode           = FILE_SHARE_READ | FILE_SHARE_WRITE;
     DWORD dwCreationDisposition = fd_open_dwcreationdisposition( flags );
@@ -4763,7 +4792,7 @@ static bool fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
         dwCreationDisposition, dwFlagsAndAttributes, 0 );
     if( handle == INVALID_HANDLE_VALUE ) {
         DWORD error_code = GetLastError();
-        String msg = win32_local_error_message( error_code );
+        CBPT(String) msg = win32_local_error_message( error_code );
 
         CB_ERROR(
             "failed to open '%S'! reason: (0x%X) %s", wide, error_code, msg.cc );
@@ -4774,20 +4803,20 @@ static bool fd_open_long( String path, FileOpenFlags flags, FD* out_file ) {
     return true;
 }
 
-bool fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
+bool fd_open( const char* path, CBPT(FileOpenFlag) flags, CBPT(FileID)* out_file ) {
     if( !validate_file_flags( flags ) ) {
         return false;
     }
-    String path_str = string_from_cstr( path );
+    CBPT(String) path_str = string_from_cstr( path );
     return fd_open_long( path_str, flags, out_file );
 }
-void fd_close( FD* file ) {
+void fd_close( CBPT(FileID)* file ) {
     CloseHandle( (HANDLE)*file );
     *file = 0;
 }
 
 static bool fd_write_32(
-    FD* file, DWORD size, const void* buf, DWORD* opt_out_write_size
+    CBPT(FileID)* file, DWORD size, const void* buf, DWORD* opt_out_write_size
 ) {
     HANDLE hFile = (HANDLE)*file;
     bool is_console = GetFileType( hFile ) == FILE_TYPE_CHAR;
@@ -4808,7 +4837,7 @@ static bool fd_write_32(
 }
 #if CB_ARCH_IS_64BIT
 static bool fd_write_64(
-    FD* file, size_t size, const void* buf, size_t* opt_out_write_size
+    CBPT(FileID)* file, size_t size, const void* buf, size_t* opt_out_write_size
 ) {
     DWORD size0 = size > UINT32_MAX ? UINT32_MAX : size;
     DWORD size1 = size > UINT32_MAX ? size - UINT32_MAX : 0;
@@ -4844,7 +4873,7 @@ static bool fd_write_64(
 #endif
 
 static bool fd_read_32(
-    FD* file, DWORD size, void* buf, DWORD* opt_out_read_size
+    CBPT(FileID)* file, DWORD size, void* buf, DWORD* opt_out_read_size
 ) {
     DWORD out_size = 0;
     BOOL res = ReadFile( (HANDLE)*file, buf, size, &out_size, 0 );
@@ -4855,7 +4884,7 @@ static bool fd_read_32(
 }
 #if CB_ARCH_IS_64BIT
 static bool fd_read_64(
-    FD* file, size_t size, void* buf, size_t* opt_out_read_size
+    CBPT(FileID)* file, size_t size, void* buf, size_t* opt_out_read_size
 ) {
     DWORD size0 = size > UINT32_MAX ? UINT32_MAX : size;
     DWORD size1 = size > UINT32_MAX ? size - UINT32_MAX : 0;
@@ -4890,24 +4919,24 @@ static bool fd_read_64(
 }
 #endif
 
-bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_size ) {
+bool fd_write( CBPT(FileID)* file, size_t size, const void* buf, size_t* opt_out_write_size ) {
 #if CB_ARCH_IS_64BIT
     return fd_write_64( file, size, buf, opt_out_write_size );
 #else
     return fd_write_32( file, size, buf, (DWORD*)opt_out_write_size );
 #endif
 }
-bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size ) {
+bool fd_read( CBPT(FileID)* file, size_t size, void* buf, size_t* opt_out_read_size ) {
 #if CB_ARCH_IS_64BIT
     return fd_read_64( file, size, buf, opt_out_read_size );
 #else
     return fd_read_32( file, size, buf, (DWORD*)opt_out_read_size );
 #endif
 }
-bool fd_truncate( FD* file ) {
+bool fd_truncate( CBPT(FileID)* file ) {
     return SetEndOfFile( (HANDLE)*file ) != FALSE;
 }
-size_t fd_query_size( FD* file ) {
+size_t fd_query_size( CBPT(FileID)* file ) {
 #if CB_ARCH_IS_64BIT
     LARGE_INTEGER li;
     CB_EXPECT( GetFileSizeEx( (HANDLE)*file, &li ), "failed to get file size!" );
@@ -4917,16 +4946,16 @@ size_t fd_query_size( FD* file ) {
     return res;
 #endif
 }
-void fd_seek( FD* file, FileSeek type, intptr_t seek ) {
+void fd_seek( CBPT(FileID)* file, CBPT(SeekType) type, intptr_t seek ) {
     DWORD dwMoveMethod = 0;
     switch( type ) {
-        case CB_FSEEK_CURRENT: {
+        case CB_SEEK_TYPE_CURRENT: {
             dwMoveMethod = FILE_CURRENT;
         } break;
-        case CB_FSEEK_BEGIN: {
+        case CB_SEEK_TYPE_BEGIN: {
             dwMoveMethod = FILE_BEGIN;
         } break;
-        case CB_FSEEK_END: {
+        case CB_SEEK_TYPE_END: {
             dwMoveMethod = FILE_END;
         } break;
     }
@@ -4942,7 +4971,7 @@ void fd_seek( FD* file, FileSeek type, intptr_t seek ) {
     SetFilePointer( (HANDLE)*file, seek, 0, dwMoveMethod );
 #endif
 }
-size_t fd_query_position( FD* file ) {
+size_t fd_query_position( CBPT(FileID)* file ) {
     DWORD dwMoveMethod = FILE_CURRENT;
 
 #if CB_ARCH_IS_64BIT 
@@ -4962,7 +4991,7 @@ size_t fd_query_position( FD* file ) {
 
 }
 static void file_query_time_long(
-    String path, FILETIME* out_create, FILETIME* out_modify
+    CBPT(String) path, FILETIME* out_create, FILETIME* out_modify
 ) {
     DWORD dwDesiredAccess       = 0;
     DWORD dwCreationDisposition = OPEN_EXISTING;
@@ -4985,23 +5014,23 @@ static void file_query_time_long(
 }
 time_t file_query_time_create( const char* path ) {
     FILETIME create;
-    memory_zero( &create, sizeof(create) );
+    CBPFN(memory_zero)( &create, sizeof(create) );
 
     size_t path_len = strlen( path );
-    file_query_time_long( string_new( path_len, path ), &create, 0 );
+    file_query_time_long( CBPFN(string_new)( path_len, path ), &create, 0 );
 
     return win32_filetime_to_posix( create );
 }
 time_t file_query_time_modify( const char* path ) {
     FILETIME modify;
-    memory_zero( &modify, sizeof(modify) );
+    CBPFN(memory_zero)( &modify, sizeof(modify) );
 
     size_t path_len = strlen( path );
-    file_query_time_long( string_new( path_len, path ), 0, &modify );
+    file_query_time_long( CBPFN(string_new)( path_len, path ), 0, &modify );
     return win32_filetime_to_posix( modify );
 }
 
-static bool file_move_long( String dst, String src ) {
+static bool file_move_long( CBPT(String) dst, CBPT(String) src ) {
     wchar_t* dst_wide = win32_local_path_canon( dst );
     wchar_t* src_wide = win32_local_path_canon( src );
 
@@ -5015,10 +5044,10 @@ bool file_move( const char* dst, const char* src ) {
     size_t src_len = strlen( src );
 
     return
-        file_move_long( string_new( dst_len, dst ), string_new( src_len, src ) );
+        file_move_long( CBPFN(string_new)( dst_len, dst ), CBPFN(string_new)( src_len, src ) );
 }
 
-static bool file_copy_long( String dst, String src ) {
+static bool file_copy_long( CBPT(String) dst, CBPT(String) src ) {
     wchar_t* dst_wide = win32_local_path_canon( dst );
     wchar_t* src_wide = win32_local_path_canon( src );
 
@@ -5032,17 +5061,17 @@ bool file_copy( const char* dst, const char* src ) {
     size_t src_len = strlen( src );
 
     return
-        file_copy_long( string_new( dst_len, dst ), string_new( src_len, src ) );
+        file_copy_long( CBPFN(string_new)( dst_len, dst ), CBPFN(string_new)( src_len, src ) );
 }
-static bool file_remove_long( String path ) {
+static bool file_remove_long( CBPT(String) path ) {
     wchar_t* path_wide = win32_local_path_canon( path );
     return DeleteFileW( path_wide ) != FALSE;
 }
 bool file_remove( const char* path ) {
     size_t path_len = strlen( path );
-    return file_remove_long( string_new( path_len, path ) );
+    return file_remove_long( CBPFN(string_new)( path_len, path ) );
 }
-static bool dir_create_long( String path ) {
+static bool dir_create_long( CBPT(String) path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     if( CreateDirectoryW( wpath, 0 ) ) {
         return true;
@@ -5053,15 +5082,15 @@ static bool dir_create_long( String path ) {
 }
 bool dir_create( const char* path ) {
     size_t len = strlen( path );
-    return dir_create_long( string_new( len, path ) );
+    return dir_create_long( CBPFN(string_new)( len, path ) );
 }
-static bool dir_remove_internal_long( String path ) {
+static bool dir_remove_internal_long( CBPT(String) path ) {
     wchar_t* wpath = win32_local_path_canon( path );
     return RemoveDirectoryW( wpath );
 }
 static bool dir_remove_internal( const char* path ) {
     size_t len = strlen( path );
-    return dir_remove_internal_long( string_new( len, path ) );
+    return dir_remove_internal_long( CBPFN(string_new)( len, path ) );
 }
 
 atom atomic_add( atom* atomic, atom val ) {
@@ -5119,7 +5148,7 @@ void mutex_unlock( Mutex* mutex ) {
 }
 void mutex_destroy( Mutex* mutex ) {
     CloseHandle( mutex->handle );
-    memory_zero( mutex, sizeof(*mutex) );
+    CBPFN(memory_zero)( mutex, sizeof(*mutex) );
 }
 
 bool semaphore_create( Semaphore* out_semaphore ) {
@@ -5149,17 +5178,17 @@ void semaphore_signal( Semaphore* semaphore ) {
 }
 void semaphore_destroy( Semaphore* semaphore ) {
     CloseHandle( semaphore->handle );
-    memory_zero( semaphore, sizeof(*semaphore) );
+    CBPFN(memory_zero)( semaphore, sizeof(*semaphore) );
 }
 
 void thread_sleep( uint32_t ms ) {
     Sleep( ms );
 }
 
-void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
+void pipe_open( CBPT(PipeRead)* out_read, CBPT(PipeWrite)* out_write ) {
     HANDLE read = 0, write = 0;
     SECURITY_ATTRIBUTES sa;
-    memory_zero( &sa, sizeof(sa) );
+    CBPFN(memory_zero)( &sa, sizeof(sa) );
 
     sa.nLength        = sizeof(sa);
     sa.bInheritHandle = TRUE;
@@ -5169,7 +5198,7 @@ void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
     *out_read  = (intptr_t)read;
     *out_write = (intptr_t)write;
 }
-void pipe_close( Pipe pipe ) {
+void pipe_close( CBPT(Pipe) pipe ) {
     HANDLE handle = (HANDLE)pipe;
     CloseHandle( handle );
 }
@@ -5177,15 +5206,15 @@ bool process_in_path( const char* process_name ) {
     char* cmd = local_fmt( "where.exe %s /Q", process_name );
     return system( cmd ) == 0;
 }
-PID process_exec(
-    Command cmd, bool redirect_void, ReadPipe* opt_stdin,
-    WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd
+CBPT(ProcessID) process_exec(
+    CBPT(Command) cmd, bool redirect_void, CBPT(PipeRead)* opt_stdin,
+    CBPT(PipeWrite)* opt_stdout, CBPT(PipeWrite)* opt_stderr, const char* opt_cwd
 ) {
     STARTUPINFOW        startup;
     PROCESS_INFORMATION info;
 
-    memory_zero( &startup, sizeof(startup) );
-    memory_zero( &info,    sizeof(info) );
+    CBPFN(memory_zero)( &startup, sizeof(startup) );
+    CBPFN(memory_zero)( &info,    sizeof(info) );
 
     startup.cb         = sizeof(startup);
     startup.hStdInput  = GetStdHandle( STD_INPUT_HANDLE );
@@ -5233,13 +5262,13 @@ PID process_exec(
     CB_EXPECT( cmd_line, "failed to allocate command line wide buffer!" );
 
     for( size_t i = 0; i < cmd.count; ++i ) {
-        String current = string_from_cstr( cmd.args[i] );
+        CBPT(String) current = string_from_cstr( cmd.args[i] );
         if( !current.cc || !current.len ) {
             continue;
         }
 
         bool contains_space = false;
-        if( string_find( current, ' ', 0 ) ) {
+        if( CBPFN(string_find)( current, ' ', 0 ) ) {
             cmd_line[wide_cmd_line_len++] = L'"';
             contains_space = true;
         }
@@ -5275,12 +5304,12 @@ PID process_exec(
     CloseHandle( info.hThread );
     return (intptr_t)info.hProcess;
 }
-int process_wait( PID pid ) {
+int process_wait( CBPT(ProcessID) pid ) {
     DWORD res = WaitForSingleObject( (HANDLE)pid, INFINITE );
     switch( res ) {
         case WAIT_OBJECT_0: break;
         default: {
-            String reason = win32_local_error_message( GetLastError() );
+            CBPT(String) reason = win32_local_error_message( GetLastError() );
             CB_PANIC( "failed to wait for pid! reason: %s", reason.cc );
             return -1;
         } break;
@@ -5293,7 +5322,7 @@ int process_wait( PID pid ) {
     CloseHandle( (HANDLE)pid );
     return exit_code;
 }
-bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
+bool process_wait_timed( CBPT(ProcessID) pid, int* opt_out_res, uint32_t ms ) {
     bool success = true;
     DWORD res   = WaitForSingleObject( (HANDLE)pid, ms );
     switch( res ) {
@@ -5302,7 +5331,7 @@ bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
             success = false;
         } break;
         default: {
-            String reason = win32_local_error_message( GetLastError() );
+            CBPT(String) reason = win32_local_error_message( GetLastError() );
             CB_PANIC( "failed to wait for pid! reason: %s", reason.cc );
             return -1;
         } break;
@@ -5319,7 +5348,7 @@ bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
     *opt_out_res = exit_code;
     return success;
 }
-void process_discard( PID pid ) {
+void process_discard( CBPT(ProcessID) pid ) {
     CloseHandle( (HANDLE)pid );
 }
 
@@ -5354,7 +5383,7 @@ void thread_create( JobFN* func, void* params ) {
 
 char* internal_cwd(void) {
     DWORD len = GetCurrentDirectoryA( 0, 0 );
-    char* buf = memory_alloc( len );
+    char* buf = CBPFN(heap_alloc)( len );
 
     CB_EXPECT( buf, "failed to allocate working directory buffer!" );
 
@@ -5374,10 +5403,10 @@ char* internal_home(void) {
     const char* home  = getenv( "HOMEPATH" );
     CB_EXPECT( home, "failed to get home path!" );
 
-    DString* buf = dstring_concat_cstr( drive, home );
+    CBPT(DString)* buf = CBPFN(dstring_concat_cstr)( drive, home );
     CB_EXPECT( buf, "failed to allocate home directory buffer!" );
 
-    size_t len = dstring_len( buf );
+    size_t len = CBPFN(dstring_len)( buf );
     for( size_t i = 0; i < len; ++i ) {
         if( buf[i] == '\\' ) {
             buf[i] = '/';
@@ -5432,7 +5461,7 @@ static const char* generate_semaphore_name(void) {
     return (const char*)local_fmt( "cbuild_sem%u", val );
 }
 
-void* memory_alloc( size_t size ) {
+void* CBPFN(heap_alloc)( size_t size ) {
     void* res = malloc( size );
     if( !res ) {
         return NULL;
@@ -5447,7 +5476,7 @@ void* memory_alloc( size_t size ) {
     }
     return res;
 }
-void* memory_realloc( void* memory, size_t old_size, size_t new_size ) {
+void* CBPFN(heap_realloc)( void* memory, size_t old_size, size_t new_size ) {
     CB_ASSERT( new_size >= old_size, "attempted to reallocate to smaller buffer!" );
     void* res = realloc( memory, new_size );
     if( !res ) {
@@ -5464,7 +5493,7 @@ void* memory_realloc( void* memory, size_t old_size, size_t new_size ) {
     }
     return res;
 }
-void memory_free( void* memory, size_t size ) {
+void CBPFN(heap_free)( void* memory, size_t size ) {
     if( !memory ) {
         CB_WARN( "attempted to free null pointer!" );
         return;
@@ -5494,8 +5523,8 @@ bool path_is_directory( const char* path ) {
     return S_ISDIR( s.st_mode );
 }
 static bool path_walk_dir_internal(
-    DString** path, bool recursive, bool include_dirs,
-    size_t* out_count, DString** out_buffer
+    CBPT(DString)** path, bool recursive, bool include_dirs,
+    size_t* out_count, CBPT(DString)** out_buffer
 ) {
     struct dirent* entry;
     DIR* dir = opendir( *path );
@@ -5503,7 +5532,7 @@ static bool path_walk_dir_internal(
         return false;
     }
 
-    size_t original_len = dstring_len( *path );
+    size_t original_len = CBPFN(dstring_len)( *path );
     long  pos = 0;
 
     while( (entry = readdir( dir )) ) {
@@ -5514,7 +5543,7 @@ static bool path_walk_dir_internal(
         ) {
             continue;
         }
-        DString* _new = dstring_push( *path, '/' );
+        CBPT(DString)* _new = CBPFN(dstring_push)( *path, '/' );
         if( !_new ) {
             closedir( dir );
             return false;
@@ -5522,7 +5551,7 @@ static bool path_walk_dir_internal(
         *path = _new;
 
         size_t name_len = strlen( entry->d_name );
-        _new = dstring_append( *path, string_new( name_len, entry->d_name ) );
+        _new = CBPFN(dstring_append)( *path, CBPFN(string_new)( name_len, entry->d_name ) );
         if( !_new ) {
             closedir( dir );
             return false;
@@ -5534,8 +5563,8 @@ static bool path_walk_dir_internal(
 
         if( S_ISDIR( st.st_mode ) ) {
             if( include_dirs ) {
-                _new = dstring_append(
-                    *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
+                _new = CBPFN(dstring_append)(
+                    *out_buffer, CBPFN(string_new)( CBPFN(dstring_len)( *path ) + 1, *path ) );
                 if( !_new ) {
                     closedir( dir );
                     return false;
@@ -5556,18 +5585,18 @@ static bool path_walk_dir_internal(
                     return false;
                 }
 
-                dstring_truncate( *path, original_len );
+                CBPFN(dstring_truncate)( *path, original_len );
                 dir = opendir( *path );
 
                 seekdir( dir, pos );
             }
 
-            dstring_truncate( *path, original_len );
+            CBPFN(dstring_truncate)( *path, original_len );
             continue;
         }
 
-        _new = dstring_append(
-            *out_buffer, string_new( dstring_len( *path ) + 1, *path ) );
+        _new = CBPFN(dstring_append)(
+            *out_buffer, CBPFN(string_new)( CBPFN(dstring_len)( *path ) + 1, *path ) );
         if( !_new ) {
             closedir( dir );
             return false;
@@ -5576,32 +5605,32 @@ static bool path_walk_dir_internal(
 
         *out_count += 1;
 
-        dstring_truncate( *path, original_len );
+        CBPFN(dstring_truncate)( *path, original_len );
     }
 
     closedir( dir );
     return true;
 }
 
-bool fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
+bool fd_open( const char* path, CBPT(FileOpenFlag) flags, CBPT(FileID)* out_file ) {
     if( !validate_file_flags( flags ) ) {
         return false;
     }
     int oflag = 0;
-    if( (flags & (CB_FOPEN_READ | CB_FOPEN_WRITE)) == CB_FOPEN_READ ) {
+    if( (flags & (CB_FILE_OPEN_READ | CB_FILE_OPEN_WRITE)) == CB_FILE_OPEN_READ ) {
         oflag |= O_RDONLY;
-    } else if( (flags & (CB_FOPEN_READ | CB_FOPEN_WRITE)) == CB_FOPEN_WRITE ) {
+    } else if( (flags & (CB_FILE_OPEN_READ | CB_FILE_OPEN_WRITE)) == CB_FILE_OPEN_WRITE ) {
         oflag |= O_WRONLY;
     } else { // read + write
         oflag |= O_RDWR;
     }
-    if( flags & CB_FOPEN_TRUNCATE ) {
+    if( flags & CB_FILE_OPEN_TRUNCATE ) {
         oflag |= O_TRUNC;
     }
-    if( flags & CB_FOPEN_CREATE ) {
+    if( flags & CB_FILE_OPEN_CREATE ) {
         oflag |= O_CREAT;
     }
-    if( flags & CB_FOPEN_APPEND ) {
+    if( flags & CB_FILE_OPEN_APPEND ) {
         oflag |= O_APPEND;
     }
 
@@ -5616,11 +5645,11 @@ bool fd_open( const char* path, FileOpenFlags flags, FD* out_file ) {
     *out_file = fd;
     return true;
 }
-void fd_close( FD* file ) {
+void fd_close( CBPT(FileID)* file ) {
     close( *file );
     *file = 0;
 }
-bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_size ) {
+bool fd_write( CBPT(FileID)* file, size_t size, const void* buf, size_t* opt_out_write_size ) {
     intptr_t write_size = write( *file, buf, size );
     if( write_size < 0 ) {
         return false;
@@ -5631,7 +5660,7 @@ bool fd_write( FD* file, size_t size, const void* buf, size_t* opt_out_write_siz
     }
     return true;
 }
-bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size ) {
+bool fd_read( CBPT(FileID)* file, size_t size, void* buf, size_t* opt_out_read_size ) {
     intptr_t read_size = read( *file, buf, size );
     if( read_size < 0 ) {
         return false;
@@ -5643,11 +5672,11 @@ bool fd_read( FD* file, size_t size, void* buf, size_t* opt_out_read_size ) {
 
     return true;
 }
-bool fd_truncate( FD* file ) {
+bool fd_truncate( CBPT(FileID)* file ) {
     size_t pos = fd_query_position( file ); // fd_query_position handles lseek fail
     return ftruncate( *file, pos ) == 0;
 }
-size_t fd_query_size( FD* file ) {
+size_t fd_query_size( CBPT(FileID)* file ) {
     off_t pos = lseek( *file, 0, SEEK_CUR );
     CB_EXPECT( pos >= 0, "failed to query file descriptor size!" );
     off_t res = lseek( *file, 0, SEEK_END );
@@ -5657,15 +5686,15 @@ size_t fd_query_size( FD* file ) {
 
     return res;
 }
-void fd_seek( FD* file, FileSeek type, intptr_t seek ) {
+void fd_seek( CBPT(FileID)* file, CBPT(SeekType) type, intptr_t seek ) {
     static const int local_whence[] = {
-        SEEK_CUR, // CB_FSEEK_CURRENT
-        SEEK_SET, // CB_FSEEK_BEGIN
-        SEEK_END, // CB_FSEEK_END
+        SEEK_CUR, // CB_SEEK_TYPE_CURRENT
+        SEEK_SET, // CB_SEEK_TYPE_BEGIN
+        SEEK_END, // CB_SEEK_TYPE_END
     };
     CB_EXPECT( lseek( *file, seek, local_whence[type] ) >= 0, "failed to seek!" );
 }
-size_t fd_query_position( FD* file ) {
+size_t fd_query_position( CBPT(FileID)* file ) {
     off_t pos = lseek( *file, 0, SEEK_CUR );
     CB_EXPECT( pos >= 0, "failed to get current file position!" );
     return pos;
@@ -5686,17 +5715,17 @@ bool file_move( const char* dst, const char* src ) {
     return rename( src, dst ) == 0;
 }
 bool file_copy( const char* dst, const char* src ) {
-    FD src_file, dst_file;
-    if( !fd_open( src, CB_FOPEN_READ, &src_file ) ) {
+    CBPT(FileID) src_file, dst_file;
+    if( !fd_open( src, CB_FILE_OPEN_READ, &src_file ) ) {
         return false;
     }
     if( path_exists( dst ) ) {
-        if( !fd_open( dst, CB_FOPEN_WRITE | CB_FOPEN_TRUNCATE, &dst_file ) ) {
+        if( !fd_open( dst, CB_FILE_OPEN_WRITE | CB_FILE_OPEN_TRUNCATE, &dst_file ) ) {
             fd_close( &src_file );
             return false;
         }
     } else {
-        if( !fd_open( dst, CB_FOPEN_WRITE | CB_FOPEN_CREATE, &dst_file ) ) {
+        if( !fd_open( dst, CB_FILE_OPEN_WRITE | CB_FILE_OPEN_CREATE, &dst_file ) ) {
             fd_close( &src_file );
             return false;
         }
@@ -5875,34 +5904,34 @@ void semaphore_destroy( Semaphore* semaphore ) {
     *semaphore = semaphore_null();
 }
 
-void pipe_open( ReadPipe* out_read, WritePipe* out_write ) {
+void pipe_open( CBPT(PipeRead)* out_read, CBPT(PipeWrite)* out_write ) {
     int fd[2];
     CB_EXPECT( pipe( fd ) != -1, "failed to create pipes!" );
     *out_read  = fd[0];
     *out_write = fd[1];
 }
-void pipe_close( Pipe pipe ) {
+void pipe_close( CBPT(Pipe) pipe ) {
     close( pipe );
 }
 
 bool process_in_path( const char* process_name ) {
-    Command cmd = command_new( "which", process_name );
+    CBPT(Command) cmd = command_new( "which", process_name );
 
-    PID pid = process_exec( cmd, true, 0, 0, 0, 0 );
+    CBPT(ProcessID) pid = process_exec( cmd, true, 0, 0, 0, 0 );
     int res = process_wait( pid );
 
     return res == 0;
 }
-void posix_process_replace( Command cmd ) {
+void posix_process_replace( CBPT(Command) cmd ) {
     execvp( cmd.args[0], (char* const*)cmd.args );
 }
-PID process_exec(
-    Command cmd, bool redirect_void, ReadPipe* opt_stdin,
-    WritePipe* opt_stdout, WritePipe* opt_stderr, const char* opt_cwd
+CBPT(ProcessID) process_exec(
+    CBPT(Command) cmd, bool redirect_void, CBPT(PipeRead)* opt_stdin,
+    CBPT(PipeWrite)* opt_stdout, CBPT(PipeWrite)* opt_stderr, const char* opt_cwd
 ) {
-    ReadPipe   stdin_;
-    WritePipe stdout_;
-    WritePipe stderr_;
+    CBPT(PipeRead)   stdin_;
+    CBPT(PipeWrite) stdout_;
+    CBPT(PipeWrite) stderr_;
 
     if( redirect_void ) {
         volatile struct GlobalBuffers* gb = get_global_buffers();
@@ -5922,10 +5951,10 @@ PID process_exec(
         if( opt_cwd ) {
             CB_INFO( "cd '%s'", opt_cwd );
         }
-        DString* flat = command_flatten_dstring( &cmd );
+        CBPT(DString)* flat = command_flatten_dstring( &cmd );
         if( flat ) {
             CB_INFO( "%s", flat );
-            dstring_free( flat );
+            CBPFN(dstring_free)( flat );
         }
         return pid;
     }
@@ -5945,7 +5974,7 @@ PID process_exec(
     ) >= 0, "failed to execute command!" );
     exit(0);
 }
-int process_wait( PID pid ) {
+int process_wait( CBPT(ProcessID) pid ) {
     int wstatus = 0;
     CB_EXPECT( waitpid( pid, &wstatus, 0 ) == pid, "failed to wait for process!" );
 
@@ -5956,7 +5985,7 @@ int process_wait( PID pid ) {
 
     return -1;
 }
-bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
+bool process_wait_timed( CBPT(ProcessID) pid, int* opt_out_res, uint32_t ms ) {
     if( ms == MT_WAIT_INFINITE ) {
         int res = process_wait( pid );
         if( opt_out_res ) {
@@ -5988,7 +6017,7 @@ bool process_wait_timed( PID pid, int* opt_out_res, uint32_t ms ) {
 
     return false;
 }
-void process_discard( PID pid ) {
+void process_discard( CBPT(ProcessID) pid ) {
     CB_UNUSED(pid); // this is not necessary on POSIX
 }
 
@@ -6008,7 +6037,7 @@ double timer_seconds(void) {
 void thread_sleep( uint32_t ms ) {
     struct timespec ts = ms_to_timespec( ms );
     struct timespec rem;
-    memory_zero( &rem, sizeof(rem) );
+    CBPFN(memory_zero)( &rem, sizeof(rem) );
 
     while( clock_nanosleep( CLOCK_REALTIME, 0, &ts, &rem ) ) {
         ts = rem;
@@ -6046,7 +6075,7 @@ void thread_create( JobFN* func, void* params ) {
 }
 
 char* internal_cwd(void) {
-    char* buf = memory_alloc( PATH_MAX );
+    char* buf = CBPFN(heap_alloc)( PATH_MAX );
     CB_EXPECT( buf, "failed to allocate working directory buffer!" );
 
     char* res = getcwd( buf, PATH_MAX );
