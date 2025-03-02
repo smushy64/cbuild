@@ -18,6 +18,9 @@
  *    - define CB_DISABLE_TYPEDEFS to disable 
  *      defining u8/16/32/64/size, i8/16/32/64/size and f32/64
  *
+ *    - define CB_STRIP_PREFIXES to strip prefixes from functions and types.
+ *      This does not strip prefixes from macro constants or functions.
+ *
  * @author Alicia Amarilla (smushyaa@gmail.com)
  *
  * @date May 28, 2024
@@ -1967,7 +1970,7 @@ void cb_write_log( CB_LogLevel level, const char* fmt, ... );
 /// @note
 /// For high resolution timing, use cb_time_msec() or cb_time_sec().
 /// @return Current time as Posix timestamp.
-CB_Time cb_time(void);
+CB_Time cb_time_query(void);
 /// @brief Query current time using high resolution timer.
 /// @return Current milliseconds.
 double cb_time_msec(void);
@@ -2230,6 +2233,173 @@ void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... );
 bool _cb_internal_make_directories( const char* first, ... );
 
 static inline void _cb_internal_unused( int _, ... ) { (void)_; }
+
+#if defined(CB_STRIP_PREFIXES)
+
+typedef CB_Time                    Time;
+typedef CB_LogLevel                LogLevel;
+typedef CB_FileOpenFlags           FileOpenFlags;
+typedef CB_FileSeek                FileSeek;
+typedef CB_FileType                FileType;
+typedef CB_File                    File;
+typedef CB_FileInfo                FileInfo;
+typedef CB_Pipe                    Pipe;
+typedef CB_PipeWrite               PipeWrite;
+typedef CB_PipeRead                PipeRead;
+typedef CB_DirectoryWalkControl    DirectoryWalkControl;
+typedef CB_DirectoryWalkInfo       DirectoryWalkInfo;
+typedef CB_DirectoryWalkFN         DirectoryWalkFN;
+typedef CB_StringSlice             StringSlice;
+typedef CB_StringSliceList         StringSliceList;
+typedef CB_StringBuilder           StringBuilder;
+typedef CB_Command                 Command;
+typedef CB_CommandBuilder          CommandBuilder;
+typedef CB_EnvironmentBuilder      EnvironmentBuilder;
+typedef CB_ProcessID               ProcessID;
+typedef CB_UTFCodePoint8           UTFCodePoint8;
+typedef CB_UTFCodePoint16          UTFCodePoint16;
+typedef CB_UTFCodePoint32          UTFCodePoint32;
+typedef CB_UnicodeValidationResult UnicodeValidationResult;
+
+#define initialize                               cb_initialize
+#define rebuild                                  cb_rebuild
+#define local_buf                                cb_local_buf
+#define local_buf_fmt_va                         cb_local_buf_fmt_va
+#define local_buf_fmt                            cb_local_buf_fmt
+#define alloc_fmt_va                             cb_alloc_fmt_va
+#define alloc_fmt                                cb_alloc_fmt
+#define string_cmp                               cb_string_cmp
+#define string_find                              cb_string_find
+#define string_find_unicode                      cb_string_find_unicode
+#define string_find_rev                          cb_string_find_rev
+#define string_find_unicode_rev                  cb_string_find_unicode_rev
+#define string_find_unicode_rev                  cb_string_find_unicode_rev
+#define string_find_set                          cb_string_find_set
+#define string_find_set_rev                      cb_string_find_set_rev
+#define string_find_set_unicode                  cb_string_find_set_unicode
+#define string_find_set_unicode_rev              cb_string_find_set_unicode_rev
+#define string_find_phrase                       cb_string_find_phrase
+#define string_find_phrase_rev                   cb_string_find_phrase_rev
+#define string_advance                           cb_string_advance
+#define string_truncate                          cb_string_truncate
+#define string_trim                              cb_string_trim
+#define string_clip                              cb_string_clip
+#define string_trim_leading_whitespace           cb_string_trim_leading_whitespace
+#define string_trim_trailing_whitespace          cb_string_trim_trailing_whitespace
+#define string_trim_surrounding_whitespace       cb_string_trim_surrounding_whitespace
+#define string_split                             cb_string_split
+#define string_split_by_char                     cb_string_split_by_char
+#define string_split_by_char_unicode             cb_string_split_by_char_unicode
+#define string_split_by_set                      cb_string_split_by_set
+#define string_split_by_set_unicode              cb_string_split_by_set_unicode
+#define string_split_by_phrase                   cb_string_split_by_phrase
+#define string_split_by_char_list                cb_string_split_by_char_list
+#define string_split_by_char_unicode_list        cb_string_split_by_char_unicode_list
+#define string_split_by_set_list                 cb_string_split_by_set_list
+#define string_split_by_set_unicode_list         cb_string_split_by_set_unicode_list
+#define string_split_by_phrase_list              cb_string_split_by_phrase_list
+#define cstr_from_string                         cb_cstr_from_string
+#define string_builder_from_string               cb_string_builder_from_string
+#define string_unicode_next                      cb_string_unicode_next
+#define utf8_len                                 cb_utf8_len
+#define utf8_next                                cb_utf8_next
+#define utf8_index                               cb_utf8_index
+#define cp8_from_code_units                      cb_cp8_from_code_units
+#define cp16_from_code_units                     cb_cp16_from_code_units
+#define cp32_from_code_units                     cb_cp32_from_code_units
+#define cp16_from_bytes                          cb_cp16_from_bytes
+#define cp32_from_bytes                          cb_cp32_from_bytes
+#define cp16_read_byte                           cb_cp16_read_byte
+#define cp32_read_byte                           cb_cp32_read_byte
+#define unicode_from_cp8                         cb_unicode_from_cp8
+#define unicode_from_cp16                        cb_unicode_from_cp16
+#define unicode_from_cp32                        cb_unicode_from_cp32
+#define cp8_code_unit_count                      cb_cp8_code_unit_count
+#define cp16_code_unit_count                     cb_cp16_code_unit_count
+#define cp32_code_unit_count                     cb_cp32_code_unit_count
+#define utf8_validate                            cb_utf8_validate
+#define utf16_validate                           cb_utf16_validate
+#define utf32_validate                           cb_utf32_validate
+#define cp8_from_string                          cb_cp8_from_string
+#define cp16_from_string                         cb_cp16_from_string
+#define cp32_from_string                         cb_cp32_from_string
+#define cp8_from_cp16                            cb_cp8_from_cp16
+#define cp8_from_cp32                            cb_cp8_from_cp32
+#define cp16_from_cp8                            cb_cp16_from_cp8
+#define cp16_from_cp32                           cb_cp16_from_cp32
+#define cp32_from_cp8                            cb_cp32_from_cp8
+#define cp32_from_cp16                           cb_cp32_from_cp16
+#define file_exists                              cb_file_exists
+#define directory_exists                         cb_directory_exists
+#define directory_copy                           cb_directory_copy
+#define directory_move                           cb_directory_move
+#define make_directories                         cb_make_directories
+#define read_entire_file                         cb_read_entire_file
+#define which_file_is_newer                      cb_which_file_is_newer
+#define which_file_is_newer_many_array           cb_which_file_is_newer_many_array
+#define which_file_is_newer_many                 cb_which_file_is_newer_many
+#define command_flatten                          cb_command_flatten
+#define command_builder_new                      cb_command_builder_new
+#define command_builder_append                   cb_command_builder_append
+#define command_builder_add_null_terminator      cb_command_builder_add_null_terminator
+#define command_builder_remove_null_terminator   cb_command_builder_remove_null_terminator
+#define command_builder_from_cmd                 cb_command_builder_from_cmd
+#define command_builder_remove                   cb_command_builder_remove
+#define command_builder_free                     cb_command_builder_free
+#define environment_builder_new                  cb_environment_builder_new
+#define environment_builder_free                 cb_environment_builder_free
+#define environment_builder_append               cb_environment_builder_append
+#define environment_builder_remove               cb_environment_builder_remove
+#define environment_builder_remove_by_index      cb_environment_builder_remove_by_index
+#define environment_builder_replace              cb_environment_builder_replace
+#define environment_builder_replace_by_index     cb_environment_builder_replace_by_index
+#define process_exec                             cb_process_exec
+#define process_exec_quick                       cb_process_exec_quick
+#define process_exec_quick_ex                    cb_process_exec_quick_ex
+#define process_wait_many                        cb_process_wait_many
+#define log_level_set                            cb_log_level_set
+#define log_level_query                          cb_log_level_query
+#define log_level_is_valid                       cb_log_level_is_valid
+#define write_log_va                             cb_write_log_va
+#define write_log                                cb_write_log
+#define time_query                               cb_time_query
+#define time_msec                                cb_time_msec
+#define time_sec                                 cb_time_sec
+#define path_query_type                          cb_path_query_type
+#define path_query_time_modify                   cb_path_query_time_modify
+#define path_query_time_create                   cb_path_query_time_create
+#define path_query_info                          cb_path_query_info
+#define file_open                                cb_file_open
+#define file_close                               cb_file_close
+#define file_seek                                cb_file_seek
+#define file_truncate                            cb_file_truncate
+#define file_read                                cb_file_read
+#define file_write                               cb_file_write
+#define file_write_fmt_va                        cb_file_write_fmt_va
+#define file_write_fmt                           cb_file_write_fmt
+#define file_remove                              cb_file_remove
+#define file_copy                                cb_file_copy
+#define file_move                                cb_file_move
+#define directory_create                         cb_directory_create
+#define directory_remove                         cb_directory_remove
+#define directory_walk                           cb_directory_walk
+#define working_directory_set                    cb_working_directory_set
+#define working_directory_query                  cb_working_directory_query
+#define pipe_open                                cb_pipe_open
+#define pipe_close                               cb_pipe_close
+#define pipe_stdin                               cb_pipe_stdin
+#define pipe_stdout                              cb_pipe_stdout
+#define pipe_stderr                              cb_pipe_stderr
+#define environment_query                        cb_environment_query
+#define environment_set                          cb_environment_set
+#define process_exec_async                       cb_process_exec_async
+#define process_discard                          cb_process_discard
+#define process_wait                             cb_process_wait
+#define process_wait_timed                       cb_process_wait_timed
+#define process_kill                             cb_process_kill
+#define process_is_in_path                       cb_process_is_in_path
+
+#endif /* Strip prefixes */
 
 #endif /* header guard */
 
@@ -4124,7 +4294,7 @@ CB_FileType _cb_internal_file_type_from_stat( const struct stat* st ) {
     }
 }
 
-CB_Time cb_time(void) {
+CB_Time cb_time_query(void) {
     return time( NULL );
 }
 double cb_time_msec(void) {
@@ -5167,7 +5337,7 @@ cb_windows_directory_walk(
 }
 
 
-CB_Time cb_time(void) {
+CB_Time cb_time_query(void) {
     FILETIME ft;
     memset( &ft, 0, sizeof(ft) );
     GetSystemTimeAsFileTime( &ft );
