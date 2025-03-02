@@ -12,15 +12,15 @@ C Build
 
 Single-header library for building C projects.
 
-Inspired by [nobuild](https://github.com/tsoding/nobuild).
+Inspired by [tsoding's nob.h](https://github.com/tsoding/nob.h).
 
 ## How-To
 
 - Download cbuild.h.
 - Create a cbuild.c file in project root.
 - Include cbuild.h at the top and at the bottom of cbuild.c
-- Define CBUILD_IMPLEMENTATION before second include.
-- Run init() function before anything else in main function.
+- Define CB_IMPLEMENTATION before second include.
+- Run CB_INITIALIZE() function before anything else in main function.
 - Compile cbuild.c using preferred compiler.
 
 Minimal Example:
@@ -28,16 +28,17 @@ Minimal Example:
 #include "cbuild.h"
 
 int main( int argc, const char** argv ) {
-    init( LOGGER_LEVEL_INFO );
+    CB_INITIALIZE( CB_LOG_ALL );
     /*
      * Build code goes here.
     */
     return 0;
 }
 
-#define CBUILD_IMPLEMENTATION
+#define CB_IMPLEMENTATION
 #include "cbuild.h"
 ```
+
 ```sh
 cc cbuild.c -o cbuild
 ./cbuild
@@ -45,11 +46,11 @@ cc cbuild.c -o cbuild
 
 Documentation can be generated using doxygen README.md and provided Doxygen file.
 
-The `startup.bat` and `startup.sh` scripts are included to easily
+The `build.bat` and `build.sh` scripts are included to easily
 generate cbuild program.
 
 ```
-Note: On Windows, startup.bat assumes you have run vcvarsall.bat or are running
+Note: On Windows, build.bat assumes you have run vcvarsall.bat or are running
 in Developer Command Prompt for VS *.
 clang is provided as an alternative in the script.
 ```
@@ -58,29 +59,11 @@ clang is provided as an alternative in the script.
 - Compile example project.
 ```sh
 cd example
-cc cbuild.c -o cbuild -I..
+cc cbuild.c -o cbuild
 ```
 - Run cbuild.
 ```sh
 ./cbuild
-```
-
-## Additional Setup
-
-At the top of cbuild.c:
-
-Define `CBUILD_THREAD_COUNT` with a number from 2-16 to
-change how many threads are created by job system.
-
-Define `CBUILD_ASSERTIONS` to enable debug assertions.
-
-Define `CBUILD_ADDTIONAL_FLAGS` with additional compiler flags
-that are used to compile cbuild.
-
-Example:
-```C
-// flags for enabling debug symbols
-#define CBUILD_ADDITIONAL_FLAGS "-g", "-O0"
 ```
 
 ## Requirements
@@ -104,5 +87,5 @@ firefox ./doxyout/html/index.html
 ## Links
 
 - [Source](https://github.com/smushy64/cbuild)
-- [nobuild](https://github.com/tsoding/nobuild)
+- [nob](https://github.com/tsoding/nob.h)
 

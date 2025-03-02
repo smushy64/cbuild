@@ -4,479 +4,336 @@
  * @author Alicia Amarilla (smushyaa@gmail.com)
  * @date   May 15, 2024
 */
-#define CBUILD_THREAD_COUNT 16
-#include "cbuild.h" // including the header from root
+#undef CB_IMPLEMENTATION
+#define CB_IMPLEMENTATION 1
+#include "cbuild.h"
 
-typedef enum Result {
-    RESULT_SUCCESS,
-    RESULT_ERROR_UNKNOWN,
-    RESULT_ERROR_PARSE_MODE,
-    RESULT_ERROR_PARSE_ARG,
-    RESULT_ERROR_CLEAN_REMOVE_DIR,
-    RESULT_ERROR_BUILD_CREATE_DIR,
-    RESULT_ERROR_BUILD_COMPILE,
-} Result;
+enum Mode {
+    M_HELP,
+    M_BUILD,
+    M_RUN,
 
-typedef enum Mode {
-    MODE_HELP,
-    MODE_BUILD,
-    MODE_RUN,
-    MODE_CLEAN,
+    M_COUNT
+};
+const char* cstr_from_mode( enum Mode mode );
+bool        mode_from_cstr( const char* cstr, enum Mode* out_mode );
+const char* mode_description( enum Mode mode );
 
-    MODE_COUNT
-} Mode;
+struct CommandLine {
+    int    len;
+    char** buf;
+};
+#define CL_NEXT( ptr_cl ) \
+    CB_ADVANCE( struct CommandLine, ptr_cl, 1 )
 
-String mode_to_str( Mode mode );
-String mode_description( Mode mode );
-b32 mode_from_str( String string, Mode* out_mode );
+enum Optimization {
+    OPT_NONE,
+    OPT_PERF,
+    OPT_SPACE,
+};
+const char* cstr_from_opt( enum Optimization opt );
 
-#define DEFAULT_BUILD_DIR "./build"
-#if defined(PLATFORM_WINDOWS)
-    #define PROGRAM_EXT   ".exe"
-#else
-    #define PROGRAM_EXT   ""
-#endif
-
-#if defined(COMPILER_MSVC)
-    #define ARG_OUT    "-nologo", "-Fe:"
-    #define ARG_OPT    "-O2"
-    #define ARG_NO_OPT "-Od"
-    #define ARG_SYMB   "-link", "-debug"
-#else
-    #define ARG_OUT    "-o"
-    #define ARG_OPT    "-O3"
-    #define ARG_NO_OPT "-O0"
-    #define ARG_SYMB   "-g"
-#endif
-
-#if defined(PLATFORM_MINGW) && !defined(COMPILER_MSVC)
-    #undef  ARG_SYMB
-    #define ARG_SYMB "-g", "-gcodeview", "-fuse-ld=lld", "-Wl,/debug"
-#endif
-
-#if defined(PLATFORM_WINDOWS)
-    #define defstring( macro, string ) "-D" #macro "=\\\"" string "\\\"" 
-#else
-    #define defstring( macro, string ) "-D" #macro "=\"\\\"" string "\"\\\"" 
-#endif
-
-#define PROGRAM_NAME  "test-program" PROGRAM_EXT
-
-typedef struct ParsedArgs {
-    Mode mode;
+struct Args {
+    enum Mode mode;
     union {
-        struct HelpArgs {
-            Mode mode;
+        struct ArgsHelp {
+            enum Mode mode;
         } help;
-        struct BuildArgs {
-            const char* out_dir;
-            b32 release;
-            b32 strip_symbols;
-            b32 dry;
-            b32 no_time;
+        struct ArgsBuild {
+            enum Optimization opt;
+            bool              is_debug : 1;
+            bool              is_dry   : 1;
         } build;
-        struct RunArgs {
-            struct BuildArgs build;
-            int start_args;
-            int argc;
-            const char** argv;
+        struct ArgsRun {
+            struct ArgsBuild   build;
+            struct CommandLine cl;
         } run;
-        struct CleanArgs {
-            const char* dir;
-        } clean;
     };
-} ParsedArgs;
+};
+int mode_help( struct Args* args );
+int mode_build( struct Args* args );
+int mode_run( struct Args* args );
 
-int mode_help( ParsedArgs* args );
-int mode_build( struct BuildArgs* args );
-int mode_run( struct RunArgs* args );
-int mode_clean( struct CleanArgs* args );
+int main( int argc, char** argv ) {
+    CB_INITIALIZE( CB_LOG_ALL );
 
-int main( int argc, const char** argv ) {
-    init( LOGGER_LEVEL_INFO );
+    struct CommandLine cl = { .len=argc, .buf=argv };
+    cl = CL_NEXT( &cl );
 
-    if( argc <= 1 ) {
+    struct Args args = {};
+    if( !cl.len ) {
         return mode_help( NULL );
     }
 
-    ParsedArgs parsed_args = {0};
-
-    String arg = string_from_cstr( argv[1] );
-    if( !mode_from_str( arg, &parsed_args.mode ) ) {
-        cb_error( "unrecognized mode '%s'", arg.cc );
+    if( !mode_from_cstr( cl.buf[0], &args.mode ) ) {
+        CB_ERROR( "unrecognized mode '%s'", cl.buf );
         mode_help( NULL );
-        return RESULT_ERROR_PARSE_MODE;
+        return 1;
     }
+    cl = CL_NEXT( &cl );
 
-    if( parsed_args.mode == MODE_HELP ) {
-        if( argc <= 2 ) {
-            mode_help( NULL );
-            return RESULT_SUCCESS;
-        }
-        arg = string_from_cstr( argv[2] );
-        if( mode_from_str( arg, &parsed_args.help.mode ) ) {
-            mode_help( &parsed_args );
-            return RESULT_SUCCESS;
-        } else {
-            mode_help( NULL );
-            return RESULT_SUCCESS;
-        }
-    }
+    while( cl.len ) {
+        switch( args.mode ) {
+            case M_HELP: {
+                mode_from_cstr( cl.buf[0], &args.help.mode );
+                cl = CL_NEXT( &cl );
+            } continue;
 
-    b32 break_loop = false;
-    for( int i = 2; i < argc && !break_loop; ++i ) {
-        String arg = string_from_cstr( argv[i] );
+            case M_BUILD:
+            case M_RUN:  {
 
-        if( string_is_empty( arg ) ) {
-            continue;
-        }
+                if( strcmp( cl.buf[0], "-opt-perf" ) == 0 ) {
+                    args.build.opt = OPT_PERF;
+                    goto next_iteration;
+                }
 
-        if( arg.cc[0] != '-' ) {
-            goto parse_args_end;
-        }
+                if( strcmp( cl.buf[0], "-opt-space" ) == 0 ) {
+                    args.build.opt = OPT_SPACE;
+                    goto next_iteration;
+                }
 
-        switch( parsed_args.mode ) {
-            case MODE_BUILD:
-            case MODE_RUN: {
-                if( string_cmp( arg, string_text("-o"))) {
-                    i++;
-                    if( i >= argc ) {
-                        cb_error( "argument -o requires a path after it!" );
-                        mode_help( &parsed_args );
-                        return RESULT_ERROR_PARSE_ARG;
+                if( strcmp( cl.buf[0], "-debug" ) == 0 ) {
+                    args.build.is_debug = true;
+                    goto next_iteration;
+                }
+
+                if( strcmp( cl.buf[0], "-dry" ) == 0 ) {
+                    args.build.is_dry = true;
+                    goto next_iteration;
+                }
+
+                if( args.mode == M_RUN ) {
+                    if( strcmp( cl.buf[0], "--" ) == 0 ) {
+                        args.run.cl = CL_NEXT( &cl );
+                        goto exit_loop;
                     }
-                    parsed_args.build.out_dir = argv[i];
-                    continue;
-                }
-                if( string_cmp( arg, string_text("-release"))) {
-                    parsed_args.build.release = true;
-                    continue;
-                }
-                if( string_cmp( arg, string_text("-strip-symbols"))) {
-                    parsed_args.build.strip_symbols = true;
-                    continue;
-                }
-                if( string_cmp( arg, string_text("-no-time"))) {
-                    parsed_args.build.no_time = true;
-                    continue;
-                }
-                if( string_cmp( arg, string_text("-dry"))) {
-                    parsed_args.build.dry = true;
-                    continue;
-                }
-            } break;
-            case MODE_CLEAN:
-            case MODE_COUNT:
-            case MODE_HELP: break;
-        }
-
-        switch( parsed_args.mode ) {
-            case MODE_RUN: {
-                if( string_cmp( arg, string_text( "--"))) {
-                    parsed_args.run.start_args = i + 1;
-                    parsed_args.run.argc       = argc;
-                    parsed_args.run.argv       = argv;
-
-                    break_loop = true;
-                    continue;
                 }
             } break;
 
-            case MODE_HELP:
-            case MODE_BUILD:
-            case MODE_CLEAN:
-            case MODE_COUNT: break;
+            case M_COUNT:
+                break;
         }
 
-        switch( parsed_args.mode ) {
-            case MODE_CLEAN: {
-                if( string_cmp( arg, string_text("-d"))) {
-                    i++;
-                    if( i >= argc ) {
-                        cb_error( "argument -d requires a path after it!" );
-                        mode_help( &parsed_args );
-                        return RESULT_ERROR_PARSE_ARG;
-                    }
-                    parsed_args.clean.dir = argv[i];
-                    continue;
-                }
-            } break;
-            case MODE_HELP:
-            case MODE_BUILD:
-            case MODE_RUN:
-            case MODE_COUNT: break;
-        }
+        CB_ERROR( "unrecognized argument '%s'", cl.buf[0] );
+        mode_help( &args );
+        return 1;
 
-parse_args_end:
-        cb_error( "unrecognized argument '%s'", arg.cc );
-        mode_help( &parsed_args );
-        return RESULT_ERROR_PARSE_ARG;
+    next_iteration:
+        cl = CL_NEXT( &cl );
+    }
+exit_loop:
+
+    switch( args.mode ) {
+        case M_HELP:  return mode_help( &args );
+        case M_BUILD: return mode_build( &args );
+        case M_RUN:   return mode_run( &args );
+        case M_COUNT:
+            break;
     }
 
-    switch( parsed_args.mode ) {
-        case MODE_HELP:  return mode_help( &parsed_args );
-        case MODE_BUILD: return mode_build( &parsed_args.build );
-        case MODE_RUN:   return mode_run( &parsed_args.run );
-        case MODE_CLEAN: return mode_clean( &parsed_args.clean );
-        case MODE_COUNT: return RESULT_ERROR_UNKNOWN;
-    }
+    return 0;
 }
-
-DString* path_join( DString* path, String other ) {
-    String path_str = string_from_dstring( path );
-    char last = *string_last( path_str );
-#if defined(PLATFORM_WINDOWS)
-    if( last != '/' || last != '\\' ) {
-        path = dstring_push( path, '/' );
-    }
-#else
-    if( last != '/' ) {
-        path = dstring_push( path, '/' );
-    }
-#endif
-    return dstring_append( path, other );
-}
-
-int mode_build( struct BuildArgs* args ) {
-    f64 start = timer_milliseconds();
-
-    String dir = string_empty();
-    if( args->out_dir ) {
-        dir = string_from_cstr( args->out_dir );
-    } else {
-        dir = string_text( DEFAULT_BUILD_DIR );
-
-        if( !args->dry && !path_exists( DEFAULT_BUILD_DIR) ) {
-            cb_info( "build: creating out directory . . .");
-            if( !dir_create( DEFAULT_BUILD_DIR ) ) {
-                cb_error( "build: failed to create output directory!" );
-                return RESULT_ERROR_BUILD_CREATE_DIR;
-            }
-        }
-    }
-
-    DString* output = dstring_from_string( dir );
-    output = path_join( output, string_text( PROGRAM_NAME ) );
-
-    const char* compiler = cbuild_query_compiler().cc;
-
-    CommandBuilder builder;
-    command_builder_new( compiler, &builder );
-    #define push( ... )\
-        command_builder_append( &builder, __VA_ARGS__ )
-
-    push( "src/main.c" );
-
-    push( ARG_OUT, output );
-
-    if( args->release ) {
-        push( ARG_OPT );
-    } else {
-        push( ARG_NO_OPT );
-    }
-
-    push( defstring( CBUILD_MESSAGE, "hello, world!" ) );
-
-    if( args->strip_symbols ) {
-    } else {
-        push( ARG_SYMB );
-    }
-
-
-    Command cmd = command_builder_cmd( &builder );
-
-    if( args->dry ) {
-        DString* flat = command_flatten_dstring( &cmd );
-        command_builder_free( &builder );
-
-        cb_info( "build: %s", flat );
-        dstring_free( flat );
-        dstring_free( output );
-        return RESULT_SUCCESS;
-    }
-
-    PID pid = process_exec( cmd, false, NULL, NULL, NULL, NULL );
-    dstring_free( output );
-    command_builder_free( &builder );
-
-    int res = process_wait( pid );
-
-    if( res ) {
-        cb_error( "build: failed to build! compiler exited with code %i", res );
-        return RESULT_ERROR_BUILD_COMPILE;
-    }
-
-    f64 end = timer_milliseconds();
-    if( !args->no_time ) {
-        cb_info( "build: completed in %.2fms", end - start );
-    }
-
-    #undef push
-    return RESULT_SUCCESS;
-}
-int mode_run( struct RunArgs* args ) {
-    int build_res = mode_build( &args->build );
-    if( build_res != RESULT_SUCCESS ) {
-        return build_res;
-    }
-
-    String dir = string_empty();
-    if( args->build.out_dir ) {
-        dir = string_from_cstr( args->build.out_dir );
-    } else {
-        dir = string_text( DEFAULT_BUILD_DIR );
-    }
-
-    DString* program = dstring_from_string( dir );
-    program = path_join( program, string_text( PROGRAM_NAME ) );
-
-    CommandBuilder builder;
-    command_builder_new( program, &builder );
-
-    if( args->argv ) {
-        for( int i = args->start_args; i < args->argc; ++i ) {
-            command_builder_push( &builder, args->argv[i] );
-        }
-    }
-
-    Command cmd = command_builder_cmd( &builder );
-    if( args->build.dry ) {
-        DString* flat = command_flatten_dstring( &cmd );
-        cb_info( "run: %s", flat );
-        command_builder_free( &builder );
-        dstring_free( flat );
-        return RESULT_SUCCESS;
-    }
-
-    PID pid = process_exec( cmd, false, NULL, NULL, NULL, NULL );
-    int res = process_wait( pid );
-
-    cb_info( "run: program exited with code %i", res );
-    return RESULT_SUCCESS;
-}
-int mode_clean( struct CleanArgs* args ) {
-    const char* dir = args->dir;
-    if( !dir ) {
-        dir = DEFAULT_BUILD_DIR;
-    }
-    if( !path_exists( dir ) ) {
-        cb_info( "clean: nothing to do" );
-        return RESULT_SUCCESS;
-    }
-
-    if( dir_remove( dir, true ) ) {
-        cb_info( "clean: dir '%s' removed.", dir );
-    } else {
-        cb_error( "clean: failed to remove directory '%s'!", dir );
-        return RESULT_ERROR_CLEAN_REMOVE_DIR;
-    }
-
-    return RESULT_SUCCESS;
-}
-
-int mode_help( ParsedArgs* args ) {
-    Mode mode;
-    if( !args ) {
-        mode = MODE_HELP;
-    } else {
-        if( args->mode == MODE_HELP ) {
+int mode_help( struct Args* args ) {
+    enum Mode mode = M_HELP;
+    if( args ) {
+        if( args->mode == M_HELP ) {
             mode = args->help.mode;
         } else {
             mode = args->mode;
         }
     }
-    printf( "OVERVIEW:    Cbuild example.\n" );
-    printf( "USAGE:       ./cbuild %s [args]\n",
-        mode == MODE_HELP ? "<mode>" : mode_to_str( mode ).cc );
 
+    printf( "OVERVIEW    Build example project for CBuild.\n" );
+    printf( "USAGE       ./cbuild %s [args...]\n", mode == M_HELP ? "<mode>" : cstr_from_mode( mode ) );
+    printf( "DESCRIPTION \n" );
+    printf( "  %s\n", mode_description( mode ) );
+    printf( "ARGUMENTS   \n" );
 
-    printf( "DESCRIPTION:\n" );
-    printf( "  %s\n", mode_description( mode ).cc );
-    printf( "ARGUMENTS:   \n");
     switch( mode ) {
-        case MODE_HELP: {
-            printf( "  <mode>           Name of mode to run in.\n");
-            printf( "                     valid: ");
-            for( Mode mode_i = 0; mode_i < MODE_COUNT; ++mode_i ) {
-                printf( "%s", mode_to_str( mode_i ).cc );
-                if( mode_i + 1 < MODE_COUNT ) {
-                    printf( ", " );
-                } else {
-                    printf( "\n" );
-                }
-            }
-            printf( "  help <mode:opt>  Print help for mode. ( default = help )\n");
-            printf( "                     valid: ");
-            for( Mode mode_i = 0; mode_i < MODE_COUNT; ++mode_i ) {
-                printf( "%s", mode_to_str( mode_i ).cc );
-                if( mode_i + 1 < MODE_COUNT ) {
-                    printf( ", " );
-                } else {
-                    printf( "\n" );
-                }
-            }
-        } break;
-        case MODE_BUILD: {
-            printf( "  -o <dir>        Set output directory. ( default = build )\n" );
-            printf( "                    Note: only creates directory if dir == 'build'\n" );
-            printf( "  -release        Build in release mode.\n");
-            printf( "  -strip-symbols  Strip debug symbols.\n");
-            printf( "  -no-time        Don't print time it took to build.\n" );
-            printf( "  -dry            Print configuration and exit.\n");
-        } break;
-        case MODE_RUN: {
-            printf( "  -o <dir>        Set output directory. ( default = build )\n" );
-            printf( "                    Note: only creates directory if dir == 'build'\n" );
-            printf( "  -release        Build in release mode.\n");
-            printf( "  -strip-symbols  Strip debug symbols.\n");
-            printf( "  -no-time        Don't print time it took to build.\n" );
-            printf( "  -dry            Print configuration and exit.\n");
-            printf( "  --              Stop parsing cbuild arguments. Remaining arguments are passed to project.\n");
-        } break;
-        case MODE_CLEAN: {
-            printf( "  -d <dir>  Set directory to clean. ( default = build )\n" );
-        } break;
+        case M_HELP: {
+            printf( "  <mode>  Print help for mode.\n" );
+            printf( "            valid: " );
+            for( enum Mode m = 0; m < M_COUNT; ++m ) {
+                printf( "%s", cstr_from_mode( m ) );
 
-        case MODE_COUNT:
-          break;
+                if( (m + 1) < M_COUNT ) {
+                    printf( ", " );
+                } else {
+                    putchar( '\n' );
+                }
+            }
+        } break;
+        case M_BUILD:
+        case M_RUN: {
+            printf( "  -opt-perf   Optimize for performance.\n" );
+            printf( "  -opt-space  Optimize for space.\n" );
+            printf( "  -debug      Generate debugging symbols.\n" );
+            printf( "  -dry        Don't build, just print build command.\n" );
+            if( mode == M_RUN ) {
+                printf( "  --          Stop parsing arguments and pass them along to project.\n" );
+            }
+        } break;
+        case M_COUNT:
+            break;
     }
 
     return 0;
 }
-
-String mode_to_str( Mode mode ) {
-    switch( mode ) {
-        case MODE_HELP  : return string_text( "help" );
-        case MODE_BUILD : return string_text( "build" );
-        case MODE_RUN   : return string_text( "run" );
-        case MODE_CLEAN : return string_text( "clean" );
-
-        case MODE_COUNT : return string_text( "Unknown" );
+int mode_build( struct Args* args ) {
+    if( !cb_make_directories( "build" ) ) {
+        return 1;
     }
-    return string_text( "Unknown" );
-}
-String mode_description( Mode mode ) {
-    switch( mode ) {
-        case MODE_HELP  : return string_text( "Print help for mode and exit." );
-        case MODE_BUILD : return string_text( "Build project." );
-        case MODE_RUN   : return string_text( "Build and then run project." );
-        case MODE_CLEAN : return string_text( "Clean build directory." );
 
-        case MODE_COUNT : return string_text( "Unknown" );
+    if( !args->build.is_dry ) {
+        CB_INFO( "building project . . ." );
     }
-    return string_text( "Unknown" );
+
+    double start = cb_time_msec();
+
+    CB_CommandBuilder builder = {};
+    cb_command_builder_append( &builder, "clang", "src/main.c", "-Wall", "-Wextra", "-o" );
+
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
+    cb_command_builder_append( &builder, "build/project.exe" );
+#else
+    cb_command_builder_append( &builder, "build/project" );
+#endif
+
+    switch( args->build.opt ) {
+        case OPT_NONE:
+            break;
+        case OPT_PERF: {
+            cb_command_builder_append( &builder, "-O2" );
+        } break;
+        case OPT_SPACE: {
+            cb_command_builder_append( &builder, "-Os" );
+        } break;
+    }
+
+    if( args->build.is_debug ) {
+        cb_command_builder_append( &builder, "-g" );
+    }
+
+    cb_command_builder_add_null_terminator( &builder );
+
+    if( args->build.is_dry ) {
+        CB_StringBuilder string = {};
+        cb_command_flatten( builder.cmd, &string );
+        CB_PUSH( &string, 0 );
+
+        CB_INFO( "%s", string.buf );
+        CB_FREE( string.cap, string.buf );
+
+        cb_command_builder_free( &builder );
+        return 0;
+    }
+
+    CB_ProcessID pid = {};
+    bool success = cb_process_exec_async( builder.cmd, &pid, NULL, NULL, NULL, NULL, NULL );
+    cb_command_builder_free( &builder );
+
+    if( !success ) {
+        CB_ERROR( "failed to run build command!" );
+        return 1;
+    }
+
+    int exit_code = cb_process_wait( &pid );
+    if( exit_code ) {
+        CB_ERROR( "failed to build project!" );
+        return exit_code;
+    }
+
+    CB_INFO( "built project in %fms", cb_time_msec() - start );
+    return 0;
 }
-b32 mode_from_str( String string, Mode* out_mode ) {
-    for( Mode mode = 0; mode < MODE_COUNT; ++mode ) {
-        String mode_str = mode_to_str( mode );
-        if( string_cmp( mode_str, string ) ) {
-            *out_mode = mode;
+int mode_run( struct Args* args ) {
+    int result = 0;
+    if( ( result = mode_build( args ) ) ) {
+        return result;
+    }
+
+    if( !args->build.is_dry ) {
+        CB_INFO( "running project . . ." );
+    }
+
+    CB_CommandBuilder builder = {};
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
+    cb_command_builder_append( &builder, "./build/project.exe" );
+#else
+    cb_command_builder_append( &builder, "./build/project" );
+#endif
+
+    for( int i = 0; i < args->run.cl.len; ++i ) {
+        cb_command_builder_append( &builder, args->run.cl.buf[i] );
+    }
+    cb_command_builder_add_null_terminator( &builder );
+
+    if( args->build.is_dry ) {
+        CB_StringBuilder string = {};
+        cb_command_flatten( builder.cmd, &string );
+
+        CB_INFO( "%s", string.buf );
+
+        CB_FREE( string.cap, string.buf );
+        cb_command_builder_free( &builder );
+        return 0;
+    }
+
+    CB_ProcessID pid = {};
+    if( !cb_process_exec_async( builder.cmd, &pid, NULL, NULL, NULL, NULL, NULL ) ) {
+        return 1;
+    }
+
+    int exit_code = cb_process_wait( &pid );
+    if( exit_code < 0 ) {
+        CB_ERROR( "failed to wait for project.");
+        return 1;
+    }
+
+    CB_INFO( "project exited with code %i.", exit_code );
+    return 0;
+}
+
+const char* cstr_from_opt( enum Optimization opt ) {
+    switch( opt ) {
+        case OPT_NONE:  return "none";
+        case OPT_PERF:  return "performance";
+        case OPT_SPACE: return "space";
+    }
+    return "";
+}
+
+const char* cstr_from_mode( enum Mode mode ) {
+    switch( mode ) {
+        case M_HELP:  return "help";
+        case M_BUILD: return "build";
+        case M_RUN:   return "run";
+        case M_COUNT:
+            break;
+    }
+    return "";
+}
+bool mode_from_cstr( const char* cstr, enum Mode* out_mode ) {
+    for( enum Mode m = 0; m < M_COUNT; ++m ) {
+        if( strcmp( cstr, cstr_from_mode( m ) ) == 0 ) {
+            *out_mode = m;
             return true;
         }
     }
     return false;
 }
+const char* mode_description( enum Mode mode ) {
+    switch( mode ) {
+        case M_HELP:
+            return "Print help and exit.";
+        case M_BUILD:
+            return "Build project.";
+        case M_RUN:
+            return "Build and run project.";
+        case M_COUNT:
+            break;
+    }
+    return "";
+}
 
-#define CBUILD_IMPLEMENTATION
-#define CBUILD_ADDITIONAL_FLAGS "-I.."
-#include "cbuild.h"
+

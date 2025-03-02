@@ -1,25 +1,25 @@
 /**
  * @file   main.c
- * @brief  C Build example project
+ * @brief  Main function for example.
  * @author Alicia Amarilla (smushyaa@gmail.com)
- * @date   May 15, 2024
+ * @date   March 01, 2025
 */
-#include <stdio.h>
-#include <string.h>
+#undef CB_IMPLEMENTATION
+#define CB_IMPLEMENTATION 1
+#include "../cbuild.h" /* CBuild can be used both in build program and project! */
 
-#if !defined(CBUILD_MESSAGE)
-    #define CBUILD_MESSAGE ""
-#endif
+#include <stdio.h>
 
 int main( int argc, char** argv ) {
-    for( int i = 1; i < argc; ++i ) {
-        printf( "%i: %s\n", i, argv[i] );
+    printf( CB_COLOR_WHITE );
+
+    printf( "hello from project!\n" );
+    for( int i = 0; i < argc; ++i ) {
+        printf( "  %i: %s\n", i, argv[i] );
     }
 
-    if( strlen( CBUILD_MESSAGE ) ) {
-        printf( "message from cbuild: " CBUILD_MESSAGE "\n" );
-    }
+    printf( CB_COLOR_RESET );
+    fflush( stdout );
     return 0;
 }
-
 
