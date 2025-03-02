@@ -63,9 +63,9 @@ extern void exit( int status );
             ) - opt_old_size )
 
     /// @brief Free memory.
-    /// @param     size Size of memory to free.
     /// @param[in] ptr  Pointer to memory to free.
-    #define CB_FREE( size, ptr ) \
+    /// @param     size Size of memory to free.
+    #define CB_FREE( ptr, size ) \
         free( ptr )
 
 #endif
@@ -3760,12 +3760,12 @@ bool cb_directory_copy(
     CB_APPEND( &params.dst_builder, params.dst_len, dst );
 
     if( !cb_directory_walk( src, _cb_internal_directory_copy_walk, &params ) ) {
-        CB_FREE( params.src_builder.cap, params.src_builder.buf );
-        CB_FREE( params.dst_builder.cap, params.dst_builder.buf );
+        CB_FREE( params.src_builder.buf, params.src_builder.cap );
+        CB_FREE( params.dst_builder.buf, params.dst_builder.cap );
         return false;
     }
-    CB_FREE( params.src_builder.cap, params.src_builder.buf );
-    CB_FREE( params.dst_builder.cap, params.dst_builder.buf );
+    CB_FREE( params.src_builder.buf, params.src_builder.cap );
+    CB_FREE( params.dst_builder.buf, params.dst_builder.cap );
 
     return params.result;
 }
@@ -3797,7 +3797,7 @@ bool cb_read_entire_file(
     void* buffer = CB_ALLOC( NULL, 0, size );
     if( !cb_file_read( &file, size, buffer, NULL ) ) {
         cb_file_close( &file );
-        CB_FREE( size, buffer );
+        CB_FREE( buffer, size );
         return false;
     }
 
@@ -3888,7 +3888,7 @@ void cb_command_builder_remove( CB_CommandBuilder* builder, int index ) {
     builder->len--;
 
     if( buffer ) {
-        CB_FREE( strlen( buffer ) + 1, buffer );
+        CB_FREE( buffer, strlen( buffer ) + 1 );
     }
 }
 void cb_command_builder_free( CB_CommandBuilder* builder ) {
@@ -3899,10 +3899,10 @@ void cb_command_builder_free( CB_CommandBuilder* builder ) {
     for( int i = 0; i < builder->len; ++i ) {
         char* buffer = (char*)(builder->buf[i]);
         if( buffer ) {
-            CB_FREE( strlen( buffer ) + 1, buffer );
+            CB_FREE( buffer, strlen( buffer ) + 1 );
         }
     }
-    CB_FREE( sizeof(const char*) * builder->len, builder->buf );
+    CB_FREE( builder->buf, sizeof(const char*) * builder->len );
     memset( builder, 0, sizeof(*builder) );
 }
 void cb_command_builder_add_null_terminator( CB_CommandBuilder* builder ) {
@@ -3938,15 +3938,15 @@ void cb_environment_builder_free(
         char* value = (char*)(environment->value[i]);
 
         if( name ) {
-            CB_FREE( strlen(name) + 1, name );
+            CB_FREE( name, strlen(name) + 1 );
         }
         if( value ) {
-            CB_FREE( strlen(value) + 1, value );
+            CB_FREE( value, strlen(value) + 1 );
         }
     }
 
-    CB_FREE( sizeof(const char*) * environment->cap, environment->name );
-    CB_FREE( sizeof(const char*) * environment->cap, environment->value );
+    CB_FREE( environment->name , sizeof(const char*) * environment->cap );
+    CB_FREE( environment->value, sizeof(const char*) * environment->cap  );
 }
 void cb_environment_builder_append(
     CB_EnvironmentBuilder* environment, const char* name, const char* value
@@ -3995,10 +3995,10 @@ void cb_environment_builder_remove_by_index(
     char* value_buffer = (char*)(environment->value[index]);
 
     if( name_buffer ) {
-        CB_FREE( strlen(name_buffer) + 1, name_buffer );
+        CB_FREE( name_buffer, strlen(name_buffer) + 1 );
     }
     if( value_buffer ) {
-        CB_FREE( strlen(value_buffer) + 1, value_buffer );
+        CB_FREE( value_buffer, strlen(value_buffer) + 1 );
     }
 
     memmove(
@@ -4028,7 +4028,7 @@ void cb_environment_builder_replace_by_index(
     CB_EnvironmentBuilder* environment, int index, const char* new_value
 ) {
     char* buffer = (char*)(environment->value[index]);
-    CB_FREE( strlen(buffer) + 1, buffer );
+    CB_FREE( buffer, strlen(buffer) + 1 );
 
     int new_value_len = strlen( new_value );
     buffer = CB_ALLOC( NULL, 0, new_value_len + 1 );
@@ -4737,7 +4737,7 @@ bool cb_process_exec_async(
     cb_command_flatten( cmd, &builder );
     CB_PUSH( &builder, 0 );
     CB_INFO( "  > %s", builder.buf );
-    CB_FREE( builder.cap, builder.buf );
+    CB_FREE( builder.buf, builder.cap );
 
     // NOTE(alicia): execvp should only return if command failed to execute.
     execvp( cmd.buf[0], (char* const*)(cmd.buf) );
@@ -5578,7 +5578,7 @@ void cb_file_write_fmt_va( CB_File* file, const char* fmt, va_list va ) {
         uint8_t* utf8 = CB_ALLOC( NULL, 0, len + 1 );
         vsnprintf( utf8, UTF8_SIZE, fmt, va );
         cb_file_write( file, len, utf8, NULL );
-        CB_FREE( len + 1, utf8 );
+        CB_FREE( utf8, len + 1 );
     }
 }
 bool cb_file_remove( const char* path_utf8 ) {
@@ -5904,7 +5904,7 @@ bool cb_process_exec_async(
             CB_ERROR(
                 "Windows: cb_process_exec(): failed to obtain environment block "
                 "of the calling process!" );
-            CB_FREE( sizeof(uint16_t) * cmdline.cap, cmdline.buf );
+            CB_FREE( cmdline.buf, sizeof(uint16_t) * cmdline.cap );
             return false;
         }
 
@@ -5954,9 +5954,9 @@ bool cb_process_exec_async(
         dwCreationFlags, env.buf, working_directory, &startup, &info );
     DWORD error_code = GetLastError();
 
-    CB_FREE( sizeof(uint16_t) * cmdline.cap, cmdline.buf );
+    CB_FREE( cmdline.buf, sizeof(uint16_t) * cmdline.cap );
     if( opt_environment ) {
-        CB_FREE( sizeof(uint16_t) * env.cap, env.buf );
+        CB_FREE( env.buf, sizeof(uint16_t) * env.cap );
     }
 
     if( result ) {
