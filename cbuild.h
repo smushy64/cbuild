@@ -4727,13 +4727,20 @@ bool cb_process_exec_async(
         CB_ERROR( "POSIX: failed to duplicate stderr!" );
     }
 
+    CB_StringBuilder builder = {};
     if( opt_environment ) {
         for( int i = 0; i < opt_environment->len; ++i ) {
             setenv( opt_environment->name[i], opt_environment->value[i], true );
+            int name_len  = strlen( opt_environment->name[i] );
+            int value_len = strlen( opt_environment->value[i] );
+
+            CB_APPEND( &builder, name_len, opt_environment->name[i] );
+            CB_PUSH( &builder, '=' );
+            CB_APPEND( &builder, value_len, opt_environment->value[i] );
+            CB_PUSH( &builder, ' ' );
         }
     }
 
-    CB_StringBuilder builder = {};
     cb_command_flatten( cmd, &builder );
     CB_PUSH( &builder, 0 );
     CB_INFO( "  > %s", builder.buf );
@@ -5943,10 +5950,24 @@ bool cb_process_exec_async(
         CB_INFO( "chdir: '%s'", opt_working_directory );
     }
 
-    CB_INFO( "%S", cmdline.buf );
     DWORD dwCreationFlags = 0;
     if( opt_environment ) {
+        CB_StringBuilder env_string = {};
+        for( int i = 0; i < opt_environment->len; ++i ) {
+            int name_len  = strlen( opt_environment->name[i] );
+            int value_len = strlen( opt_environment->value[i] );
+
+            CB_APPEND( &env_string, name_len, opt_environment->name[i] );
+            CB_PUSH( &env_string, '=' );
+            CB_APPEND( &env_string, value_len, opt_environment->value[i] );
+            CB_PUSH( &env_string, ' ' );
+        }
+        CB_INFO( "  > %s%S", env_string.buf, cmdline.buf );
+        CB_FREE( env_string.buf, env_string.cap );
+
         dwCreationFlags = CREATE_UNICODE_ENVIRONMENT;
+    } else {
+        CB_INFO( "  > %S", cmdline.buf );
     }
 
     BOOL result = CreateProcessW(
