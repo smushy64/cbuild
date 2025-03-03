@@ -2003,6 +2003,17 @@ bool cb_path_query_time_create( const char* path_utf8, CB_Time* out_time );
 ///     - @c true  : Queried file info successfully.
 ///     - @c false : File does not exist at given path or permissions locked.
 bool cb_path_query_info( const char* path_utf8, CB_FileInfo* out_info );
+/// @brief Create canonical path.
+///
+/// @warning
+/// This is the only function that allocates using malloc
+/// so use free() to free the result!
+///
+/// @param[in] path_utf8 Path to canonicalize.
+/// @return
+///     - @c NULL : failed to canonicalize path.
+///     - path    : Canonical path. Must be freed with free()!
+char* cb_path_canonicalize( const char* path_utf8 );
 
 /// @brief Open file.
 /// @param[in]  path_utf8 UTF-8 encoded path.
@@ -2369,6 +2380,7 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define path_query_time_modify                   cb_path_query_time_modify
 #define path_query_time_create                   cb_path_query_time_create
 #define path_query_info                          cb_path_query_info
+#define path_canonicalize                        cb_path_canonicalize
 #define file_open                                cb_file_open
 #define file_close                               cb_file_close
 #define file_seek                                cb_file_seek
@@ -4356,6 +4368,10 @@ bool cb_path_query_info( const char* path_utf8, CB_FileInfo* out_info ) {
 
     return true;
 }
+char* cb_path_canonicalize( const char* path_utf8 ) {
+    char* result = realpath( path_utf8, NULL );
+    return result;
+}
 
 bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file ) {
     int    oflag = 0;
@@ -5427,6 +5443,25 @@ bool cb_path_query_info( const char* path_utf8, CB_FileInfo* out_info ) {
     out_info->time.modify = cb_windows_time_from_filetime( data.ftLastWriteTime );
 
     return true;
+}
+char* cb_path_canonicalize( const char* path_utf8 ) {
+    uint16_t* utf16_buf = cb_windows_utf16_buf();
+    int utf16_len = cb_windows_utf16_path_from_utf8(
+        UTF16_SIZE, utf16_buf, strlen(path_utf8), path_utf8 );
+    if( !utf16_len ) {
+        return NULL;
+    }
+    utf16_buf += sizeof("\\\\?");
+    utf16_len -= sizeof("\\\\?");
+
+    uint8_t* temp_utf8 = cb_windows_utf8_buf();
+    int utf8_len = cb_windows_cvt_utf8_from_utf16(
+        UTF8_SIZE, temp_utf8, utf16_len, utf16_buf );
+
+    char* result = malloc( utf8_len + 1 );
+    memcpy( result, temp_utf8, utf8_len );
+    result[utf8_len] = 0;
+    return result;
 }
 
 bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file ) {
