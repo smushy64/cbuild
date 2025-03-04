@@ -697,6 +697,16 @@ extern void exit( int status );
 #define CB_INITIALIZE( log_level )\
     cb_initialize( log_level, argv[0], __FILE__, argc, (const char**)argv )
 
+/// @brief Copy prototype into destination buffer.
+/// @param[in] dst       (void*)     Destination buffer.
+/// @param[in] prototype (any*)      Pointer to start of prototype.
+/// @param     count     (uintptr_t) Number of times to copy @c prototype to @c dst.
+///                         @c dst must have enough space for
+///                         sizeof( @c prototype[0] ) * @c count bytes.
+/// @return Pointer to @c dst.
+#define CB_STAMP( dst, prototype, count ) \
+    cb_stamp( dst, sizeof((prototype)[0]), (prototype), count )
+
 /// @brief Push item to dynamic array.
 /// @param darray Pointer to dynamic array (struct with cap, len and buf fields)
 /// @param item   Item to push to end of dynamic array.
@@ -1041,6 +1051,9 @@ typedef struct CB_CommandBuilder {
         /// @brief Command.
         CB_Command cmd;
     };
+
+    /// @brief Builder for backing string buffer.
+    CB_StringBuilder string;
 } CB_CommandBuilder;
 
 /// @brief Process environment.
@@ -1053,20 +1066,35 @@ typedef struct CB_EnvironmentBuilder {
     const char** name;
     /// @brief Key + value pair values.
     const char** value;
+
+    /// @brief Builder for backing string buffer.
+    CB_StringBuilder string;
 } CB_EnvironmentBuilder;
 
+#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
 /// @brief Process ID.
 typedef struct CB_ProcessID {
-#if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     void* _internal_handle;
-#else
-    int _internal_handle;
-#endif
 } CB_ProcessID;
+/// @brief Make PIDs NULL.
+#define CB_PID_NULL( count, pids ) \
+    CB_STAMP( pids, (intptr_t[]){ -1 }, count )
+/// @brief Check if PID is NULL.
+#define CB_PID_IS_NULL( pid ) \
+    ((intptr_t)((pid)->_internal_handle) < 0)
+#else
+/// @brief Process ID.
+typedef struct CB_ProcessID {
+    int _internal_handle;
+} CB_ProcessID;
+/// @brief Make PIDs NULL.
+#define CB_PID_NULL( count, pids ) \
+    CB_STAMP( pids, (int[]){ -1 }, count )
+/// @brief Check if PID is NULL.
+#define CB_PID_IS_NULL( pid ) \
+    ((pid)->_internal_handle < 0)
+#endif
 
-/// @brief Create null process ID.
-#define CB_PROCESS_ID_NULL() \
-    CB_STRUCT( CB_ProcessID ){ ._internal_handle=0 }
 
 /// @brief UTF-8 code point.
 typedef union CB_UTFCodePoint8 {
@@ -1155,6 +1183,18 @@ char* cb_local_buf_fmt_va( const char* fmt, va_list va );
 /// @param     ... Format arguments.
 /// @return Formatted local buffer.
 char* cb_local_buf_fmt( const char* fmt, ... );
+
+/// @brief Copy prototype into destination buffer.
+/// @param[in] dst            Destination buffer.
+/// @param     prototype_size Size of prototype in bytes.
+/// @param[in] prototype      Pointer to start of prototype.
+/// @param     count          Number of times to copy @c prototype to @c dst.
+///                              @c dst must have enough space for
+///                              @c prototype_size * @c count bytes.
+/// @return Pointer to @c dst.
+void* cb_stamp(
+    void* dst, uintptr_t prototype_size,
+    const void* prototype, uintptr_t count );
 
 /// @brief Allocate a formatted string buffer.
 /// @param[in] fmt Format string.
@@ -1803,67 +1843,71 @@ int cb_which_file_is_newer_many_array(
 /// @param[in,out] string  Pointer to string builder to flatten command into.
 void cb_command_flatten( CB_Command command, CB_StringBuilder* string );
 
-/// @brief Create new command builder.
-/// @param ... Command builder + initial arguments.
-#define cb_command_builder_new( ... ) \
-    _cb_internal_command_builder_new( __VA_ARGS__, NULL )
 /// @brief Append commands to end of command builder.
 /// @param ... Command builder + commands to append.
 #define cb_command_builder_append( ... ) \
     _cb_internal_command_builder_append( __VA_ARGS__, NULL )
-/// @brief Append null pointer to end of command.
-///
-/// @note
-/// A null pointer is required at the end of command in order to run command.
-///
-/// @param[in] builder Pointer to command builder.
-void cb_command_builder_add_null_terminator( CB_CommandBuilder* builder );
-/// @brief Remove null pointer from end of command.
-///
-/// @note
-/// A null pointer is required at the end of command in order to run command.
-///
-/// @param[in] builder Pointer to command builder.
-void cb_command_builder_remove_null_terminator( CB_CommandBuilder* builder );
 /// @brief Create command builder from existing command.
 /// @param[out] builder Pointer to command builder.
 /// @param      cmd     Command to create builder from.
 void cb_command_builder_from_cmd( CB_CommandBuilder* builder, CB_Command cmd );
+/// @brief Remove argument by name.
+/// @param[in] builder Pointer to command builder to remove command from.
+/// @param[in] name    Name of argument to remove.
+/// @return
+///     - @c true  : @c name found and removed.
+///     - @c false : Failed to find @c name.
+bool cb_command_builder_remove_by_name( CB_CommandBuilder* builder, const char* name );
 /// @brief Remove command from builder.
 /// @param[in] builder Pointer to command builder to remove command from.
 /// @param     index   Index of command to remove.
 void cb_command_builder_remove( CB_CommandBuilder* builder, int index );
+/// @brief Replace command argument by name.
+/// @param[in] builder   Pointer to command builder to replace command in.
+/// @param[in] name      Argument to replace.
+/// @param[in] new_value Value to replace argument with.
+/// @return
+///     - @c true  : @c name found and removed.
+///     - @c false : Failed to find @c name.
+bool cb_command_builder_replace_by_name(
+    CB_CommandBuilder* builder, const char* name, const char* new_value );
+/// @brief Replace command argument.
+/// @param[in] builder   Pointer to command builder to replace command in.
+/// @param     index     Index of argument to replace.
+/// @param[in] new_value Value to replace argument with.
+void cb_command_builder_replace( CB_CommandBuilder* builder, int index, const char* new_value );
+/// @brief Reset builder in order to reuse memory.
+/// @param[in] builder Pointer to command builder.
+void cb_command_builder_reset( CB_CommandBuilder* builder );
 /// @brief Free command builder.
 /// @param[in] builder Pointer to command builder to free.
 void cb_command_builder_free( CB_CommandBuilder* builder );
 
-/// @brief Create process environment builder.
-/// @param[out] out_environment Pointer to write new environment builder to.
-/// @param[in]  opt_capacity    (optional) Initial capacity to allocate for environment builder.
-void cb_environment_builder_new(
-    CB_EnvironmentBuilder* out_environment, int* opt_capacity );
-/// @brief Free environment builder.
-/// @param[in] environment Pointer to environment builder to free.
-void cb_environment_builder_free(
-    CB_EnvironmentBuilder* environment );
 /// @brief Append new environment variable to end of environment builder.
 /// @param[in] builder Pointer to environment builder.
 /// @param[in] name    Name of variable.
 /// @param[in] value   Value of variable.
 void cb_environment_builder_append(
     CB_EnvironmentBuilder* environment, const char* name, const char* value );
+/// @brief Reset builder in order to reuse memory.
+/// @param[in] builder Pointer to environment builder.
+void cb_environment_builder_reset( CB_EnvironmentBuilder* builder );
+/// @brief Free environment builder.
+/// @param[in] environment Pointer to environment builder to free.
+void cb_environment_builder_free(
+    CB_EnvironmentBuilder* environment );
 /// @brief Remove environment variable from environment builder.
 /// @param[in] builder Pointer to environment builder.
 /// @param[in] name    Name of environment variable to remove.
 /// @return
 ///     - @c true  : Environment variable found and removed.
 ///     - @c false : Failed to find environment variable.
-bool cb_environment_builder_remove(
+bool cb_environment_builder_remove_by_name(
     CB_EnvironmentBuilder* environment, const char* name );
 /// @brief Remove environment variable from environment builder.
 /// @param[in] builder Pointer to environment builder.
 /// @param     index   Index of variable to remove.
-void cb_environment_builder_remove_by_index(
+void cb_environment_builder_remove(
     CB_EnvironmentBuilder* environment, int index );
 /// @brief Replace environment variable in environment builder.
 /// @param[in] environment Pointer to environment builder.
@@ -1872,13 +1916,13 @@ void cb_environment_builder_remove_by_index(
 /// @return
 ///     - @c true  : Environment variable found and replaced.
 ///     - @c false : Failed to find environment variable.
-bool cb_environment_builder_replace(
+bool cb_environment_builder_replace_by_name(
     CB_EnvironmentBuilder* environment, const char* name, const char* new_value );
 /// @brief Replace environment variable in environment builder.
 /// @param[in] environment Pointer to environment builder.
 /// @param[in] index       Index of variable whose value should be replaced.
 /// @param[in] new_value   New value of variable.
-void cb_environment_builder_replace_by_index(
+void cb_environment_builder_replace(
     CB_EnvironmentBuilder* environment, int index, const char* new_value );
 
 /// @brief Execute process command.
@@ -1902,34 +1946,18 @@ bool cb_process_exec(
     CB_PipeWrite*          opt_stderr );
 
 /// @brief Execute process command.
-/// @param ... Command + arguments.
-/// @return
-///     - 0-255 : Process exited normally and this is the exit code.
-///     - -1    : Process exited abnormally.
-///     - -2    : Error occurred when executing process.
-#define cb_process_exec_quick( ... )  \
-    _cb_internal_process_exec_quick( NULL, NULL, NULL, NULL, NULL, __VA_ARGS__, NULL )
-/// @brief Execute process command.
+/// @param      cmd                   Command to execute.
 /// @param[in]  opt_working_directory (optional,const char*)            Working directory path.
 /// @param[in]  opt_environment       (optional,CB_EnvironmentBuilder*) Environment to execute process in.
 /// @param[in]  opt_stdin             (optional,CB_PipeRead*)           Pointer to stdin pipe.
 /// @param[in]  opt_stdout            (optional,CB_PipeWrite*)          Pointer to stdout pipe.
 /// @param[in]  opt_stderr            (optional,CB_PipeWrite*)          Pointer to stderr pipe.
-/// @param ... Command + arguments.
 /// @return
 ///     - 0-255 : Process exited normally and this is the exit code.
 ///     - -1    : Process exited abnormally.
 ///     - -2    : Error occurred when executing process.
-#define cb_process_exec_quick_ex( \
-    opt_working_directory,        \
-    opt_environment,              \
-    opt_stdin,                    \
-    opt_stdout,                   \
-    opt_stderr,                   \
-    ...                           \
-) _cb_internal_process_exec_quick( \
-    opt_working_directory, opt_environment, \
-    opt_stdin, opt_stdout, opt_stderr, __VA_ARGS__, NULL )
+#define cb_process_exec_quick( cmd, ... )  \
+    _cb_internal_process_exec_quick( cmd, __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
 
 /// @brief Wait for series of processes.
 /// @param      count              Number of process IDs to wait for.
@@ -2232,6 +2260,7 @@ bool cb_process_is_in_path( const char* process_name );
 // NOTE(alicia): Internal Functions
 
 int _cb_internal_process_exec_quick(
+    CB_Command             cmd,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
     CB_PipeRead*           opt_stdin,
@@ -2277,6 +2306,7 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define local_buf                                cb_local_buf
 #define local_buf_fmt_va                         cb_local_buf_fmt_va
 #define local_buf_fmt                            cb_local_buf_fmt
+#define stamp                                    cb_stamp
 #define alloc_fmt_va                             cb_alloc_fmt_va
 #define alloc_fmt                                cb_alloc_fmt
 #define string_cmp                               cb_string_cmp
@@ -2350,20 +2380,21 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define which_file_is_newer_many_array           cb_which_file_is_newer_many_array
 #define which_file_is_newer_many                 cb_which_file_is_newer_many
 #define command_flatten                          cb_command_flatten
-#define command_builder_new                      cb_command_builder_new
 #define command_builder_append                   cb_command_builder_append
-#define command_builder_add_null_terminator      cb_command_builder_add_null_terminator
-#define command_builder_remove_null_terminator   cb_command_builder_remove_null_terminator
 #define command_builder_from_cmd                 cb_command_builder_from_cmd
+#define command_builder_remove_by_name           cb_command_builder_remove_by_name
 #define command_builder_remove                   cb_command_builder_remove
+#define command_builder_remove                   cb_command_builder_remove
+#define command_builder_replace_by_name          cb_command_builder_replace_by_name
+#define command_builder_reset                    cb_command_builder_reset 
 #define command_builder_free                     cb_command_builder_free
-#define environment_builder_new                  cb_environment_builder_new
-#define environment_builder_free                 cb_environment_builder_free
 #define environment_builder_append               cb_environment_builder_append
+#define environment_builder_reset                cb_environment_builder_reset
+#define environment_builder_free                 cb_environment_builder_free
+#define environment_builder_remove_by_name       cb_environment_builder_remove_by_name
 #define environment_builder_remove               cb_environment_builder_remove
-#define environment_builder_remove_by_index      cb_environment_builder_remove_by_index
+#define environment_builder_replace_by_name      cb_environment_builder_replace_by_name
 #define environment_builder_replace              cb_environment_builder_replace
-#define environment_builder_replace_by_index     cb_environment_builder_replace_by_index
 #define process_exec                             cb_process_exec
 #define process_exec_quick                       cb_process_exec_quick
 #define process_exec_quick_ex                    cb_process_exec_quick_ex
@@ -2534,7 +2565,6 @@ void cb_rebuild(
 
     }
 
-    cb_command_builder_add_null_terminator( &builder );
     cb_command_flatten( builder.cmd, &string );
     CB_PUSH( &string, 0 );
 
@@ -2561,7 +2591,9 @@ void cb_rebuild(
         CB_PANIC( "failed to rename existing executable!" );
     }
 
-    CB_ProcessID pid = CB_PROCESS_ID_NULL();
+    CB_ProcessID pid;
+    CB_PID_NULL( 1, &pid );
+
     if( !cb_process_exec_async(
         builder.cmd,
         &pid,
@@ -2617,7 +2649,6 @@ void cb_rebuild(
     for( int i = 1; i < argc; ++i ) {
         cb_command_builder_append( &builder, argv[i] );
     }
-    cb_command_builder_add_null_terminator( &builder );
 
     int exit_code = 0;
     if( !cb_process_exec( builder.cmd, &exit_code, NULL, NULL, NULL, NULL, NULL ) ) {
@@ -2648,6 +2679,17 @@ char* cb_local_buf_fmt( const char* fmt, ... ) {
     char* result = cb_local_buf_fmt_va( fmt, va );
     va_end( va );
     return result;
+}
+void* cb_stamp(
+    void* dst, uintptr_t prototype_size,
+    const void* prototype, uintptr_t count
+) {
+    char* target = (char*)dst;
+    for( uintptr_t i = 0; i < count; ++i ) {
+        memcpy( target, prototype, prototype_size );
+        target += prototype_size;
+    }
+    return dst;
 }
 
 char* cb_alloc_fmt_va( const char* fmt, va_list va ) {
@@ -3888,164 +3930,206 @@ void cb_command_flatten( CB_Command command, CB_StringBuilder* string ) {
 }
 void cb_command_builder_from_cmd( CB_CommandBuilder* builder, CB_Command cmd ) {
     for( int i = 0; i < cmd.len; ++i ) {
-        int   len    = strlen( cmd.buf[i] );
-        char* buffer = CB_ALLOC( NULL, 0, len + 1 );
-
-        CB_PUSH( builder, memcpy( buffer, cmd.buf[i], len ) );
+        cb_command_builder_append( builder, cmd.buf[i] );
     }
 }
-void cb_command_builder_remove( CB_CommandBuilder* builder, int index ) {
-    char* buffer = (char*)(builder->buf[index]);
-    memmove( builder->buf + index, builder->buf + index + 1, builder->len - (index + 1) );
-    builder->len--;
-
-    if( buffer ) {
-        CB_FREE( buffer, strlen( buffer ) + 1 );
+bool cb_command_builder_remove_by_name( CB_CommandBuilder* builder, const char* name ) {
+    for( int i = 0; i < builder->len; ++i ) {
+        if( !builder->buf[i] ) {
+            continue;
+        }
+        if( strcmp( builder->buf[i], name ) == 0 ) {
+            cb_command_builder_remove( builder, i );
+            return true;
+        }
     }
+    return false;
+}
+void cb_command_builder_remove( CB_CommandBuilder* builder, int index ) {
+    CB_ASSERT(
+        index < builder->len,
+        "%s(): index is out of range! index: %i length: %i",
+        index, builder->len );
+    CB_ASSERT( builder->len, "%s(): command builder is already empty!", __func__ );
+    memmove(
+        builder->buf + index,
+        builder->buf + index + 1,
+        sizeof(char*) * (builder->len - (index + 1)) );
+    builder->len--;
+}
+bool cb_command_builder_replace_by_name(
+    CB_CommandBuilder* builder, const char* name, const char* new_value
+) {
+    for( int i = 0; i < builder->len; ++i ) {
+        if( builder->buf[i] && (strcmp( builder->buf[i], name ) == 0) ) {
+            cb_command_builder_replace( builder, i, new_value );
+            return true;
+        }
+    }
+    return false;
+}
+void cb_command_builder_replace(
+    CB_CommandBuilder* builder, int index, const char* new_value
+) {
+    CB_ASSERT(
+        index < builder->len,
+        "%s(): index is out of range! index: %i length: %i",
+        index, builder->len );
+
+    // NOTE(alicia): convert all strings to offsets into string builder.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->buf[i] = (char*)((char*)builder->buf[i] - builder->string.buf);
+    }
+
+    builder->buf[index] = (const char*)(uintptr_t)builder->string.len;
+    CB_APPEND( &builder->string, strlen( new_value ) + 1, new_value );
+
+    // NOTE(alicia): convert all strings back to pointers.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->buf[i] = builder->string.buf + (uintptr_t)builder->buf[i];
+    }
+
+    if( index == (builder->len - 1) ) {
+        CB_PUSH( builder, NULL );
+    }
+}
+void cb_command_builder_reset( CB_CommandBuilder* builder ) {
+    builder->len        = 0;
+    builder->string.len = 0;
 }
 void cb_command_builder_free( CB_CommandBuilder* builder ) {
     if( !builder ) {
         return;
     }
-
-    for( int i = 0; i < builder->len; ++i ) {
-        char* buffer = (char*)(builder->buf[i]);
-        if( buffer ) {
-            CB_FREE( buffer, strlen( buffer ) + 1 );
-        }
-    }
-    CB_FREE( builder->buf, sizeof(const char*) * builder->len );
+    CB_FREE( builder->buf, sizeof(char*) * builder->cap );
+    CB_FREE( builder->string.buf, builder->string.cap );
     memset( builder, 0, sizeof(*builder) );
 }
-void cb_command_builder_add_null_terminator( CB_CommandBuilder* builder ) {
-    CB_PUSH( builder, NULL );
-}
-void cb_command_builder_remove_null_terminator( CB_CommandBuilder* builder ) {
-    if( builder->len && !builder->buf[builder->len - 1] ) {
-        builder->len--;
-    }
-}
 
-void cb_environment_builder_new(
-    CB_EnvironmentBuilder* out_environment, int* opt_capacity
+void cb_environment_builder_append(
+    CB_EnvironmentBuilder* builder, const char* name, const char* value
 ) {
-    int cap = 5;
-    if( opt_capacity ) {
-        cap = *opt_capacity;
+    CB_ASSERT( name && value, "name and value must be non-null!" );
+
+    // NOTE(alicia): convert all strings to offsets into string builder.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->name[i]  = (char*)((char*)builder->name[i] - builder->string.buf);
+        builder->value[i] = (char*)((char*)builder->value[i] - builder->string.buf);
     }
 
-    const char** names  = CB_ALLOC( NULL, 0, sizeof(const char*) * cap );
-    const char** values = CB_ALLOC( NULL, 0, sizeof(const char*) * cap );
+    if( (builder->len + 1) >= builder->cap ) {
+        int new_cap = builder->cap + 5;
 
-    out_environment->cap   = cap;
-    out_environment->len   = 0;
-    out_environment->name  = names;
-    out_environment->value = values;
+        builder->name = CB_ALLOC(
+            builder->name,
+            sizeof(char*) * builder->cap,
+            sizeof(char*) * new_cap );
+
+        builder->value = CB_ALLOC(
+            builder->value,
+            sizeof(char*) * builder->cap,
+            sizeof(char*) * new_cap );
+
+        builder->cap = new_cap;
+    }
+
+    int name_len  = strlen(name);
+    int value_len = strlen(value);
+
+    builder->name[builder->len]  = (const char*)(uintptr_t)builder->string.len;
+    builder->value[builder->len] = (const char*)(uintptr_t)(builder->string.len + name_len + 1);
+    builder->len++;
+
+    CB_APPEND( &builder->string, name_len + 1, name );
+    CB_APPEND( &builder->string, value_len + 1, value );
+
+    // NOTE(alicia): convert all strings back to pointers.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->name[i]  = builder->string.buf + (uintptr_t)builder->name[i];
+        builder->value[i] = builder->string.buf + (uintptr_t)builder->value[i];
+    }
+}
+void cb_environment_builder_reset( CB_EnvironmentBuilder* builder ) {
+    builder->len        = 0;
+    builder->string.len = 0;
 }
 void cb_environment_builder_free(
-    CB_EnvironmentBuilder* environment
+    CB_EnvironmentBuilder* builder
 ) {
-    for( int i = 0; i < environment->len; ++i ) {
-        char* name  = (char*)(environment->name[i]);
-        char* value = (char*)(environment->value[i]);
-
-        if( name ) {
-            CB_FREE( name, strlen(name) + 1 );
-        }
-        if( value ) {
-            CB_FREE( value, strlen(value) + 1 );
-        }
+    if( !builder ) {
+        return;
     }
-
-    CB_FREE( environment->name , sizeof(const char*) * environment->cap );
-    CB_FREE( environment->value, sizeof(const char*) * environment->cap  );
+    CB_FREE( builder->name,  sizeof(char*) * builder->cap );
+    CB_FREE( builder->value, sizeof(char*) * builder->cap );
+    CB_FREE( builder->string.buf, builder->string.cap );
+    memset( builder, 0, sizeof(*builder) );
 }
-void cb_environment_builder_append(
-    CB_EnvironmentBuilder* environment, const char* name, const char* value
+bool cb_environment_builder_remove_by_name(
+    CB_EnvironmentBuilder* builder, const char* name
 ) {
-    if( (environment->len + 1) >= environment->cap ) {
-        int new_cap = environment->cap + 5;
-
-        environment->name = CB_ALLOC(
-            environment->name,
-            sizeof(const char*) * environment->cap,
-            sizeof(const char*) * new_cap );
-
-        environment->value = CB_ALLOC(
-            environment->value,
-            sizeof(const char*) * environment->cap,
-            sizeof(const char*) * new_cap );
-
-        environment->cap = new_cap;
-    }
-
-    int name_len  = strlen( name );
-    int value_len = strlen( value );
-    environment->name[environment->len]  =
-        memcpy( CB_ALLOC( NULL, 0, name_len + 1 ), name, name_len );
-    environment->value[environment->len] =
-        memcpy( CB_ALLOC( NULL, 0, value_len + 1 ), value, value_len );
-
-    environment->len++;
-}
-bool cb_environment_builder_remove(
-    CB_EnvironmentBuilder* environment, const char* name
-) {
-    for( int i = 0; i < environment->len; ++i ) {
-        const char* current = environment->name[i];
-        if( strcmp( current, name ) == 0 ) {
-            cb_environment_builder_remove_by_index( environment, i );
+    for( int i = 0; i < builder->len; ++i ) {
+        if( strcmp( builder->name[i], name ) == 0 ) {
+            cb_environment_builder_remove( builder, i );
             return true;
         }
     }
     return false;
 }
-void cb_environment_builder_remove_by_index(
-    CB_EnvironmentBuilder* environment, int index
+void cb_environment_builder_remove(
+    CB_EnvironmentBuilder* builder, int index
 ) {
-    char* name_buffer  = (char*)(environment->name[index]);
-    char* value_buffer = (char*)(environment->value[index]);
-
-    if( name_buffer ) {
-        CB_FREE( name_buffer, strlen(name_buffer) + 1 );
-    }
-    if( value_buffer ) {
-        CB_FREE( value_buffer, strlen(value_buffer) + 1 );
-    }
-
+    CB_ASSERT(
+        index < builder->len,
+        "%s(): index is out of range! index: %i length: %i",
+        index, builder->len );
+    CB_ASSERT( builder->len, "%s(): environment builder is already empty!", __func__ );
     memmove(
-        environment->name + index,
-        environment->name + index + 1,
-        sizeof(const char*) * (environment->len - (index + 1)) );
+        builder->name + index,
+        builder->name + index + 1,
+        sizeof(char*) * (builder->len - (index + 1)) );
     memmove(
-        environment->value + index,
-        environment->value + index + 1,
-        sizeof(const char*) * (environment->len - (index + 1)) );
-
-    environment->len--;
+        builder->value + index, 
+        builder->value + index + 1,
+        sizeof(char*) * (builder->len - (index + 1)) );
+    builder->len--;
+    if( !builder->len ) {
+        // NOTE(alicia): reset string buffer since it's easy to do
+        builder->string.len = 0;
+    }
 }
-bool cb_environment_builder_replace(
-    CB_EnvironmentBuilder* environment, const char* name, const char* new_value
+bool cb_environment_builder_replace_by_name(
+    CB_EnvironmentBuilder* builder, const char* name, const char* new_value
 ) {
-    for( int i = 0; i < environment->len; ++i ) {
-        const char* current = environment->name[i];
-        if( strcmp( current, name ) == 0 ) {
-            cb_environment_builder_replace_by_index( environment, i, new_value );
+    for( int i = 0; i < builder->len; ++i ) {
+        if( strcmp( builder->name[i], name ) == 0 ) {
+            cb_environment_builder_replace( builder, i, new_value );
             return true;
         }
     }
     return false;
 }
-void cb_environment_builder_replace_by_index(
-    CB_EnvironmentBuilder* environment, int index, const char* new_value
+void cb_environment_builder_replace(
+    CB_EnvironmentBuilder* builder, int index, const char* new_value
 ) {
-    char* buffer = (char*)(environment->value[index]);
-    CB_FREE( buffer, strlen(buffer) + 1 );
+    CB_ASSERT( new_value, "value must be non-null!" );
 
-    int new_value_len = strlen( new_value );
-    buffer = CB_ALLOC( NULL, 0, new_value_len + 1 );
+    // NOTE(alicia): convert all strings to offsets into string builder.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->name[i]  = (char*)((char*)builder->name[i] - builder->string.buf);
+        builder->value[i] = (char*)((char*)builder->value[i] - builder->string.buf);
+    }
 
-    environment->value[index] = memcpy( buffer, new_value, new_value_len );
+    int value_len = strlen(new_value);
+
+    builder->value[index] = (const char*)(uintptr_t)builder->string.len;
+
+    CB_APPEND( &builder->string, value_len + 1, new_value );
+
+    // NOTE(alicia): convert all strings back to pointers.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->name[i]  = builder->string.buf + (uintptr_t)builder->name[i];
+        builder->value[i] = builder->string.buf + (uintptr_t)builder->value[i];
+    }
 }
 
 bool cb_process_exec(
@@ -4077,7 +4161,14 @@ bool cb_process_exec(
 
 void cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes ) {
     for( int i = 0; i < count; ++i ) {
-        int exit_code = cb_process_wait( pids + i );
+        CB_ProcessID* pid = pids + i;
+        if( CB_PID_IS_NULL( pid ) ) {
+            if( opt_out_exit_codes ) {
+                opt_out_exit_codes[i] = 0;
+            }
+            continue;
+        }
+        int exit_code = cb_process_wait( pid );
         if( opt_out_exit_codes ) {
             opt_out_exit_codes[i] = exit_code;
         }
@@ -4137,6 +4228,7 @@ void cb_write_log( CB_LogLevel level, const char* fmt, ... ) {
 }
 
 int _cb_internal_process_exec_quick(
+    CB_Command             cmd,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
     CB_PipeRead*           opt_stdin,
@@ -4144,33 +4236,10 @@ int _cb_internal_process_exec_quick(
     CB_PipeWrite*          opt_stderr,
     ...
 ) {
-    CB_CommandBuilder builder = {};
-    va_list va;
-    va_start( va, opt_stderr );
-
-    for( ;; ) {
-        const char* arg = va_arg( va, const char* );
-        if( !arg ) {
-            break;
-        }
-        cb_command_builder_append( &builder, arg );
-    }
-
-    va_end( va );
-
-    if( !builder.len ) {
-        CB_ERROR( "cb_process_exec_quick: no command or arguments provided!" );
-        return -2;
-    }
-
-    cb_command_builder_add_null_terminator( &builder );
-
     int exit_code = 0;
     bool success  = cb_process_exec(
-        builder.cmd, &exit_code, opt_working_directory,
+        cmd, &exit_code, opt_working_directory,
         opt_environment, opt_stdin, opt_stdout, opt_stderr );
-
-    cb_command_builder_free( &builder );
 
     if( !success ) {
         return -2;
@@ -4179,27 +4248,16 @@ int _cb_internal_process_exec_quick(
     return exit_code;
 }
 
-void _cb_internal_command_builder_new( CB_CommandBuilder* builder, ... ) {
-    va_list va;
-    va_start( va, builder );
-    for( ;; ) {
-        const char* argument = va_arg( va, const char* );
-        if( !argument ) {
-            break;
-        }
-
-        int len = strlen( argument );
-        if( !len ) {
-            continue;
-        }
-
-        char* buffer = CB_ALLOC( NULL, 0, len + 1 );
-
-        CB_PUSH( builder, memcpy( buffer, argument, len ) );
-    }
-    va_end( va );
-}
 void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... ) {
+    if( builder->len && !builder->buf[builder->len - 1] ) {
+        builder->len--;
+    }
+
+    // NOTE(alicia): convert all strings to offsets into string builder.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->buf[i] = (char*)((char*)builder->buf[i] - builder->string.buf);
+    }
+
     va_list va;
     va_start( va, builder );
     for( ;; ) {
@@ -4213,11 +4271,18 @@ void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... ) {
             continue;
         }
 
-        char* buffer = CB_ALLOC( NULL, 0, len + 1 );
-
-        CB_PUSH( builder, memcpy( buffer, argument, len ) );
+        uintptr_t offset = builder->string.len;
+        CB_PUSH( builder, (char*)offset );
+        CB_APPEND( &builder->string, len + 1, argument );
     }
     va_end( va );
+
+    // NOTE(alicia): convert all strings back to pointers.
+    for( int i = 0; i < builder->len; ++i ) {
+        builder->buf[i] = builder->string.buf + (uintptr_t)builder->buf[i];
+    }
+
+    CB_PUSH( builder, NULL );
 }
 bool _cb_internal_make_directories( const char* first, ... ) {
     va_list va;
@@ -4712,6 +4777,15 @@ bool cb_process_exec_async(
     CB_PipeWrite*          opt_stdout,
     CB_PipeWrite*          opt_stderr
 ) {
+    if( !cmd.len ) {
+        CB_ERROR( "cb_process_exec_async(): command is empty!" );
+        return false;
+    }
+    if( cmd.buf[cmd.len - 1] || cmd.buf[cmd.len] ) {
+        CB_ERROR( "cb_process_exec_sync(): command requires a NULL string at the end!" );
+        return false;
+    }
+
     int pipe_stdin  = opt_stdin  ? opt_stdin->_internal_handle  : STDIN_FILENO;
     int pipe_stdout = opt_stdout ? opt_stdout->_internal_handle : STDOUT_FILENO;
     int pipe_stderr = opt_stderr ? opt_stderr->_internal_handle : STDERR_FILENO;
@@ -4782,6 +4856,7 @@ int cb_process_wait( CB_ProcessID* pid ) {
         return -2;
     }
     if( WIFEXITED( wstatus ) ) {
+        CB_PID_NULL( 1, pid );
         return WEXITSTATUS( wstatus );
     } else {
         return -1;
@@ -4796,6 +4871,7 @@ bool cb_process_wait_timed( CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_
         if( opt_out_exit_code ) {
             *opt_out_exit_code = res;
         }
+        CB_PID_NULL( 1, pid );
         return true;
     }
 
@@ -4822,6 +4898,7 @@ bool cb_process_wait_timed( CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_
             }
         }
 
+        CB_PID_NULL( 1, pid );
         return true;
     }
 
@@ -4833,6 +4910,7 @@ void cb_process_kill( CB_ProcessID* pid ) {
             "POSIX: cb_process_kill(): failed to kill pid! reason: %s",
             strerror(errno) );
     }
+    CB_PID_NULL( 1, pid );
 }
 
 bool cb_process_is_in_path( const char* process_name ) {
@@ -6029,7 +6107,7 @@ bool cb_process_exec_async(
 
 void cb_process_discard( CB_ProcessID* pid ) {
     CloseHandle( pid->_internal_handle );
-    pid->_internal_handle = 0;
+    CB_PID_NULL( 1, pid );
 }
 int cb_process_wait( CB_ProcessID* pid ) {
     int exit_code = 0;
