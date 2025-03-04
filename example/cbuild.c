@@ -214,15 +214,13 @@ int mode_build( struct Args* args ) {
         cb_command_builder_append( &builder, "-g" );
     }
 
-    cb_command_builder_add_null_terminator( &builder );
-
     if( args->build.is_dry ) {
         CB_StringBuilder string = {};
         cb_command_flatten( builder.cmd, &string );
         CB_PUSH( &string, 0 );
 
         CB_INFO( "%s", string.buf );
-        CB_FREE( string.cap, string.buf );
+        CB_FREE( string.buf, string.cap );
 
         cb_command_builder_free( &builder );
         return 0;
@@ -266,7 +264,6 @@ int mode_run( struct Args* args ) {
     for( int i = 0; i < args->run.cl.len; ++i ) {
         cb_command_builder_append( &builder, args->run.cl.buf[i] );
     }
-    cb_command_builder_add_null_terminator( &builder );
 
     if( args->build.is_dry ) {
         CB_StringBuilder string = {};
@@ -274,7 +271,7 @@ int mode_run( struct Args* args ) {
 
         CB_INFO( "%s", string.buf );
 
-        CB_FREE( string.cap, string.buf );
+        CB_FREE( string.buf, string.cap );
         cb_command_builder_free( &builder );
         return 0;
     }
