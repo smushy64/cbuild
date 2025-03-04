@@ -2,5 +2,6 @@
 *.exe
 *.pdb
 *.rdbg
+example/cbuild
 doxyout
 
