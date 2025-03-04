@@ -4781,14 +4781,14 @@ bool cb_process_exec_async(
         CB_ERROR( "cb_process_exec_async(): command is empty!" );
         return false;
     }
-    if( cmd.buf[cmd.len - 1] || cmd.buf[cmd.len] ) {
+    if( !((cmd.buf[cmd.len - 1] == NULL) || (cmd.buf[cmd.len] == NULL)) ) {
         CB_ERROR( "cb_process_exec_sync(): command requires a NULL string at the end!" );
         return false;
     }
 
-    int pipe_stdin  = opt_stdin  ? opt_stdin->_internal_handle  : STDIN_FILENO;
-    int pipe_stdout = opt_stdout ? opt_stdout->_internal_handle : STDOUT_FILENO;
-    int pipe_stderr = opt_stderr ? opt_stderr->_internal_handle : STDERR_FILENO;
+    int _pipe_stdin  = opt_stdin  ? opt_stdin->_internal_handle  : STDIN_FILENO;
+    int _pipe_stdout = opt_stdout ? opt_stdout->_internal_handle : STDOUT_FILENO;
+    int _pipe_stderr = opt_stderr ? opt_stderr->_internal_handle : STDERR_FILENO;
 
     pid_t pid = fork();
     if( pid < 0 ) {
@@ -4807,13 +4807,13 @@ bool cb_process_exec_async(
         CB_INFO( "chdir: '%s'", opt_working_directory );
         chdir( opt_working_directory );
     }
-    if( dup2( pipe_stdin,  STDIN_FILENO ) < 0 ) {
+    if( dup2( _pipe_stdin,  STDIN_FILENO ) < 0 ) {
         CB_ERROR( "POSIX: failed to duplicate stdin!" );
     }
-    if( dup2( pipe_stdout, STDOUT_FILENO ) < 0 ) {
+    if( dup2( _pipe_stdout, STDOUT_FILENO ) < 0 ) {
         CB_ERROR( "POSIX: failed to duplicate stdout!" );
     }
-    if( dup2( pipe_stderr, STDERR_FILENO ) < 0 ) {
+    if( dup2( _pipe_stderr, STDERR_FILENO ) < 0 ) {
         CB_ERROR( "POSIX: failed to duplicate stderr!" );
     }
 
