@@ -4790,6 +4790,29 @@ bool cb_process_exec_async(
     int _pipe_stdout = opt_stdout ? opt_stdout->_internal_handle : STDOUT_FILENO;
     int _pipe_stderr = opt_stderr ? opt_stderr->_internal_handle : STDERR_FILENO;
 
+    if( opt_working_directory ) {
+        CB_INFO( "chdir: '%s'", opt_working_directory );
+    }
+
+    CB_StringBuilder string = {};
+
+    if( opt_environment ) {
+        for( int i = 0; i < opt_environment->len; ++i ) {
+            int name_len  = strlen( opt_environment->name[i] );
+            int value_len = strlen( opt_environment->value[i] );
+
+            CB_APPEND( &string, name_len, opt_environment->name[i] );
+            CB_PUSH( &string, '=' );
+            CB_APPEND( &string, value_len, opt_environment->value[i] );
+            CB_PUSH( &string, ' ' );
+        }
+    }
+
+    cb_command_flatten( cmd, &string );
+    CB_PUSH( &string, 0 );
+    CB_INFO( "  > %s", string.buf );
+    CB_FREE( string.buf, string.cap );
+
     pid_t pid = fork();
     if( pid < 0 ) {
         CB_ERROR( "POSIX: cb_process_exec_async(): failed to fork!" );
@@ -4804,7 +4827,6 @@ bool cb_process_exec_async(
     // thread where process will run
 
     if( opt_working_directory ) {
-        CB_INFO( "chdir: '%s'", opt_working_directory );
         chdir( opt_working_directory );
     }
     if( dup2( _pipe_stdin,  STDIN_FILENO ) < 0 ) {
@@ -4817,24 +4839,11 @@ bool cb_process_exec_async(
         CB_ERROR( "POSIX: failed to duplicate stderr!" );
     }
 
-    CB_StringBuilder builder = {};
     if( opt_environment ) {
         for( int i = 0; i < opt_environment->len; ++i ) {
             setenv( opt_environment->name[i], opt_environment->value[i], true );
-            int name_len  = strlen( opt_environment->name[i] );
-            int value_len = strlen( opt_environment->value[i] );
-
-            CB_APPEND( &builder, name_len, opt_environment->name[i] );
-            CB_PUSH( &builder, '=' );
-            CB_APPEND( &builder, value_len, opt_environment->value[i] );
-            CB_PUSH( &builder, ' ' );
         }
     }
-
-    cb_command_flatten( cmd, &builder );
-    CB_PUSH( &builder, 0 );
-    CB_INFO( "  > %s", builder.buf );
-    CB_FREE( builder.buf, builder.cap );
 
     // NOTE(alicia): execvp should only return if command failed to execute.
     execvp( cmd.buf[0], (char* const*)(cmd.buf) );
