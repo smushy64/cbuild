@@ -1957,7 +1957,7 @@ bool cb_process_exec(
 ///     - -1    : Process exited abnormally.
 ///     - -2    : Error occurred when executing process.
 #define cb_process_exec_quick( cmd, ... )  \
-    _cb_internal_process_exec_quick( cmd, __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
+    _cb_internal_process_exec_quick( cmd, ##__VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
 
 /// @brief Wait for series of processes.
 /// @param      count              Number of process IDs to wait for.
