@@ -46,30 +46,6 @@
 
 extern void exit( int status );
 
-
-#if !(defined(CB_ALLOC) && defined(CB_FREE))
-
-    /// @brief Allocate new memory.
-    /// @note
-    /// CBuild expects this macro function to zero newly allocated memory.
-    /// @param[in] opt_ptr      (optional) Old pointer, can be NULL.
-    /// @param     opt_old_size (optional) Size if @c opt_ptr is provided.
-    /// @param     new_size     Bytes to allocate.
-    /// @return Pointer to new memory.
-    #define CB_ALLOC( opt_ptr, opt_old_size, new_size ) \
-        (void*)((char*)memset( \
-            (char*)realloc( opt_ptr, new_size ) \
-                + opt_old_size, 0, new_size - opt_old_size \
-            ) - opt_old_size )
-
-    /// @brief Free memory.
-    /// @param[in] ptr  Pointer to memory to free.
-    /// @param     size Size of memory to free.
-    #define CB_FREE( ptr, size ) \
-        free( ptr )
-
-#endif
-
 // NOTE(alicia): Macro Constants
 
 /// @brief C-Build major version.
@@ -532,6 +508,29 @@ extern void exit( int status );
 
 // NOTE(alicia): Macro Functions
 
+/// @brief Allocate memory using context allocator.
+///
+/// @note
+/// Always returns zeroed memory.
+///
+/// @param[in] opt_buf      (optional) Pointer to buffer to reallocate.
+/// @param     opt_old_size Size of @c opt_buf.
+/// @param     new_size     Size of new buffer.
+///                           If @c opt_buf is not @c NULL, 
+///                           must be greater than or equals
+///                           to @c opt_old_size.
+/// @return
+///     - @c NULL : Failed to allocate buffer.
+///     - Pointer : Pointer to new memory.
+#define CB_ALLOC( opt_buf, opt_old_size, new_size ) \
+    (cb_context_get()->alloc( (opt_buf), (opt_old_size), (new_size) ))
+
+/// @brief Free memory using context allocator.
+/// @param[in] buf  Pointer to buffer to free.
+/// @param     size Size of @c buf.
+#define CB_FREE( buf, size ) \
+    (cb_context_get()->free( (buf), (size) ))
+
 #if defined(__cplusplus)
     /// @brief Define struct.
     #define CB_STRUCT(x) x
@@ -733,7 +732,7 @@ extern void exit( int status );
         *(void**)(&(darray)->buf) = CB_ALLOC( \
             NULL, 0, sizeof( (darray)->buf[0] ) * (4 + count) ); \
         (darray)->cap = 4 + count; \
-    } else if( ((darray)->cap - (darray)->len) < count ) { \
+    } else if( ((darray)->cap - (darray)->len) < (int)(count) ) { \
         *(void**)(&(darray)->buf) = CB_ALLOC( \
             (darray)->buf, \
             sizeof((darray)->buf[0]) * (darray)->cap, \
@@ -813,6 +812,22 @@ extern void exit( int status );
         .len = sizeof( (const char*[]){ __VA_ARGS__ } ) / sizeof( const char* ), \
         .buf = (const char*[]){ __VA_ARGS__, NULL } \
     }
+
+/// @brief Create slice of command line arguments.
+/// @param     argc (int)    Argument count.
+/// @param[in] argv (char**) Argument array.
+/// @return CB_CommandLine.
+#define CB_CL( argc, argv ) \
+    CB_STRUCT( CB_CommandLine ) { \
+        .len = argc,          \
+        .buf = (char**)(argv) \
+    }
+
+/// @brief Advance to next command line argument.
+/// @param[in] cmdline (CB_CommandLine*) Pointer to command line slice.
+/// @return CB_CommandLine.
+#define CB_CL_NEXT( cmdline ) \
+    CB_ADVANCE( CB_CommandLine, (cmdline), 1 )
 
 // NOTE(alicia): Types
 
@@ -1129,6 +1144,43 @@ typedef enum CB_UnicodeValidationResult {
     CB_UNICODE_RESULT_INVALID,
 } CB_UnicodeValidationResult;
 
+/// @brief Command line arguments slice.
+typedef struct CB_CommandLine {
+    /// @brief Number of arguments.
+    int    len; /* argc */
+    /// @brief Pointer to arguments.
+    char** buf; /* argv */
+} CB_CommandLine;
+
+struct CB_Context;
+
+/// @brief Context allocator.
+///
+/// @note
+/// Memory returned should always be zeroed.
+///
+/// @param[in] opt_buf      (optional) Buffer to reallocate.
+/// @param     opt_old_size (optional) Size of buffer to reallocate.
+/// @param     new_size     New size of buffer.
+/// @return Pointer to start of memory.
+typedef void* CB_AllocFN(
+    void* opt_buf, uintptr_t opt_old_size, uintptr_t new_size );
+/// @brief Free memory allocated using context allocator.
+/// @param[in] buf     (optional) Pointer to start of memory to free.
+/// @param     size    Size of memory to free.
+typedef void  CB_FreeFN( void* buf, uintptr_t size );
+
+/// @brief Context.
+typedef struct CB_Context {
+    /// @brief Pointer to allocator function.
+    CB_AllocFN* alloc;
+    /// @brief Pointer to free function.
+    CB_FreeFN*  free;
+
+    /// @brief Pointer to user data.
+    void* user_data;
+} CB_Context;
+
 // NOTE(alicia): Cross-Platform Functions
 
 /// @brief Initialize cbuild run-time.
@@ -1164,6 +1216,21 @@ void cb_rebuild(
     const char** argv,
     CB_Command*  opt_cmd_override,
     bool         should_reload  );
+
+/// @brief Set new context.
+///
+/// @warning
+/// If @c opt_context is not null,
+/// asserts that field @c alloc and field @c free are not null.
+///
+/// @param[in] opt_context (optional) Pointer to context to set.
+///                          Context gets copied to global memory.
+///                          If @c opt_context is null, context is 
+///                          set to default context.
+void cb_context_set( CB_Context* opt_context );
+/// @brief Get current context.
+/// @return Pointer to current context.
+CB_Context* cb_context_get(void);
 
 /// @brief Get local buffer.
 ///
@@ -2149,8 +2216,6 @@ bool cb_directory_walk( const char* path_utf8, CB_DirectoryWalkFN* callback, voi
 ///     - @c false : Failed to change directory.
 bool cb_working_directory_set( const char* new_cwd );
 /// @brief Query current directory.
-/// @note
-/// Must be freed using CB_FREE(). Buffer size is strlen() + 1.
 /// @return Current directory.
 const char* cb_working_directory_query(void);
 
@@ -2276,6 +2341,10 @@ static inline void _cb_internal_unused( int _, ... ) { (void)_; }
 
 #if defined(CB_STRIP_PREFIXES)
 
+typedef CB_CommandLine             CommandLine;
+typedef CB_AllocFN                 AllocFN;
+typedef CB_FreeFN                  FreeFN;
+typedef CB_Context                 Context;
 typedef CB_Time                    Time;
 typedef CB_LogLevel                LogLevel;
 typedef CB_FileOpenFlags           FileOpenFlags;
@@ -2301,146 +2370,148 @@ typedef CB_UTFCodePoint16          UTFCodePoint16;
 typedef CB_UTFCodePoint32          UTFCodePoint32;
 typedef CB_UnicodeValidationResult UnicodeValidationResult;
 
-#define initialize                               cb_initialize
-#define rebuild                                  cb_rebuild
-#define local                                    cb_local
-#define local_fmt_va                             cb_local_fmt_va
-#define local_fmt                                cb_local_fmt
-#define stamp                                    cb_stamp
-#define alloc_fmt_va                             cb_alloc_fmt_va
-#define alloc_fmt                                cb_alloc_fmt
-#define string_cmp                               cb_string_cmp
-#define string_find                              cb_string_find
-#define string_find_unicode                      cb_string_find_unicode
-#define string_find_rev                          cb_string_find_rev
-#define string_find_unicode_rev                  cb_string_find_unicode_rev
-#define string_find_unicode_rev                  cb_string_find_unicode_rev
-#define string_find_set                          cb_string_find_set
-#define string_find_set_rev                      cb_string_find_set_rev
-#define string_find_set_unicode                  cb_string_find_set_unicode
-#define string_find_set_unicode_rev              cb_string_find_set_unicode_rev
-#define string_find_phrase                       cb_string_find_phrase
-#define string_find_phrase_rev                   cb_string_find_phrase_rev
-#define string_advance                           cb_string_advance
-#define string_truncate                          cb_string_truncate
-#define string_trim                              cb_string_trim
-#define string_clip                              cb_string_clip
-#define string_trim_leading_whitespace           cb_string_trim_leading_whitespace
-#define string_trim_trailing_whitespace          cb_string_trim_trailing_whitespace
-#define string_trim_surrounding_whitespace       cb_string_trim_surrounding_whitespace
-#define string_split                             cb_string_split
-#define string_split_by_char                     cb_string_split_by_char
-#define string_split_by_char_unicode             cb_string_split_by_char_unicode
-#define string_split_by_set                      cb_string_split_by_set
-#define string_split_by_set_unicode              cb_string_split_by_set_unicode
-#define string_split_by_phrase                   cb_string_split_by_phrase
-#define string_split_by_char_list                cb_string_split_by_char_list
-#define string_split_by_char_unicode_list        cb_string_split_by_char_unicode_list
-#define string_split_by_set_list                 cb_string_split_by_set_list
-#define string_split_by_set_unicode_list         cb_string_split_by_set_unicode_list
-#define string_split_by_phrase_list              cb_string_split_by_phrase_list
-#define cstr_from_string                         cb_cstr_from_string
-#define string_builder_from_string               cb_string_builder_from_string
-#define string_unicode_next                      cb_string_unicode_next
-#define utf8_len                                 cb_utf8_len
-#define utf8_next                                cb_utf8_next
-#define utf8_index                               cb_utf8_index
-#define cp8_from_code_units                      cb_cp8_from_code_units
-#define cp16_from_code_units                     cb_cp16_from_code_units
-#define cp32_from_code_units                     cb_cp32_from_code_units
-#define cp16_from_bytes                          cb_cp16_from_bytes
-#define cp32_from_bytes                          cb_cp32_from_bytes
-#define cp16_read_byte                           cb_cp16_read_byte
-#define cp32_read_byte                           cb_cp32_read_byte
-#define unicode_from_cp8                         cb_unicode_from_cp8
-#define unicode_from_cp16                        cb_unicode_from_cp16
-#define unicode_from_cp32                        cb_unicode_from_cp32
-#define cp8_code_unit_count                      cb_cp8_code_unit_count
-#define cp16_code_unit_count                     cb_cp16_code_unit_count
-#define cp32_code_unit_count                     cb_cp32_code_unit_count
-#define utf8_validate                            cb_utf8_validate
-#define utf16_validate                           cb_utf16_validate
-#define utf32_validate                           cb_utf32_validate
-#define cp8_from_string                          cb_cp8_from_string
-#define cp16_from_string                         cb_cp16_from_string
-#define cp32_from_string                         cb_cp32_from_string
-#define cp8_from_cp16                            cb_cp8_from_cp16
-#define cp8_from_cp32                            cb_cp8_from_cp32
-#define cp16_from_cp8                            cb_cp16_from_cp8
-#define cp16_from_cp32                           cb_cp16_from_cp32
-#define cp32_from_cp8                            cb_cp32_from_cp8
-#define cp32_from_cp16                           cb_cp32_from_cp16
-#define file_exists                              cb_file_exists
-#define directory_exists                         cb_directory_exists
-#define directory_copy                           cb_directory_copy
-#define directory_move                           cb_directory_move
-#define make_directories                         cb_make_directories
-#define read_entire_file                         cb_read_entire_file
-#define which_file_is_newer                      cb_which_file_is_newer
-#define which_file_is_newer_many_array           cb_which_file_is_newer_many_array
-#define which_file_is_newer_many                 cb_which_file_is_newer_many
-#define command_flatten                          cb_command_flatten
-#define command_builder_append                   cb_command_builder_append
-#define command_builder_from_cmd                 cb_command_builder_from_cmd
-#define command_builder_remove_by_name           cb_command_builder_remove_by_name
-#define command_builder_remove                   cb_command_builder_remove
-#define command_builder_remove                   cb_command_builder_remove
-#define command_builder_replace_by_name          cb_command_builder_replace_by_name
-#define command_builder_reset                    cb_command_builder_reset 
-#define command_builder_free                     cb_command_builder_free
-#define environment_builder_append               cb_environment_builder_append
-#define environment_builder_reset                cb_environment_builder_reset
-#define environment_builder_free                 cb_environment_builder_free
-#define environment_builder_remove_by_name       cb_environment_builder_remove_by_name
-#define environment_builder_remove               cb_environment_builder_remove
-#define environment_builder_replace_by_name      cb_environment_builder_replace_by_name
-#define environment_builder_replace              cb_environment_builder_replace
-#define process_exec                             cb_process_exec
-#define process_exec_quick                       cb_process_exec_quick
-#define process_exec_quick_ex                    cb_process_exec_quick_ex
-#define process_wait_many                        cb_process_wait_many
-#define log_level_set                            cb_log_level_set
-#define log_level_query                          cb_log_level_query
-#define log_level_is_valid                       cb_log_level_is_valid
-#define write_log_va                             cb_write_log_va
-#define write_log                                cb_write_log
-#define time_query                               cb_time_query
-#define time_msec                                cb_time_msec
-#define time_sec                                 cb_time_sec
-#define path_query_type                          cb_path_query_type
-#define path_query_time_modify                   cb_path_query_time_modify
-#define path_query_time_create                   cb_path_query_time_create
-#define path_query_info                          cb_path_query_info
-#define path_canonicalize                        cb_path_canonicalize
-#define file_open                                cb_file_open
-#define file_close                               cb_file_close
-#define file_seek                                cb_file_seek
-#define file_truncate                            cb_file_truncate
-#define file_read                                cb_file_read
-#define file_write                               cb_file_write
-#define file_write_fmt_va                        cb_file_write_fmt_va
-#define file_write_fmt                           cb_file_write_fmt
-#define file_remove                              cb_file_remove
-#define file_copy                                cb_file_copy
-#define file_move                                cb_file_move
-#define directory_create                         cb_directory_create
-#define directory_remove                         cb_directory_remove
-#define directory_walk                           cb_directory_walk
-#define working_directory_set                    cb_working_directory_set
-#define working_directory_query                  cb_working_directory_query
-#define pipe_open                                cb_pipe_open
-#define pipe_close                               cb_pipe_close
-#define pipe_stdin                               cb_pipe_stdin
-#define pipe_stdout                              cb_pipe_stdout
-#define pipe_stderr                              cb_pipe_stderr
-#define environment_query                        cb_environment_query
-#define environment_set                          cb_environment_set
-#define process_exec_async                       cb_process_exec_async
-#define process_discard                          cb_process_discard
-#define process_wait                             cb_process_wait
-#define process_wait_timed                       cb_process_wait_timed
-#define process_kill                             cb_process_kill
-#define process_is_in_path                       cb_process_is_in_path
+#define initialize(...)                               cb_initialize(__VA_ARGS__)
+#define rebuild(...)                                  cb_rebuild(__VA_ARGS__)
+#define context_get()                                 cb_context_get()
+#define context_set(...)                              cb_context_set(__VA_ARGS__)
+#define local()                                       cb_local()
+#define local_fmt_va(...)                             cb_local_fmt_va(__VA_ARGS__)
+#define local_fmt(...)                                cb_local_fmt(__VA_ARGS__)
+#define stamp(...)                                    cb_stamp(__VA_ARGS__)
+#define alloc_fmt_va(...)                             cb_alloc_fmt_va(__VA_ARGS__)
+#define alloc_fmt(...)                                cb_alloc_fmt(__VA_ARGS__)
+#define string_cmp(...)                               cb_string_cmp(__VA_ARGS__)
+#define string_find(...)                              cb_string_find(__VA_ARGS__)
+#define string_find_unicode(...)                      cb_string_find_unicode(__VA_ARGS__)
+#define string_find_rev(...)                          cb_string_find_rev(__VA_ARGS__)
+#define string_find_unicode_rev(...)                  cb_string_find_unicode_rev(__VA_ARGS__)
+#define string_find_unicode_rev(...)                  cb_string_find_unicode_rev(__VA_ARGS__)
+#define string_find_set(...)                          cb_string_find_set(__VA_ARGS__)
+#define string_find_set_rev(...)                      cb_string_find_set_rev(__VA_ARGS__)
+#define string_find_set_unicode(...)                  cb_string_find_set_unicode(__VA_ARGS__)
+#define string_find_set_unicode_rev(...)              cb_string_find_set_unicode_rev(__VA_ARGS__)
+#define string_find_phrase(...)                       cb_string_find_phrase(__VA_ARGS__)
+#define string_find_phrase_rev(...)                   cb_string_find_phrase_rev(__VA_ARGS__)
+#define string_advance(...)                           cb_string_advance(__VA_ARGS__)
+#define string_truncate(...)                          cb_string_truncate(__VA_ARGS__)
+#define string_trim(...)                              cb_string_trim(__VA_ARGS__)
+#define string_clip(...)                              cb_string_clip(__VA_ARGS__)
+#define string_trim_leading_whitespace(...)           cb_string_trim_leading_whitespace(__VA_ARGS__)
+#define string_trim_trailing_whitespace(...)          cb_string_trim_trailing_whitespace(__VA_ARGS__)
+#define string_trim_surrounding_whitespace(...)       cb_string_trim_surrounding_whitespace(__VA_ARGS__)
+#define string_split(...)                             cb_string_split(__VA_ARGS__)
+#define string_split_by_char(...)                     cb_string_split_by_char(__VA_ARGS__)
+#define string_split_by_char_unicode(...)             cb_string_split_by_char_unicode(__VA_ARGS__)
+#define string_split_by_set(...)                      cb_string_split_by_set(__VA_ARGS__)
+#define string_split_by_set_unicode(...)              cb_string_split_by_set_unicode(__VA_ARGS__)
+#define string_split_by_phrase(...)                   cb_string_split_by_phrase(__VA_ARGS__)
+#define string_split_by_char_list(...)                cb_string_split_by_char_list(__VA_ARGS__)
+#define string_split_by_char_unicode_list(...)        cb_string_split_by_char_unicode_list(__VA_ARGS__)
+#define string_split_by_set_list(...)                 cb_string_split_by_set_list(__VA_ARGS__)
+#define string_split_by_set_unicode_list(...)         cb_string_split_by_set_unicode_list(__VA_ARGS__)
+#define string_split_by_phrase_list(...)              cb_string_split_by_phrase_list(__VA_ARGS__)
+#define cstr_from_string(...)                         cb_cstr_from_string(__VA_ARGS__)
+#define string_builder_from_string(...)               cb_string_builder_from_string(__VA_ARGS__)
+#define string_unicode_next(...)                      cb_string_unicode_next(__VA_ARGS__)
+#define utf8_len(...)                                 cb_utf8_len(__VA_ARGS__)
+#define utf8_next(...)                                cb_utf8_next(__VA_ARGS__)
+#define utf8_index(...)                               cb_utf8_index(__VA_ARGS__)
+#define cp8_from_code_units(...)                      cb_cp8_from_code_units(__VA_ARGS__)
+#define cp16_from_code_units(...)                     cb_cp16_from_code_units(__VA_ARGS__)
+#define cp32_from_code_units(...)                     cb_cp32_from_code_units(__VA_ARGS__)
+#define cp16_from_bytes(...)                          cb_cp16_from_bytes(__VA_ARGS__)
+#define cp32_from_bytes(...)                          cb_cp32_from_bytes(__VA_ARGS__)
+#define cp16_read_byte(...)                           cb_cp16_read_byte(__VA_ARGS__)
+#define cp32_read_byte(...)                           cb_cp32_read_byte(__VA_ARGS__)
+#define unicode_from_cp8(...)                         cb_unicode_from_cp8(__VA_ARGS__)
+#define unicode_from_cp16(...)                        cb_unicode_from_cp16(__VA_ARGS__)
+#define unicode_from_cp32(...)                        cb_unicode_from_cp32(__VA_ARGS__)
+#define cp8_code_unit_count(...)                      cb_cp8_code_unit_count(__VA_ARGS__)
+#define cp16_code_unit_count(...)                     cb_cp16_code_unit_count(__VA_ARGS__)
+#define cp32_code_unit_count(...)                     cb_cp32_code_unit_count(__VA_ARGS__)
+#define utf8_validate(...)                            cb_utf8_validate(__VA_ARGS__)
+#define utf16_validate(...)                           cb_utf16_validate(__VA_ARGS__)
+#define utf32_validate(...)                           cb_utf32_validate(__VA_ARGS__)
+#define cp8_from_string(...)                          cb_cp8_from_string(__VA_ARGS__)
+#define cp16_from_string(...)                         cb_cp16_from_string(__VA_ARGS__)
+#define cp32_from_string(...)                         cb_cp32_from_string(__VA_ARGS__)
+#define cp8_from_cp16(...)                            cb_cp8_from_cp16(__VA_ARGS__)
+#define cp8_from_cp32(...)                            cb_cp8_from_cp32(__VA_ARGS__)
+#define cp16_from_cp8(...)                            cb_cp16_from_cp8(__VA_ARGS__)
+#define cp16_from_cp32(...)                           cb_cp16_from_cp32(__VA_ARGS__)
+#define cp32_from_cp8(...)                            cb_cp32_from_cp8(__VA_ARGS__)
+#define cp32_from_cp16(...)                           cb_cp32_from_cp16(__VA_ARGS__)
+#define file_exists(...)                              cb_file_exists(__VA_ARGS__)
+#define directory_exists(...)                         cb_directory_exists(__VA_ARGS__)
+#define directory_copy(...)                           cb_directory_copy(__VA_ARGS__)
+#define directory_move(...)                           cb_directory_move(__VA_ARGS__)
+#define make_directories(...)                         cb_make_directories(__VA_ARGS__)
+#define read_entire_file(...)                         cb_read_entire_file(__VA_ARGS__)
+#define which_file_is_newer(...)                      cb_which_file_is_newer(__VA_ARGS__)
+#define which_file_is_newer_many_array(...)           cb_which_file_is_newer_many_array(__VA_ARGS__)
+#define which_file_is_newer_many(...)                 cb_which_file_is_newer_many(__VA_ARGS__)
+#define command_flatten(...)                          cb_command_flatten(__VA_ARGS__)
+#define command_builder_append(...)                   cb_command_builder_append(__VA_ARGS__)
+#define command_builder_from_cmd(...)                 cb_command_builder_from_cmd(__VA_ARGS__)
+#define command_builder_remove_by_name(...)           cb_command_builder_remove_by_name(__VA_ARGS__)
+#define command_builder_remove(...)                   cb_command_builder_remove(__VA_ARGS__)
+#define command_builder_remove(...)                   cb_command_builder_remove(__VA_ARGS__)
+#define command_builder_replace_by_name(...)          cb_command_builder_replace_by_name(__VA_ARGS__)
+#define command_builder_reset(...)                    cb_command_builder_reset (__VA_ARGS__)
+#define command_builder_free(...)                     cb_command_builder_free(__VA_ARGS__)
+#define environment_builder_append(...)               cb_environment_builder_append(__VA_ARGS__)
+#define environment_builder_reset(...)                cb_environment_builder_reset(__VA_ARGS__)
+#define environment_builder_free(...)                 cb_environment_builder_free(__VA_ARGS__)
+#define environment_builder_remove_by_name(...)       cb_environment_builder_remove_by_name(__VA_ARGS__)
+#define environment_builder_remove(...)               cb_environment_builder_remove(__VA_ARGS__)
+#define environment_builder_replace_by_name(...)      cb_environment_builder_replace_by_name(__VA_ARGS__)
+#define environment_builder_replace(...)              cb_environment_builder_replace(__VA_ARGS__)
+#define process_exec(...)                             cb_process_exec(__VA_ARGS__)
+#define process_exec_quick(...)                       cb_process_exec_quick(__VA_ARGS__)
+#define process_exec_quick_ex(...)                    cb_process_exec_quick_ex(__VA_ARGS__)
+#define process_wait_many(...)                        cb_process_wait_many(__VA_ARGS__)
+#define log_level_set(...)                            cb_log_level_set(__VA_ARGS__)
+#define log_level_query()                             cb_log_level_query()
+#define log_level_is_valid(...)                       cb_log_level_is_valid(__VA_ARGS__)
+#define write_log_va(...)                             cb_write_log_va(__VA_ARGS__)
+#define write_log(...)                                cb_write_log(__VA_ARGS__)
+#define time_query()                                  cb_time_query()
+#define time_msec()                                   cb_time_msec()
+#define time_sec()                                    cb_time_sec()
+#define path_query_type(...)                          cb_path_query_type(__VA_ARGS__)
+#define path_query_time_modify(...)                   cb_path_query_time_modify(__VA_ARGS__)
+#define path_query_time_create(...)                   cb_path_query_time_create(__VA_ARGS__)
+#define path_query_info(...)                          cb_path_query_info(__VA_ARGS__)
+#define path_canonicalize(...)                        cb_path_canonicalize(__VA_ARGS__)
+#define file_open(...)                                cb_file_open(__VA_ARGS__)
+#define file_close(...)                               cb_file_close(__VA_ARGS__)
+#define file_seek(...)                                cb_file_seek(__VA_ARGS__)
+#define file_truncate(...)                            cb_file_truncate(__VA_ARGS__)
+#define file_read(...)                                cb_file_read(__VA_ARGS__)
+#define file_write(...)                               cb_file_write(__VA_ARGS__)
+#define file_write_fmt_va(...)                        cb_file_write_fmt_va(__VA_ARGS__)
+#define file_write_fmt(...)                           cb_file_write_fmt(__VA_ARGS__)
+#define file_remove(...)                              cb_file_remove(__VA_ARGS__)
+#define file_copy(...)                                cb_file_copy(__VA_ARGS__)
+#define file_move(...)                                cb_file_move(__VA_ARGS__)
+#define directory_create(...)                         cb_directory_create(__VA_ARGS__)
+#define directory_remove(...)                         cb_directory_remove(__VA_ARGS__)
+#define directory_walk(...)                           cb_directory_walk(__VA_ARGS__)
+#define working_directory_set(...)                    cb_working_directory_set(__VA_ARGS__)
+#define working_directory_query()                     cb_working_directory_query()
+#define pipe_open(...)                                cb_pipe_open(__VA_ARGS__)
+#define pipe_close(...)                               cb_pipe_close(__VA_ARGS__)
+#define pipe_stdin()                                  cb_pipe_stdin()
+#define pipe_stdout()                                 cb_pipe_stdout()
+#define pipe_stderr()                                 cb_pipe_stderr()
+#define environment_query(...)                        cb_environment_query(__VA_ARGS__)
+#define environment_set(...)                          cb_environment_set(__VA_ARGS__)
+#define process_exec_async(...)                       cb_process_exec_async(__VA_ARGS__)
+#define process_discard(...)                          cb_process_discard(__VA_ARGS__)
+#define process_wait(...)                             cb_process_wait(__VA_ARGS__)
+#define process_wait_timed(...)                       cb_process_wait_timed(__VA_ARGS__)
+#define process_kill(...)                             cb_process_kill(__VA_ARGS__)
+#define process_is_in_path(...)                       cb_process_is_in_path(__VA_ARGS__)
 
 #endif /* Strip prefixes */
 
@@ -2486,6 +2557,7 @@ struct CB_State {
     CB_LogLevel            level;
     struct CB_LocalBuffer* buffers;
     uint32_t               buffer_counter;
+    CB_Context             context;
 
     void* platform_state;
 };
@@ -2495,6 +2567,7 @@ struct CB_State global_state = {
     .level          = CB_LOG_FATAL,
     .buffers        = NULL,
     .buffer_counter = 0,
+    .context        = {},
     .platform_state = NULL,
 };
 
@@ -2657,9 +2730,62 @@ void cb_rebuild(
     exit( exit_code );
 }
 
+#if __cplusplus
+extern "C" {
+#endif
+void* _cb_internal_alloc( void* opt_buf, uintptr_t opt_old_size, uintptr_t new_size ) {
+    if( opt_buf ) {
+        CB_ASSERT(
+            new_size >= opt_old_size,
+            "new size is smaller than old size! old: %zu new: %zu",
+            opt_old_size, new_size );
+        void* new_buf = realloc( opt_buf, new_size );
+        if( new_size > opt_old_size ) {
+            memset( (char*)new_buf + opt_old_size, 0, new_size - opt_old_size );
+        }
+        return new_buf;
+    } else {
+        return calloc( 1, new_size );
+    }
+}
+void _cb_internal_free( void* buf, uintptr_t size ) {
+    CB_UNUSED( size );
+    free( buf );
+}
+#if __cplusplus
+} /* extern "C" */
+#endif
+
+void _cb_internal_context_initialize( CB_Context* context ) {
+    context->alloc     = _cb_internal_alloc;
+    context->free      = _cb_internal_free;
+    context->user_data = NULL;
+}
+
+void cb_context_set( CB_Context* opt_context ) {
+    if( !opt_context ) {
+        _cb_internal_context_initialize( &global_state.context );
+        return;
+    }
+    CB_ASSERT(
+        opt_context->alloc && opt_context->free,
+        "context requires allocation functions!" );
+    memcpy( &global_state.context, opt_context, sizeof(*opt_context) );
+}
+CB_Context* cb_context_get(void) {
+    if( !global_state.context.alloc || !global_state.context.free ) {
+        _cb_internal_context_initialize( &global_state.context );
+    }
+    return &global_state.context;
+}
+
 char* cb_local(void) {
     if( !global_state.buffers ) {
-        global_state.buffers = CB_ALLOC(
+        // NOTE(alicia):
+        // using default allocator to avoid situation
+        // where user provided allocator gets freed
+        // before local buffers are done being used.
+        global_state.buffers = _cb_internal_alloc(
             NULL, 0, sizeof(struct CB_LocalBuffer) * CB_LOCAL_BUFFER_COUNT );
     }
 
@@ -4347,7 +4473,12 @@ struct CB_PosixState {
 
 struct CB_PosixState* _cb_internal_platform_get_state(void) {
     if( !global_state.platform_state ) {
-        global_state.platform_state = CB_ALLOC( NULL, 0, sizeof(struct CB_PosixState) );
+        // NOTE(alicia):
+        // using default allocator to avoid situation
+        // where user provided allocator gets freed
+        // before memory is done being used.
+        global_state.platform_state =
+            _cb_internal_alloc( NULL, 0, sizeof(struct CB_PosixState) );
     }
     return (struct CB_PosixState*)global_state.platform_state;
 }
@@ -4705,7 +4836,7 @@ const char* cb_working_directory_query(void) {
         if( getcwd( builder->buf, builder->cap ) ) {
             break;
         }
-        builder->buf  = CB_ALLOC( builder->buf, builder->cap, builder->cap + 128 );
+        builder->buf  = _cb_internal_alloc( builder->buf, builder->cap, builder->cap + 128 );
         builder->cap += 128;
     }
 
@@ -4960,7 +5091,8 @@ struct CB_WindowsState {
 static
 struct CB_WindowsState* _cb_internal_platform_get_state(void) {
     if( !global_state.platform_state ) {
-        global_state.platform_state = CB_ALLOC( NULL, 0, sizeof(struct CB_WindowsState) );
+        global_state.platform_state = (struct CB_WindowsState*)_cb_internal_alloc(
+            NULL, 0, sizeof(struct CB_WindowsState) );
     }
     return (struct CB_WindowsState*)global_state.platform_state;
 }
@@ -5704,10 +5836,10 @@ void cb_file_write_fmt_va( CB_File* file, const char* fmt, va_list va ) {
         vsnprintf( utf8, UTF8_SIZE, fmt, va );
         cb_file_write( file, len, utf8, NULL );
     } else {
-        uint8_t* utf8 = CB_ALLOC( NULL, 0, len + 1 );
+        uint8_t* utf8 = _cb_internal_alloc( NULL, 0, len + 1 );
         vsnprintf( utf8, UTF8_SIZE, fmt, va );
         cb_file_write( file, len, utf8, NULL );
-        CB_FREE( utf8, len + 1 );
+        _cb_internal_free( utf8, len + 1 );
     }
 }
 bool cb_file_remove( const char* path_utf8 ) {

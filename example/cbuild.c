@@ -19,13 +19,6 @@ const char* cstr_from_mode( enum Mode mode );
 bool        mode_from_cstr( const char* cstr, enum Mode* out_mode );
 const char* mode_description( enum Mode mode );
 
-struct CommandLine {
-    int    len;
-    char** buf;
-};
-#define CL_NEXT( ptr_cl ) \
-    CB_ADVANCE( struct CommandLine, ptr_cl, 1 )
-
 enum Optimization {
     OPT_NONE,
     OPT_PERF,
@@ -45,8 +38,8 @@ struct Args {
             bool              is_dry   : 1;
         } build;
         struct ArgsRun {
-            struct ArgsBuild   build;
-            struct CommandLine cl;
+            struct ArgsBuild      build;
+            struct CB_CommandLine cl;
         } run;
     };
 };
@@ -57,8 +50,8 @@ int mode_run( struct Args* args );
 int main( int argc, char** argv ) {
     CB_INITIALIZE( CB_LOG_ALL );
 
-    struct CommandLine cl = { .len=argc, .buf=argv };
-    cl = CL_NEXT( &cl );
+    CB_CommandLine cl = CB_CL( argc, argv );
+    cl = CB_CL_NEXT( &cl );
 
     struct Args args = {};
     if( !cl.len ) {
@@ -66,17 +59,17 @@ int main( int argc, char** argv ) {
     }
 
     if( !mode_from_cstr( cl.buf[0], &args.mode ) ) {
-        CB_ERROR( "unrecognized mode '%s'", cl.buf );
+        CB_ERROR( "unrecognized mode '%s'", cl.buf[0] );
         mode_help( NULL );
         return 1;
     }
-    cl = CL_NEXT( &cl );
+    cl = CB_CL_NEXT( &cl );
 
     while( cl.len ) {
         switch( args.mode ) {
             case M_HELP: {
                 mode_from_cstr( cl.buf[0], &args.help.mode );
-                cl = CL_NEXT( &cl );
+                cl = CB_CL_NEXT( &cl );
             } continue;
 
             case M_BUILD:
@@ -104,7 +97,7 @@ int main( int argc, char** argv ) {
 
                 if( args.mode == M_RUN ) {
                     if( strcmp( cl.buf[0], "--" ) == 0 ) {
-                        args.run.cl = CL_NEXT( &cl );
+                        args.run.cl = CB_CL_NEXT( &cl );
                         goto exit_loop;
                     }
                 }
@@ -119,7 +112,7 @@ int main( int argc, char** argv ) {
         return 1;
 
     next_iteration:
-        cl = CL_NEXT( &cl );
+        cl = CB_CL_NEXT( &cl );
     }
 exit_loop:
 
