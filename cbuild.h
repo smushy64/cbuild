@@ -1172,17 +1172,17 @@ void cb_rebuild(
 /// Each buffer is of size CB_LOCAL_BUFFER_CAPACITY.
 ///
 /// @return Local buffer.
-char* cb_local_buf(void);
+char* cb_local(void);
 /// @brief Format local buffer.
 /// @param[in] fmt Format string.
 /// @param[in] va  Variadic list of format arguments.
 /// @return Formatted local buffer.
-char* cb_local_buf_fmt_va( const char* fmt, va_list va );
+char* cb_local_fmt_va( const char* fmt, va_list va );
 /// @brief Format local buffer.
 /// @param[in] fmt Format string.
 /// @param     ... Format arguments.
 /// @return Formatted local buffer.
-char* cb_local_buf_fmt( const char* fmt, ... );
+char* cb_local_fmt( const char* fmt, ... );
 
 /// @brief Copy prototype into destination buffer.
 /// @param[in] dst            Destination buffer.
@@ -2303,9 +2303,9 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 
 #define initialize                               cb_initialize
 #define rebuild                                  cb_rebuild
-#define local_buf                                cb_local_buf
-#define local_buf_fmt_va                         cb_local_buf_fmt_va
-#define local_buf_fmt                            cb_local_buf_fmt
+#define local                                    cb_local
+#define local_fmt_va                             cb_local_fmt_va
+#define local_fmt                                cb_local_fmt
 #define stamp                                    cb_stamp
 #define alloc_fmt_va                             cb_alloc_fmt_va
 #define alloc_fmt                                cb_alloc_fmt
@@ -2518,7 +2518,7 @@ void cb_initialize(
         cb_which_file_is_newer_many( path_executable, path_source, __FILE__ ) != 0;
 
     if( !should_rebuild ) {
-        const char* old_name = cb_local_buf_fmt( "%s.old", path_executable );
+        const char* old_name = cb_local_fmt( "%s.old", path_executable );
         if( cb_file_exists( old_name ) ) {
             cb_file_remove( old_name );
         }
@@ -2657,7 +2657,7 @@ void cb_rebuild(
     exit( exit_code );
 }
 
-char* cb_local_buf(void) {
+char* cb_local(void) {
     if( !global_state.buffers ) {
         global_state.buffers = CB_ALLOC(
             NULL, 0, sizeof(struct CB_LocalBuffer) * CB_LOCAL_BUFFER_COUNT );
@@ -2668,15 +2668,15 @@ char* cb_local_buf(void) {
     global_state.buffer_counter++;
     return memset( result, 0, CB_LOCAL_BUFFER_CAPACITY );
 }
-char* cb_local_buf_fmt_va( const char* fmt, va_list va ) {
-    char* local = cb_local_buf();
-    vsnprintf( local, CB_LOCAL_BUFFER_CAPACITY, fmt, va );
-    return local;
+char* cb_local_fmt_va( const char* fmt, va_list va ) {
+    char* local_buf = cb_local();
+    vsnprintf( local_buf, CB_LOCAL_BUFFER_CAPACITY, fmt, va );
+    return local_buf;
 }
-char* cb_local_buf_fmt( const char* fmt, ... ) {
+char* cb_local_fmt( const char* fmt, ... ) {
     va_list va;
     va_start( va, fmt );
-    char* result = cb_local_buf_fmt_va( fmt, va );
+    char* result = cb_local_fmt_va( fmt, va );
     va_end( va );
     return result;
 }
