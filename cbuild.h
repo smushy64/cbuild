@@ -706,9 +706,27 @@ extern void exit( int status );
 #define CB_STAMP( dst, prototype, count ) \
     cb_stamp( dst, sizeof((prototype)[0]), (prototype), count )
 
+/// @brief Make sure that dynamic array has enough capacity to hold given number of items.
+/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields).
+/// @param     count  Number of items dynamic array should have capacity for.
+#define CB_RESERVE( darray, count ) do { \
+    if( (darray)->cap < (count) ) { \
+        *(void**)(&(darray)->buf) = CB_ALLOC( \
+            (darray)->buf, \
+            sizeof((darray)->buf[0]) * (darray)->cap, \
+            sizeof((darray)->buf[0]) * (count) ); \
+        (darray)->cap = (count); \
+    } \
+} while(0)
+
+/// @brief Free dynamic array.
+/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields).
+#define CB_FREE_ARRAY( darray ) \
+    CB_FREE( (darray)->buf, sizeof((darray)->buf[0]) * (darray)->cap )
+
 /// @brief Push item to dynamic array.
-/// @param darray Pointer to dynamic array (struct with cap, len and buf fields)
-/// @param item   Item to push to end of dynamic array.
+/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields)
+/// @param     item   Item to push to end of dynamic array.
 #define CB_PUSH( darray, item ) do { \
     if( !(darray)->buf ) { \
         *(void**)(&(darray)->buf) = CB_ALLOC( NULL, 0, sizeof( (darray)->buf[0] ) * 4 ); \
@@ -720,27 +738,27 @@ extern void exit( int status );
             sizeof((darray)->buf[0]) * ((darray)->cap * 2) ); \
         (darray)->cap *= 2; \
     } \
-    (darray)->buf[(darray)->len++] = item; \
+    (darray)->buf[(darray)->len++] = (item); \
 } while(0)
 
 /// @brief Append items to dynamic array.
-/// @param darray Pointer to dynamic array (struct with cap, len and buf fields)
-/// @param count  Number of items to append.
-/// @param items  Items to append.
+/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields)
+/// @param     count  Number of items to append.
+/// @param[in] items  Items to append.
 #define CB_APPEND( darray, count, items ) do { \
     if( !(darray)->buf ) { \
         *(void**)(&(darray)->buf) = CB_ALLOC( \
-            NULL, 0, sizeof( (darray)->buf[0] ) * (4 + count) ); \
-        (darray)->cap = 4 + count; \
-    } else if( ((darray)->cap - (darray)->len) < (int)(count) ) { \
+            NULL, 0, sizeof( (darray)->buf[0] ) * (4 + (count)) ); \
+        (darray)->cap = 4 + (count); \
+    } else if( ((darray)->cap - (darray)->len) < (int)((count)) ) { \
         *(void**)(&(darray)->buf) = CB_ALLOC( \
             (darray)->buf, \
             sizeof((darray)->buf[0]) * (darray)->cap, \
-            sizeof((darray)->buf[0]) * ((darray)->cap + count) ); \
-        (darray)->cap += count; \
+            sizeof((darray)->buf[0]) * ((darray)->cap + (count)) ); \
+        (darray)->cap += (count); \
     } \
-    memcpy( (darray)->buf + (darray)->len, items, sizeof((darray)->buf[0]) * count ); \
-    (darray)->len += count; \
+    memcpy( (darray)->buf + (darray)->len, items, sizeof((darray)->buf[0]) * (count) ); \
+    (darray)->len += (count); \
 } while(0)
 
 /// @brief Append string literal to end of string builder.
@@ -1519,6 +1537,16 @@ char* cb_cstr_from_string(
 /// @param     string  String to append.
 void cb_string_builder_from_string(
     CB_StringBuilder* builder, CB_StringSlice string );
+/// @brief Write formatted string to string builder.
+/// @param[in] builder Pointer to string builder.
+/// @param[in] fmt     Format string.
+/// @param[in] va      Variadic arguments.
+void cb_string_builder_fmt_va( CB_StringBuilder* builder, const char* fmt, va_list va );
+/// @brief Write formatted string to string builder.
+/// @param[in] builder Pointer to string builder.
+/// @param[in] fmt     Format string.
+/// @param     ...     Format arguments.
+void cb_string_builder_fmt( CB_StringBuilder* builder, const char* fmt, ... );
 
 /// @brief Get next unicode character in string.
 /// @param      string        UTF-8 String.
@@ -2033,7 +2061,10 @@ bool cb_process_exec(
 /// @param[out] opt_out_exit_codes Pointer to array of exit codes.
 ///                                  If pointer is valid,
 ///                                  it must contain @c count number of integers.
-void cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes );
+/// @return
+///     - @c true  : All processes exited successfully.
+///     - @c false : One or more processes failed.
+bool cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes );
 
 /// @brief Set logging level.
 /// @param level Logging level.
@@ -2412,6 +2443,8 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define string_split_by_phrase_list(...)              cb_string_split_by_phrase_list(__VA_ARGS__)
 #define cstr_from_string(...)                         cb_cstr_from_string(__VA_ARGS__)
 #define string_builder_from_string(...)               cb_string_builder_from_string(__VA_ARGS__)
+#define string_builder_fmt_va(...)                    cb_string_builder_fmt_va(__VA_ARGS__)
+#define string_builder_fmt(...)                       cb_string_builder_fmt(__VA_ARGS__)
 #define string_unicode_next(...)                      cb_string_unicode_next(__VA_ARGS__)
 #define utf8_len(...)                                 cb_utf8_len(__VA_ARGS__)
 #define utf8_next(...)                                cb_utf8_next(__VA_ARGS__)
@@ -3243,6 +3276,24 @@ void cb_string_builder_from_string(
     CB_StringBuilder* builder, CB_StringSlice string 
 ) {
     CB_APPEND( builder, string.len, string.cbuf );
+}
+void cb_string_builder_fmt_va( CB_StringBuilder* builder, const char* fmt, va_list va ) {
+    va_list copy;
+    va_copy( copy, va );
+    int len = vsnprintf( NULL, 0, fmt, copy );
+    va_end( copy );
+
+    CB_RESERVE( builder, builder->len + len + 1 );
+
+    vsnprintf( builder->buf + builder->len, builder->cap - builder->len, fmt, va );
+    // NOTE(alicia): do not add null terminator to length.
+    builder->len += len;
+}
+void cb_string_builder_fmt( CB_StringBuilder* builder, const char* fmt, ... ) {
+    va_list va;
+    va_start( va, fmt );
+    cb_string_builder_fmt_va( builder, fmt, va );
+    va_end(va);
 }
 CB_StringSlice cb_string_unicode_next( CB_StringSlice string, uint32_t* out_character ) {
     CB_UTFCodePoint8 cp8 = {};
@@ -4285,7 +4336,8 @@ bool cb_process_exec(
     return true;
 }
 
-void cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes ) {
+bool cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes ) {
+    bool result = true;
     for( int i = 0; i < count; ++i ) {
         CB_ProcessID* pid = pids + i;
         if( CB_PID_IS_NULL( pid ) ) {
@@ -4295,10 +4347,16 @@ void cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_code
             continue;
         }
         int exit_code = cb_process_wait( pid );
+
+        if( exit_code ) {
+            result = false;
+        }
+
         if( opt_out_exit_codes ) {
             opt_out_exit_codes[i] = exit_code;
         }
     }
+    return result;
 }
 
 void cb_log_level_set( CB_LogLevel level ) {
