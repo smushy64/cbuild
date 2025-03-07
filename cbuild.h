@@ -1298,6 +1298,7 @@ char* cb_alloc_fmt( const char* fmt, ... );
 ///     - -1 : @c a is shorter than @c b
 ///     -  0 : @c a and @c b are equal in length and contents
 ///     -  1 : @c a is longer than @c b
+///     -  2 : @c a and @c b are equal in length but not in contents
 int cb_string_cmp( CB_StringSlice a, CB_StringSlice b );
 /// @brief Search for character in string.
 /// @param string String to search in.
@@ -2875,7 +2876,7 @@ char* cb_alloc_fmt( const char* fmt, ... ) {
 
 int cb_string_cmp( CB_StringSlice a, CB_StringSlice b ) {
     if( a.len == b.len ) {
-        return memcmp( a.buf, b.buf, a.len ) == 0;
+        return (memcmp( a.buf, b.buf, a.len ) == 0) ? 0 : 2;
     }
     return (a.len < b.len) ? -1 : 1;
 }
