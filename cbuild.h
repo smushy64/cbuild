@@ -911,6 +911,12 @@ typedef enum CB_FileOpenFlags {
     CB_FOPEN_TRUNCATE = (1 << 3),
     /// @brief Move file offset to end of file, fails if file doesn't exist.
     CB_FOPEN_APPEND   = (1 << 4),
+    /// @brief Create file for execution.
+    ///
+    /// @details
+    /// This flag is only checked if #CB_FOPEN_CREATE is used.
+    ///
+    CB_FOPEN_CREATE_EXECUTABLE = (1 << 5),
 
     /// @brief Open file for reading and writing.
     CB_FOPEN_READ_WRITE = (CB_FOPEN_READ | CB_FOPEN_WRITE),
@@ -4630,7 +4636,7 @@ char* cb_path_canonicalize( const char* path_utf8 ) {
 
 bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file ) {
     int    oflag = 0;
-    mode_t mode  = S_IRWXU;
+    mode_t mode  = S_IRUSR | S_IWUSR;
     if(
         (( flags & ( CB_FOPEN_READ | CB_FOPEN_WRITE )) ==
         ( CB_FOPEN_READ | CB_FOPEN_WRITE ) )
@@ -4648,6 +4654,9 @@ bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_f
 
     if( (( flags & ( CB_FOPEN_CREATE )) == ( CB_FOPEN_CREATE ) ) ) {
         oflag |= O_CREAT | O_EXCL;
+        if( (flags & CB_FOPEN_CREATE_EXECUTABLE) == CB_FOPEN_CREATE_EXECUTABLE ) {
+            mode |= S_IXUSR;
+        }
     }
     if( (( flags & ( CB_FOPEN_TRUNCATE )) == ( CB_FOPEN_TRUNCATE ) ) ) {
         oflag |= O_TRUNC;
@@ -5759,6 +5768,9 @@ bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_f
 
     if( ( flags & ( CB_FOPEN_CREATE ) ) == ( CB_FOPEN_CREATE ) ) {
         dwCreationDisposition = OPEN_ALWAYS;
+        if( (flags & CB_FOPEN_CREATE_EXECUTABLE) == CB_FOPEN_CREATE_EXECUTABLE ) {
+            dwDesiredAccess |= GENERIC_EXECUTE;
+        }
     } else if( ( flags & ( CB_FOPEN_TRUNCATE ) ) == ( CB_FOPEN_TRUNCATE ) ) {
         dwCreationDisposition = TRUNCATE_EXISTING;
     }
