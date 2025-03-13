@@ -2985,10 +2985,10 @@ int cb_string_find_phrase( CB_StringSlice string, CB_StringSlice phrase ) {
             break;
         }
 
-        if( string.cbuf[i] == phrase.cbuf[i] ) {
+        if( string.cbuf[i] == phrase.cbuf[0] ) {
             CB_StringSlice chunk = cb_string_truncate(
                 CB_ADVANCE( CB_StringSlice, &string, i ), phrase.len );
-            if( cb_string_cmp( chunk, phrase ) ) {
+            if( cb_string_cmp( chunk, phrase ) == 0 ) {
                 return i;
             }
         }
@@ -3001,10 +3001,10 @@ int cb_string_find_phrase_rev( CB_StringSlice string, CB_StringSlice phrase ) {
             continue;
         }
 
-        if( string.cbuf[i] == phrase.cbuf[i] ) {
+        if( string.cbuf[i] == phrase.cbuf[0] ) {
             CB_StringSlice chunk = cb_string_truncate(
                 CB_ADVANCE( CB_StringSlice, &string, i ), phrase.len );
-            if( cb_string_cmp( chunk, phrase ) ) {
+            if( cb_string_cmp( chunk, phrase ) == 0 ) {
                 return i;
             }
         }
