@@ -5122,8 +5122,9 @@ void cb_process_kill( CB_ProcessID* pid ) {
 }
 
 bool cb_process_is_in_path( const char* process_name ) {
-    char mini_buf[255 + sizeof("which -s %s")] = {};
-    snprintf( mini_buf, sizeof(mini_buf), "which -s %s", process_name );
+    // TODO(alicia): replace use of 'which' and system!
+    char mini_buf[255 + sizeof("which %s > /dev/null 2>&1")] = {};
+    snprintf( mini_buf, sizeof(mini_buf), "which %s > /dev/null 2>&1", process_name );
     return system( mini_buf ) == 0;
 }
 
