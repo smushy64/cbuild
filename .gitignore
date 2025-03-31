@@ -3,5 +3,6 @@
 *.pdb
 *.rdbg
 example/cbuild
+example/build
 doxyout
 
