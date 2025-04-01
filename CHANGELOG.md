@@ -26,6 +26,15 @@ Number between 0-255
 
 Indicates additions to API, minor bug fixes and other small changes.
 
+0.3.0
+-----
+- cb_read_entire_file() removed, replaced with cb_path_read_buffer()
+- cb_file_size() and cb_file_read_buffer() implemented.
+- cb_process_exec() and cb_process_exec_async() have 
+        been turned into variadic macros for easier use.
+- cb_rebuild() defines macro CB_BOOTSTRAPPED
+- renamed macro CB_STRING_ARG() to CB_STRING_FMT_ARG()
+
 0.2.0
 -----
 - new structs: CB_CommandLine, CB_Context

@@ -8,18 +8,27 @@
  * @details
  *
  *    Single header library for writing a build system in C.
- *    Include to get API, include again (ONCE) with CB_IMPLEMENTATION
+ *    Include to get API, include again (ONCE) with `CB_IMPLEMENTATION`
  *    defined to define implementation.
  *   
  *    Options can be defined before first include.
  *   
  *    Options:
  *   
- *    - define CB_DISABLE_TYPEDEFS to disable 
+ *    - define `CB_DISABLE_TYPEDEFS` to disable 
  *      defining u8/16/32/64/size, i8/16/32/64/size and f32/64
  *
- *    - define CB_STRIP_PREFIXES to strip prefixes from functions and types.
+ *    - define `CB_STRIP_PREFIXES` to strip prefixes from functions and types.
  *      This does not strip prefixes from macro constants or functions.
+ *
+ *    - define `CB_NO_GARBAGE` to prevent cbuild from creating
+ *      a `.cbuild` directory in the current directory.
+ *
+ * @note
+ *
+ * `CB_BOOTSTRAPPED` is a reserved macro, it gets
+ * defined when cbuild rebuilds itself rather than
+ * being built from the command-line.
  *
  * @author Alicia Amarilla (smushyaa@gmail.com)
  *
@@ -51,7 +60,7 @@ extern void exit( int status );
 /// @brief C-Build major version.
 #define CB_VERSION_MAJOR 0
 /// @brief C-Build minor version.
-#define CB_VERSION_MINOR 2
+#define CB_VERSION_MINOR 3
 /// @brief C-Build patch version.
 #define CB_VERSION_PATCH 0
 
@@ -768,10 +777,10 @@ extern void exit( int status );
     CB_APPEND( builder, (int)(sizeof(str_literal) - 1), str_literal )
 
 /// @brief String slice and string builder format string.
-#define CB_STRING_FMT           "%.*s"
+#define CB_STRING_FMT               ".*s"
 /// @brief Expand string slice or string builder into arguments for C formatting function.
 /// @param string (CB_StringSlice* or CB_StringBuilder*) String to expand.
-#define CB_STRING_ARG( string ) (string)->len, (string)->buf
+#define CB_STRING_FMT_ARG( string ) (string)->len, (string)->buf
 
 /// @brief Create slice-like type.
 /// @param struct Identifier of slice-like struct.
@@ -1900,6 +1909,25 @@ bool cb_directory_move(
 ///     - @c false : Failed to open/read from file.
 bool cb_read_entire_file(
     const char* path_utf8, uintptr_t* out_buffer_size, void** out_buffer );
+/// @brief Read entire file.
+/// @param[in]     path_utf8 Path to file.
+/// @param[in,out] buffer    Pointer to buffer to write into.
+/// @return
+///     - @c true  : Opened and read file successfully.
+///     - @c false : Failed to open/read file.
+bool cb_path_read_buffer( const char* path_utf8, CB_StringBuilder* buffer );
+/// @brief Query file size.
+/// @param[in] file File handle.
+/// @return Size of file in bytes.
+uintptr_t cb_file_size( CB_File* file );
+/// @brief Read file into buffer.
+/// @param[in]     file   File handle.
+/// @param         amount Number of bytes to try to read from file.
+/// @param[in,out] buffer Pointer to buffer to write into.
+/// @return
+///     - @c true  : Read from file successfully.
+///     - @c false : Failed to read from file.
+bool cb_file_read_buffer( CB_File* file, int amount, CB_StringBuilder* buffer );
 
 /// @brief Check which file was created more recently.
 /// @param[in] file_a Path to first file.
@@ -2027,39 +2055,42 @@ bool cb_environment_builder_replace_by_name(
 void cb_environment_builder_replace(
     CB_EnvironmentBuilder* environment, int index, const char* new_value );
 
-/// @brief Execute process command.
-/// @param      cmd                   Command to execute.
-/// @param[out] opt_out_exit_code     (optional) Pointer to write process exit code to. If -1, process exited abnormally.
-/// @param[in]  opt_working_directory (optional) Working directory path.
-/// @param[in]  opt_environment       (optional) Environment to execute process in.
-/// @param[in]  opt_stdin             (optional) Pointer to stdin pipe.
-/// @param[in]  opt_stdout            (optional) Pointer to stdout pipe.
-/// @param[in]  opt_stderr            (optional) Pointer to stderr pipe.
+/// @brief Execute command asynchronously.
+/// @note
+/// Process ID must be used with one of the following functions:
+///     - cb_process_discard()    to free process id.
+///     - cb_process_wait_timed() to wait on process.
+///                                 If times out, process id must still be freed.
+///     - cb_process_wait()       to wait on process. Automatically frees process id.
+///     - cb_process_kill()       to kill process prematurely. Automatically frees process id.
+/// @param      cmd                   (CB_Command)           Command to execute.
+/// @param[out] out_pid               (CB_ProcessID*)        Pointer to write process ID to.
+/// @param[in]  opt_working_directory (optional,const char*) Working directory path.
+/// @param[in]  opt_environment       (optional,CB_EnvironmentBuilder*)
+///                                     Environment to execute process in.
+/// @param[in]  opt_stdin             (optional,CB_PipeRead*) Pointer to stdin pipe.
+/// @param[in]  opt_stdout            (optional,CB_PipeWrite*) Pointer to stdout pipe.
+/// @param[in]  opt_stderr            (optional,CB_PipeWrite*) Pointer to stderr pipe.
 /// @return
 ///     - @c true  : Executed command successfully.
 ///     - @c false : Failed to execute command.
-bool cb_process_exec(
-    CB_Command             cmd,
-    int*                   opt_out_exit_code,
-    const char*            opt_working_directory,
-    CB_EnvironmentBuilder* opt_environment,
-    CB_PipeRead*           opt_stdin,
-    CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr );
-
-/// @brief Execute process command.
-/// @param      cmd                   Command to execute.
-/// @param[in]  opt_working_directory (optional,const char*)            Working directory path.
-/// @param[in]  opt_environment       (optional,CB_EnvironmentBuilder*) Environment to execute process in.
-/// @param[in]  opt_stdin             (optional,CB_PipeRead*)           Pointer to stdin pipe.
-/// @param[in]  opt_stdout            (optional,CB_PipeWrite*)          Pointer to stdout pipe.
-/// @param[in]  opt_stderr            (optional,CB_PipeWrite*)          Pointer to stderr pipe.
+#define cb_process_exec_async( ... ) \
+    _cb_internal_process_exec_async( __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
+/// @brief Execute command synchronously.
+/// @param     cmd                   (CB_Command)           Command to execute.
+/// @param[in] opt_working_directory (optional,const char*) Working directory path.
+/// @param[in] opt_environment       (optional,CB_EnvironmentBuilder*)
+///                                    Environment variables for process.
+/// @param[in] opt_stdin  (optional,CB_PipeRead*)  Pointer to stdin pipe.
+/// @param[in] opt_stdout (optional,CB_PipeWrite*) Pointer to stdout pipe.
+/// @param[in] opt_stderr (optional,CB_PipeWrite*) Pointer to stderr pipe.
 /// @return
-///     - 0-255 : Process exited normally and this is the exit code.
-///     - -1    : Process exited abnormally.
-///     - -2    : Error occurred when executing process.
-#define cb_process_exec_quick( cmd, ... )  \
-    _cb_internal_process_exec_quick( cmd, ##__VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
+///     - `0`     : Process exited normally and successfully.
+///     - `1-255` : Process exited normally, was not successful.
+///     - `-1`    : Process exited abnormally.
+///     - `-2`    : Error occurred when executing process.
+#define cb_process_exec( ... ) \
+    _cb_internal_process_exec( __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
 
 /// @brief Wait for series of processes.
 /// @param      count              Number of process IDs to wait for.
@@ -2306,32 +2337,6 @@ const char* cb_environment_query( const char* name );
 ///     - @c false : Failed to set environment variable.
 bool cb_environment_set( const char* name, const char* new_value );
 
-/// @brief Execute process command asynchronously.
-/// @note
-/// Process ID must be used with one of the following functions:
-///     - cb_process_discard()    to free process id.
-///     - cb_process_wait_timed() to wait on process. If times out, process id must still be freed.
-///     - cb_process_wait()       to wait on process. Automatically frees process id.
-///     - cb_process_kill()       to kill process prematurely. Automatically frees process id.
-/// @param      cmd                   Command to execute.
-/// @param[out] out_pid               Pointer to write process ID to.
-/// @param[in]  opt_working_directory (optional) Working directory path.
-/// @param[in]  opt_environment       (optional) Environment to execute process in.
-/// @param[in]  opt_stdin             (optional) Pointer to stdin pipe.
-/// @param[in]  opt_stdout            (optional) Pointer to stdout pipe.
-/// @param[in]  opt_stderr            (optional) Pointer to stderr pipe.
-/// @return
-///     - @c true  : Executed command successfully.
-///     - @c false : Failed to execute command.
-bool cb_process_exec_async(
-    CB_Command             cmd,
-    CB_ProcessID*          out_pid,
-    const char*            opt_working_directory,
-    CB_EnvironmentBuilder* opt_environment,
-    CB_PipeRead*           opt_stdin,
-    CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr );
-
 /// @brief Discard process ID.
 /// @param[in] pid Process ID to discard.
 void cb_process_discard( CB_ProcessID* pid );
@@ -2362,7 +2367,7 @@ bool cb_process_is_in_path( const char* process_name );
 
 // NOTE(alicia): Internal Functions
 
-int _cb_internal_process_exec_quick(
+int _cb_internal_process_exec(
     CB_Command             cmd,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
@@ -2370,6 +2375,16 @@ int _cb_internal_process_exec_quick(
     CB_PipeWrite*          opt_stdout,
     CB_PipeWrite*          opt_stderr,
     ... );
+bool _cb_internal_process_exec_async(
+    CB_Command             cmd,
+    CB_ProcessID*          out_pid,
+    const char*            opt_working_directory,
+    CB_EnvironmentBuilder* opt_environment,
+    CB_PipeRead*           opt_stdin,
+    CB_PipeWrite*          opt_stdout,
+    CB_PipeWrite*          opt_stderr,
+    ... );
+
 
 void _cb_internal_command_builder_new( CB_CommandBuilder* builder, ... );
 void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... );
@@ -2486,7 +2501,9 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define directory_copy(...)                           cb_directory_copy(__VA_ARGS__)
 #define directory_move(...)                           cb_directory_move(__VA_ARGS__)
 #define make_directories(...)                         cb_make_directories(__VA_ARGS__)
-#define read_entire_file(...)                         cb_read_entire_file(__VA_ARGS__)
+#define path_read_buffer(...)                         cb_path_read_buffer(__VA_ARGS__)
+#define file_size(...)                                cb_file_size(__VA_ARGS__)
+#define file_read_buffer(...)                         cb_file_read_buffer(__VA_ARGS__)
 #define which_file_is_newer(...)                      cb_which_file_is_newer(__VA_ARGS__)
 #define which_file_is_newer_many_array(...)           cb_which_file_is_newer_many_array(__VA_ARGS__)
 #define which_file_is_newer_many(...)                 cb_which_file_is_newer_many(__VA_ARGS__)
@@ -2507,8 +2524,6 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define environment_builder_replace_by_name(...)      cb_environment_builder_replace_by_name(__VA_ARGS__)
 #define environment_builder_replace(...)              cb_environment_builder_replace(__VA_ARGS__)
 #define process_exec(...)                             cb_process_exec(__VA_ARGS__)
-#define process_exec_quick(...)                       cb_process_exec_quick(__VA_ARGS__)
-#define process_exec_quick_ex(...)                    cb_process_exec_quick_ex(__VA_ARGS__)
 #define process_wait_many(...)                        cb_process_wait_many(__VA_ARGS__)
 #define log_level_set(...)                            cb_log_level_set(__VA_ARGS__)
 #define log_level_query()                             cb_log_level_query()
@@ -2677,6 +2692,7 @@ void cb_rebuild(
         }
 
     }
+    cb_command_builder_append( &builder, "-DCB_BOOTSTRAPPED" );
 
     cb_command_flatten( builder.cmd, &string );
     CB_PUSH( &string, 0 );
@@ -2707,7 +2723,7 @@ void cb_rebuild(
     CB_ProcessID pid;
     CB_PID_NULL( 1, &pid );
 
-    if( !cb_process_exec_async(
+    if( !_cb_internal_process_exec_async(
         builder.cmd,
         &pid,
         NULL,
@@ -2751,7 +2767,7 @@ void cb_rebuild(
 #if CB_PLATFORM_CURRENT == CB_PLATFORM_WINDOWS
     CB_WARN(
         "Windows does not support automatically "
-        "reloading cbuild. Please run command again." );
+        "reloading cbuild. Please run cbuild command again." );
     exit( 0 );
 #endif
 
@@ -2764,7 +2780,7 @@ void cb_rebuild(
     }
 
     int exit_code = 0;
-    if( !cb_process_exec( builder.cmd, &exit_code, NULL, NULL, NULL, NULL, NULL ) ) {
+    if( ( exit_code = cb_process_exec( builder.cmd ) ) < 0 ) {
         CB_PANIC( "failed to reload!" );
     }
     exit( exit_code );
@@ -4022,27 +4038,48 @@ bool cb_directory_move(
     return cb_directory_remove( src, true );
 }
 
-bool cb_read_entire_file(
-    const char* path_utf8, uintptr_t* out_buffer_size, void** out_buffer
-) {
+bool cb_path_read_buffer( const char* path_utf8, CB_StringBuilder* buffer ) {
     CB_File file;
     if( !cb_file_open( path_utf8, CB_FOPEN_READ, &file ) ) {
         return false;
     }
-    uintptr_t size = cb_file_seek( &file, 0, CB_FSEEK_END );
+
+    uintptr_t file_size = cb_file_seek( &file, 0, CB_FSEEK_END );
+    if( !file_size ) {
+        cb_file_close( &file );
+        CB_WARN( "cb_path_read_buffer(): file '%s' is empty!", path_utf8 );
+        return true;
+    }
+
     cb_file_seek( &file, 0, CB_FSEEK_SET );
 
-    void* buffer = CB_ALLOC( NULL, 0, size );
-    if( !cb_file_read( &file, size, buffer, NULL ) ) {
-        cb_file_close( &file );
-        CB_FREE( buffer, size );
+    CB_RESERVE( buffer, buffer->len + file_size );
+
+    uintptr_t read_size = 0;
+    bool result = cb_file_read( &file, file_size, buffer->buf + buffer->len, &read_size );
+    cb_file_close( &file );
+
+    if( result ) {
+        buffer->len += read_size;
+    }
+
+    return result;
+}
+uintptr_t cb_file_size( CB_File* file ) {
+    uintptr_t offset = cb_file_seek( file, 0, CB_FSEEK_CUR );
+    uintptr_t size   = cb_file_seek( file, 0, CB_FSEEK_END );
+    cb_file_seek( file, offset, CB_FSEEK_SET );
+    return size;
+}
+bool cb_file_read_buffer( CB_File* file, int amount, CB_StringBuilder* buffer ) {
+    CB_RESERVE( buffer, buffer->len + amount );
+
+    uintptr_t read = 0;
+    if( !cb_file_read( file, amount, buffer->buf + buffer->len, &read ) ) {
         return false;
     }
 
-    cb_file_close( &file );
-
-    *out_buffer_size = size;
-    *out_buffer      = buffer;
+    buffer->len += read;
     return true;
 }
 
@@ -4316,33 +4353,6 @@ void cb_environment_builder_replace(
     }
 }
 
-bool cb_process_exec(
-    CB_Command             cmd,
-    int*                   opt_out_exit_code,
-    const char*            opt_working_directory,
-    CB_EnvironmentBuilder* opt_environment,
-    CB_PipeRead*           opt_stdin,
-    CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr
-) {
-    CB_ProcessID pid;
-    bool success = cb_process_exec_async(
-        cmd, &pid, opt_working_directory,
-        opt_environment, opt_stdin, opt_stdout, opt_stderr );
-
-    if( !success ) {
-        return false;
-    }
-
-    int exit_code = cb_process_wait( &pid );
-
-    if( opt_out_exit_code ) {
-        *opt_out_exit_code = exit_code;
-    }
-
-    return true;
-}
-
 bool cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes ) {
     bool result = true;
     for( int i = 0; i < count; ++i ) {
@@ -4418,7 +4428,7 @@ void cb_write_log( CB_LogLevel level, const char* fmt, ... ) {
     va_end( va );
 }
 
-int _cb_internal_process_exec_quick(
+int _cb_internal_process_exec(
     CB_Command             cmd,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
@@ -4427,14 +4437,20 @@ int _cb_internal_process_exec_quick(
     CB_PipeWrite*          opt_stderr,
     ...
 ) {
-    int exit_code = 0;
-    bool success  = cb_process_exec(
-        cmd, &exit_code, opt_working_directory,
-        opt_environment, opt_stdin, opt_stdout, opt_stderr );
+    CB_ProcessID pid;
+    bool success = _cb_internal_process_exec_async(
+        cmd, &pid,
+        opt_working_directory,
+        opt_environment,
+        opt_stdin,
+        opt_stdout,
+        opt_stderr );
 
     if( !success ) {
         return -2;
     }
+
+    int exit_code = cb_process_wait( &pid );
 
     return exit_code;
 }
@@ -4967,14 +4983,15 @@ bool cb_environment_set( const char* name, const char* new_value ) {
     return true;
 }
 
-bool cb_process_exec_async(
+bool _cb_internal_process_exec_async(
     CB_Command             cmd,
     CB_ProcessID*          out_pid,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
     CB_PipeRead*           opt_stdin,
     CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr
+    CB_PipeWrite*          opt_stderr,
+    ...
 ) {
     if( !cmd.len ) {
         CB_ERROR( "cb_process_exec_async(): command is empty!" );
@@ -6168,14 +6185,15 @@ bool cb_environment_set( const char* name, const char* new_value ) {
     return false;
 }
 
-bool cb_process_exec_async(
+bool _cb_internal_process_exec(
     CB_Command             cmd,
     CB_ProcessID*          out_pid,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
     CB_PipeRead*           opt_stdin,
     CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr
+    CB_PipeWrite*          opt_stderr,
+    ...
 ) {
     STARTUPINFOW        startup = {};
     PROCESS_INFORMATION info    = {};
