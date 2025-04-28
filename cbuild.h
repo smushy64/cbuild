@@ -234,7 +234,8 @@ extern void exit( int status );
         /// @brief Current platform is POSIX compliant.
         #define CB_PLATFORM_IS_POSIX 1
 
-    #elif CB_PLATFORM_CURRENT == CB_PLATFORM_UNKNOWN && CB_COMPILER_IS_GNU_COMPATIBLE
+    #elif CB_PLATFORM_CURRENT == CB_PLATFORM_UNKNOWN && \
+        CB_COMPILER_IS_GNU_COMPATIBLE
 
         #if __has_include(<unistd.h>)
             /// @brief Current platform is POSIX compliant.
@@ -333,7 +334,8 @@ extern void exit( int status );
     #endif
 #endif /* !defined(CB_ARCH_CURRENT) */
 
-#if !defined(CB_ARCH_IS_LITTLE_ENDIAN) && CB_ARCH_CURRENT_BYTE_ORDER == CB_ARCH_LITTLE_ENDIAN
+#if !defined(CB_ARCH_IS_LITTLE_ENDIAN) && \
+    CB_ARCH_CURRENT_BYTE_ORDER == CB_ARCH_LITTLE_ENDIAN
     #define CB_ARCH_IS_LITTLE_ENDIAN 1
 #endif
 
@@ -612,25 +614,32 @@ extern void exit( int status );
 /// @brief Insert a panic with message. (Noreturn)
 /// @param ... (format and format arguments) Message to log.
 #define CB_PANIC( ... ) do {\
-    CB_FATAL( "PANIC @ " __FILE__ ":" CB_STRINGIFY_VALUE(__LINE__) ": " __VA_ARGS__ ); \
+    CB_FATAL( \
+        "PANIC @ " __FILE__ ":" \
+        CB_STRINGIFY_VALUE(__LINE__) ": " __VA_ARGS__ ); \
     CB_INSERT_TRAP(); \
 } while(0)
 
 /// @brief Mark control path as unimplemented. (Noreturn)
 #define CB_UNIMPLEMENTED( ... ) do {\
-    CB_FATAL( "UNIMPLEMENTED @ " __FILE__ ":" CB_STRINGIFY_VALUE(__LINE__) ": " __VA_ARGS__ ); \
+    CB_FATAL( \
+        "UNIMPLEMENTED @ " __FILE__ ":" \
+        CB_STRINGIFY_VALUE(__LINE__) ": " __VA_ARGS__ ); \
     CB_INSERT_TRAP(); \
 } while(0)
 
 /// @brief Mark control path as unreachable (hopefully). (Noreturn)
 #define CB_UNREACHABLE( ... ) do {\
-    CB_FATAL( "UNREACHABLE @ " __FILE__ ":" CB_STRINGIFY_VALUE(__LINE__) ": " __VA_ARGS__ ); \
+    CB_FATAL( \
+        "UNREACHABLE @ " __FILE__ ":" \
+        CB_STRINGIFY_VALUE(__LINE__) ": " __VA_ARGS__ ); \
     CB_INSERT_UNREACHABLE(); \
     CB_INSERT_TRAP(); \
 } while(0)
 /*           ^^^^^ just in case compiler warns */
 
-/// @brief Create version integer the same way C-Build defines version integers.
+/// @brief Create version integer the
+///        same way C-Build defines version integers.
 /// @param major (unsigned short) Major version.
 /// @param minor (unsigned char)  Minor version.
 /// @param patch (unsigned char)  Patch version.
@@ -708,15 +717,18 @@ extern void exit( int status );
 /// @brief Copy prototype into destination buffer.
 /// @param[in] dst       (void*)     Destination buffer.
 /// @param[in] prototype (any*)      Pointer to start of prototype.
-/// @param     count     (uintptr_t) Number of times to copy @c prototype to @c dst.
+/// @param     count     (uintptr_t)
+///                         Number of times to copy @c prototype to @c dst.
 ///                         @c dst must have enough space for
 ///                         sizeof( @c prototype[0] ) * @c count bytes.
 /// @return Pointer to @c dst.
 #define CB_STAMP( dst, prototype, count ) \
     cb_stamp( dst, sizeof((prototype)[0]), (prototype), count )
 
-/// @brief Make sure that dynamic array has enough capacity to hold given number of items.
-/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields).
+/// @brief Make sure that dynamic
+///        array has enough capacity to hold given number of items.
+/// @param[in] darray Pointer to dynamic array
+///                     (struct with cap, len and buf fields).
 /// @param     count  Number of items dynamic array should have capacity for.
 #define CB_RESERVE( darray, count ) do { \
     if( (darray)->cap < (count) ) { \
@@ -729,16 +741,19 @@ extern void exit( int status );
 } while(0)
 
 /// @brief Free dynamic array.
-/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields).
+/// @param[in] darray Pointer to dynamic array
+///                     (struct with cap, len and buf fields).
 #define CB_FREE_ARRAY( darray ) \
     CB_FREE( (darray)->buf, sizeof((darray)->buf[0]) * (darray)->cap )
 
 /// @brief Push item to dynamic array.
-/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields)
+/// @param[in] darray Pointer to dynamic array
+///                     (struct with cap, len and buf fields)
 /// @param     item   Item to push to end of dynamic array.
 #define CB_PUSH( darray, item ) do { \
     if( !(darray)->buf ) { \
-        *(void**)(&(darray)->buf) = CB_ALLOC( NULL, 0, sizeof( (darray)->buf[0] ) * 4 ); \
+        *(void**)(&(darray)->buf) = \
+            CB_ALLOC( NULL, 0, sizeof( (darray)->buf[0] ) * 4 ); \
         (darray)->cap = 4; \
     } else if( ((darray)->len + 1) >= (darray)->cap ) { \
         *(void**)(&(darray)->buf) = CB_ALLOC( \
@@ -751,7 +766,8 @@ extern void exit( int status );
 } while(0)
 
 /// @brief Append items to dynamic array.
-/// @param[in] darray Pointer to dynamic array (struct with cap, len and buf fields)
+/// @param[in] darray Pointer to dynamic array
+///                     (struct with cap, len and buf fields)
 /// @param     count  Number of items to append.
 /// @param[in] items  Items to append.
 #define CB_APPEND( darray, count, items ) do { \
@@ -766,7 +782,9 @@ extern void exit( int status );
             sizeof((darray)->buf[0]) * ((darray)->cap + (count)) ); \
         (darray)->cap += (count); \
     } \
-    memcpy( (darray)->buf + (darray)->len, items, sizeof((darray)->buf[0]) * (count) ); \
+    memcpy( \
+        (darray)->buf + (darray)->len, \
+        items, sizeof((darray)->buf[0]) * (count) ); \
     (darray)->len += (count); \
 } while(0)
 
@@ -778,7 +796,8 @@ extern void exit( int status );
 
 /// @brief String slice and string builder format string.
 #define CB_STRING_FMT               ".*s"
-/// @brief Expand string slice or string builder into arguments for C formatting function.
+/// @brief Expand string slice or
+///          string builder into arguments for C formatting function.
 /// @param string (CB_StringSlice* or CB_StringBuilder*) String to expand.
 #define CB_STRING_FMT_ARG( string ) (string)->len, (string)->buf
 
@@ -836,7 +855,9 @@ extern void exit( int status );
 /// @return CB_Command.
 #define CB_COMMAND( ... ) \
     CB_STRUCT( CB_Command ) { \
-        .len = sizeof( (const char*[]){ __VA_ARGS__ } ) / sizeof( const char* ), \
+        .len = \
+            sizeof( (const char*[]){ __VA_ARGS__ } ) / \
+            sizeof( const char* ), \
         .buf = (const char*[]){ __VA_ARGS__, NULL } \
     }
 
@@ -1027,7 +1048,8 @@ typedef struct CB_DirectoryWalkInfo {
 ///
 /// @param[in] info   Pointer to info for current item.
 /// @param[in] params (optional) Additional parameters for callback.
-/// @return Enum telling calling function what to do after this callback is called.
+/// @return Enum telling calling function what
+///         to do after this callback is called.
 typedef CB_DirectoryWalkControl
 CB_DirectoryWalkFN( const CB_DirectoryWalkInfo* info, void* params );
 
@@ -1299,12 +1321,14 @@ void* cb_stamp(
 /// @brief Allocate a formatted string buffer.
 /// @param[in] fmt Format string.
 /// @param[in] va  Variadic list of format arguments.
-/// @return Formatted string. Must be freed with CB_FREE(). Size of buffer is strlen() + 1.
+/// @return Formatted string.
+///         Must be freed with CB_FREE(). Size of buffer is strlen() + 1.
 char* cb_alloc_fmt_va( const char* fmt, va_list va );
 /// @brief Allocate a formatted string buffer.
 /// @param[in] fmt Format string.
 /// @param     ... Format arguments.
-/// @return Formatted string. Must be freed with CB_FREE(). Size of buffer is strlen() + 1.
+/// @return Formatted string.
+///         Must be freed with CB_FREE(). Size of buffer is strlen() + 1.
 char* cb_alloc_fmt( const char* fmt, ... );
 
 /// @brief Compare two strings.
@@ -1364,7 +1388,8 @@ int cb_string_find_set_rev( CB_StringSlice string, CB_StringSlice set );
 /// @return
 ///     - Negative         : Set could not be found.
 ///     - Zero or Positive : Byte index of character found in string.
-int cb_string_find_set_unicode( CB_StringSlice string, int len, uint32_t* set );
+int cb_string_find_set_unicode(
+    CB_StringSlice string, int len, uint32_t* set );
 /// @brief Search for any character in set in string from end of string.
 /// @param     string String to search in.
 /// @param     len    Number of unicode characters in set.
@@ -1372,7 +1397,8 @@ int cb_string_find_set_unicode( CB_StringSlice string, int len, uint32_t* set );
 /// @return
 ///     - Negative         : Set could not be found.
 ///     - Zero or Positive : Byte index of character found in string.
-int cb_string_find_set_unicode_rev( CB_StringSlice string, int len, uint32_t* set );
+int cb_string_find_set_unicode_rev(
+    CB_StringSlice string, int len, uint32_t* set );
 /// @brief Search for a phrase in string.
 /// @param string String to search in.
 /// @param phrase Phrase to search for.
@@ -1411,7 +1437,8 @@ CB_StringSlice cb_string_trim( CB_StringSlice string, int amount );
 /// @param from_inc Start of range to clip, inclusive.
 /// @param to_exc   End of range to clip, exclusive.
 /// @return Clipped string.
-CB_StringSlice cb_string_clip( CB_StringSlice string, int from_inc, int to_exc );
+CB_StringSlice cb_string_clip(
+    CB_StringSlice string, int from_inc, int to_exc );
 /// @brief Trim leading whitespace from string.
 /// @param string String to trim.
 /// @return Trimmed string.
@@ -1427,7 +1454,8 @@ CB_StringSlice cb_string_trim_surrounding_whitespace( CB_StringSlice string );
 /// @brief Split string at index.
 /// @param      string         String to split.
 /// @param      index          Index to split at.
-/// @param      should_include If @c out_left should include character at @c index.
+/// @param      should_include If @c out_left should
+///                              include character at @c index.
 /// @param[out] out_left       Pointer to write left side of split.
 /// @param[out] out_right      Pointer to write right side of split.
 void cb_string_split(
@@ -1440,7 +1468,8 @@ void cb_string_split(
 /// @param[out] out_left       Pointer to write left side of split.
 /// @param[out] out_right      Pointer to write right side of split.
 /// @return
-///     - @c true  : Character found and split strings written to @c out_left and @c out_right.
+///     - @c true  : Character found and split
+///                    strings written to @c out_left and @c out_right.
 ///     - @c false : Failed to find character.
 bool cb_string_split_by_char(
     CB_StringSlice string, char c, bool should_include,
@@ -1452,7 +1481,8 @@ bool cb_string_split_by_char(
 /// @param[out] out_left       Pointer to write left side of split.
 /// @param[out] out_right      Pointer to write right side of split.
 /// @return
-///     - @c true  : Character found and split strings written to @c out_left and @c out_right.
+///     - @c true  : Character found and split strings
+///                    written to @c out_left and @c out_right.
 ///     - @c false : Failed to find character.
 bool cb_string_split_by_char_unicode(
     CB_StringSlice string, uint32_t c, bool should_include,
@@ -1466,7 +1496,8 @@ bool cb_string_split_by_char_unicode(
 /// @return
 ///     - @c true  : Character in set found and split
 ///                    strings written to @c out_left and @c out_right.
-///     - @c false : Failed to find any character in set. @c string written to @c out_left.
+///     - @c false : Failed to find any character in set.
+///                    @c string written to @c out_left.
 bool cb_string_split_by_set(
     CB_StringSlice string, CB_StringSlice set, bool should_include,
     CB_StringSlice* out_left, CB_StringSlice* out_right );
@@ -1480,7 +1511,8 @@ bool cb_string_split_by_set(
 /// @return
 ///     - @c true  : Character in set found and split
 ///                    strings written to @c out_left and @c out_right.
-///     - @c false : Failed to find any character in set. @c string written to @c out_left.
+///     - @c false : Failed to find any character in set.
+///                    @c string written to @c out_left.
 bool cb_string_split_by_set_unicode(
     CB_StringSlice string, int set_len, uint32_t* set, bool should_include,
     CB_StringSlice* out_left, CB_StringSlice* out_right );
@@ -1491,7 +1523,8 @@ bool cb_string_split_by_set_unicode(
 /// @param[out] out_left       Pointer to write left side of split.
 /// @param[out] out_right      Pointer to write right side of split.
 /// @return
-///     - @c true  : Phrase found and split strings written to @c out_left and @c out_right.
+///     - @c true  : Phrase found and split strings
+///                    written to @c out_left and @c out_right.
 ///     - @c false : Failed to find phrase. @c string written to @c out_left.
 bool cb_string_split_by_phrase(
     CB_StringSlice string, CB_StringSlice phrase, bool should_include,
@@ -1499,23 +1532,28 @@ bool cb_string_split_by_phrase(
 /// @brief Split string by character into a list of substrings.
 /// @param      string         String to split.
 /// @param      c              Character to split by. (ASCII)
-/// @param      should_include If strings in list should include found character.
+/// @param      should_include If strings in list
+///                            should include found character.
 /// @param[out] out_list       List to append string slices to.
 /// @return Number of string slices found.
 int cb_string_split_by_char_list(
-    CB_StringSlice string, char c, bool should_include, CB_StringSliceList* out_list );
+    CB_StringSlice string, char c,
+    bool should_include, CB_StringSliceList* out_list );
 /// @brief Split string by character into a list of substrings.
 /// @param      string         String to split.
 /// @param      c              Character to split by. (Unicode)
-/// @param      should_include If strings in list should include found character.
+/// @param      should_include If strings in list
+///                              should include found character.
 /// @param[out] out_list       List to append string slices to.
 /// @return Number of string slices found.
 int cb_string_split_by_char_unicode_list(
-    CB_StringSlice string, uint32_t c, bool should_include, CB_StringSliceList* out_list );
+    CB_StringSlice string, uint32_t c,
+    bool should_include, CB_StringSliceList* out_list );
 /// @brief Split string by any character in set into a list of substrings.
 /// @param      string         String to split.
 /// @param      set            Set of characters to search for. (ASCII)
-/// @param      should_include If strings in list should include found character.
+/// @param      should_include If strings in list
+///                              should include found character.
 /// @param[out] out_list       List to append string slices to.
 /// @return Number of string slices found.
 int cb_string_split_by_set_list(
@@ -1525,7 +1563,8 @@ int cb_string_split_by_set_list(
 /// @param      string         String to split.
 /// @param      set_len        Number of characters in set.
 /// @param[in]  set            Set of characters to search for. (Unicode)
-/// @param      should_include If strings in list should include found character.
+/// @param      should_include If strings in list
+///                              should include found character.
 /// @param[out] out_list       List to append string slices to.
 /// @return Number of string slices found.
 int cb_string_split_by_set_unicode_list(
@@ -1543,11 +1582,14 @@ int cb_string_split_by_phrase_list(
 
 /// @brief Create null-terminated string from string.
 /// @param string                String to create C string from.
-/// @param replace_null          If function should search for nulls to replace.
+/// @param replace_null          If function should
+///                                search for nulls to replace.
 /// @param replacement_character Character to replace nulls with.
-/// @return New C string. Must be freed with CB_FREE. Buffer size is strlen + 1.
+/// @return New C string.
+///         Must be freed with CB_FREE. Buffer size is strlen + 1.
 char* cb_cstr_from_string(
-    CB_StringSlice string, bool replace_null, uint32_t replacement_character );
+    CB_StringSlice string, bool replace_null,
+    uint32_t replacement_character );
 /// @brief Append string slice to string builder.
 /// @param[in] builder String builder to append to.
 /// @param     string  String to append.
@@ -1557,36 +1599,45 @@ void cb_string_builder_from_string(
 /// @param[in] builder Pointer to string builder.
 /// @param[in] fmt     Format string.
 /// @param[in] va      Variadic arguments.
-void cb_string_builder_fmt_va( CB_StringBuilder* builder, const char* fmt, va_list va );
+void cb_string_builder_fmt_va(
+    CB_StringBuilder* builder, const char* fmt, va_list va );
 /// @brief Write formatted string to string builder.
 /// @param[in] builder Pointer to string builder.
 /// @param[in] fmt     Format string.
 /// @param     ...     Format arguments.
-void cb_string_builder_fmt( CB_StringBuilder* builder, const char* fmt, ... );
+void cb_string_builder_fmt(
+    CB_StringBuilder* builder, const char* fmt, ... );
 
 /// @brief Get next unicode character in string.
 /// @param      string        UTF-8 String.
 /// @param[out] out_character Pointer to write unicode character to.
-/// @return String advanced to next character or empty if this was the last character.
-CB_StringSlice cb_string_unicode_next( CB_StringSlice string, uint32_t* out_character );
+/// @return String advanced to next character or
+///           empty if this was the last character.
+CB_StringSlice cb_string_unicode_next(
+    CB_StringSlice string, uint32_t* out_character );
 
 /// @brief Calculate UTF-8 length of string.
 /// @param     opt_len  (optional) Length of string in code units (bytes).
-///                       If zero, @c str_utf8 is assumed to be null-terminated.
+///                       If zero, @c str_utf8 is
+///                       assumed to be null-terminated.
 /// @param[in] str_utf8 Pointer to start of UTF-8 encoded string.
 /// @return Number of unicode characters in string.
 int cb_utf8_len( int opt_len, const char* str_utf8 );
 /// @brief Get next Unicode character in string.
-/// @param      opt_len       (optional) Length of string in code units (bytes).
-///                             If zero, @c str_utf8 is assumed to be null-terminated.
+/// @param      opt_len       (optional) Length of string
+///                             in code units (bytes).
+///                             If zero, @c str_utf8 is
+///                             assumed to be null-terminated.
 /// @param[in]  str_utf8      Pointer to start of UTF-8 encoded string.
 /// @param[out] out_character Pointer to write unicode character to.
 /// @return Pointer to next character in string.
 const char* cb_utf8_next(
     int opt_len, const char* str_utf8, uint32_t* out_character );
 /// @brief Index into UTF-8 string.
-/// @param      opt_len       (optional) Length of string in code units (bytes).
-///                             If zero, @c str_utf8 is assumed to be null-terminated.
+/// @param      opt_len       (optional) Length of string in
+///                             code units (bytes).
+///                             If zero, @c str_utf8 is
+///                             assumed to be null-terminated.
 /// @param[in]  str_utf8      Pointer to start of UTF-8 encoded string.
 /// @param      index         UTF-8 index.
 /// @param[out] out_character Pointer to write unicode character to.
@@ -1597,7 +1648,8 @@ const char* cb_utf8_index(
 /// @brief Construct UTF-8 code point from code units.
 /// @param code_unit_0, code_unit_1, code_unit_2, code_unit_3 (cp8) Code units.
 /// @return UTF-8 code point.
-#define cb_cp8_from_code_units( code_unit_0, code_unit_1, code_unit_2, code_unit_3 ) \
+#define cb_cp8_from_code_units( \
+    code_unit_0, code_unit_1, code_unit_2, code_unit_3 ) \
     (CB_STRUCT(CB_UTFCodePoint8){ .code_units = { \
         (code_unit_0), (code_unit_1), (code_unit_2), (code_unit_3) }})
 
@@ -1615,7 +1667,8 @@ const char* cb_utf8_index(
     (CB_STRUCT(CB_UTFCodePoint32){ .code_units = { (code_unit_0) }})
 
 /// @brief Construct UTF-8 code point from bytes.
-/// @param code_unit_0, code_unit_1, code_unit_2, code_unit_3 (uint8_t) Code units.
+/// @param code_unit_0, code_unit_1, code_unit_2, code_unit_3 
+///        (uint8_t) Code units.
 /// @return UTF-8 code point.
 #define cb_cp8_from_bytes(                          \
     code_unit_0, code_unit_1, code_unit_2, code_unit_3 ) \
@@ -1625,36 +1678,41 @@ const char* cb_utf8_index(
 #if !defined(CB_ARCH_IS_LITTLE_ENDIAN) || CB_ARCH_IS_LITTLE_ENDIAN == 0
 
 /// @brief Construct UTF-16 code point from bytes.
-/// @param code_unit_0_low, code_unit_0_high (uint8_t) First code unit, low and high byte.
-/// @param code_unit_1_low, code_unit_1_high (uint8_t) Second code unit, low and high byte.
+/// @param code_unit_0_low, code_unit_0_high (uint8_t)
+///        First code unit, low and high byte.
+/// @param code_unit_1_low, code_unit_1_high (uint8_t)
+///        Second code unit, low and high byte.
 /// @return UTF-16 code point.
-#define cb_cp16_from_bytes(                                           \
+#define cb_cp16_from_bytes( \
     code_unit_0_low, code_unit_0_high, code_unit_1_low, code_unit_1_high ) \
-    (struct_literal(CB_UTFCodePoint16){ .bytes = {                            \
-        (code_unit_0_high), (code_unit_0_low), (code_unit_1_high), (code_unit_1_low) }})
+    (struct_literal(CB_UTFCodePoint16){ .bytes = { \
+        (code_unit_0_high), (code_unit_0_low), \
+        (code_unit_1_high), (code_unit_1_low) }})
 
 /// @brief Construct UTF-32 code point from bytes.
 /// @param low_0, low_1   (uint8_t) Low bytes.
 /// @param high_0, high_1 (uint8_t) High bytes.
 /// @return UTF-32 code point.
 #define cb_cp32_from_bytes( low_0, low_1, high_0, high_1 ) \
-    (struct_literal(CB_UTFCodePoint32){ .bytes = {                 \
+    (struct_literal(CB_UTFCodePoint32){ .bytes = { \
         (high_1), (high_0), (low_1), (low_0) } })
 
 /// @brief Access byte from UTF-16 code point.
 /// @param[in] ptr_cp16  (CB_UTFCodePoint16*) Pointer to code point to access.
-/// @param     code_unit (int)             Index of code unit.
-///                                          Either 0 or 1.
-/// @param     byte      (int)             Index of byte.
-///                                          Least-to-most significant byte-order.
+/// @param     code_unit (int)                Index of code unit.
+///                                             Either 0 or 1.
+/// @param     byte      (int)                Index of byte.
+///                                             Least-to-most
+///                                             significant byte-order.
 /// @return Byte.
 #define cb_cp16_read_byte( ptr_cp16, code_unit, byte ) \
     (((uint8_t*)((ptr_cp16)->code_units + code_unit))[1 - (byte)])
 
 /// @brief Access byte from UTF-32 code point.
 /// @param[in] ptr_cp32  (CB_UTFCodePoint32*) Pointer to code point to access.
-/// @param     byte      (int)             Index of byte.
-///                                          Least-to-most significant byte-order.
+/// @param     byte      (int)                Index of byte.
+///                                             Least-to-most 
+///                                             significant byte-order.
 /// @return Byte.
 #define cb_cp32_read_byte( ptr_cp32, byte ) \
     ((ptr_cp32)->bytes[3 - (byte)])
@@ -1662,28 +1720,32 @@ const char* cb_utf8_index(
 #else
 
 /// @brief Construct UTF-16 code point from bytes.
-/// @param code_unit_0_low, code_unit_0_high (uint8_t) First code unit, low and high byte.
-/// @param code_unit_1_low, code_unit_1_high (uint8_t) Second code unit, low and high byte.
+/// @param code_unit_0_low, code_unit_0_high (uint8_t)
+///        First code unit, low and high byte.
+/// @param code_unit_1_low, code_unit_1_high (uint8_t)
+///        Second code unit, low and high byte.
 /// @return UTF-16 code point.
-#define cb_cp16_from_bytes(                                           \
+#define cb_cp16_from_bytes( \
     code_unit_0_low, code_unit_0_high, code_unit_1_low, code_unit_1_high ) \
-    (struct_literal(CB_UTFCodePoint16){ .bytes = {                            \
-        (code_unit_0_low), (code_unit_0_high), (code_unit_1_low), (code_unit_1_high) }})
+    (struct_literal(CB_UTFCodePoint16){ .bytes = { \
+        (code_unit_0_low), (code_unit_0_high), \
+        (code_unit_1_low), (code_unit_1_high) }})
 
 /// @brief Construct UTF-32 code point from bytes.
 /// @param low_0, low_1   (uint8_t) Low bytes.
 /// @param high_0, high_1 (uint8_t) High bytes.
 /// @return UTF-32 code point.
 #define cb_cp32_from_bytes( low_0, low_1, high_0, high_1 ) \
-    (struct_literal(CB_UTFCodePoint32){ .bytes = {                 \
+    (struct_literal(CB_UTFCodePoint32){ .bytes = { \
         (low_0), (low_1), (high_0), (high_1) } })
 
 /// @brief Access byte from UTF-16 code point.
 /// @param[in] ptr_cp16  (CB_UTFCodePoint16*) Pointer to code point to access.
-/// @param     code_unit (int)             Index of code unit.
-///                                          Either 0 or 1.
-/// @param     byte      (int)             Index of byte.
-///                                          Least-to-most significant byte-order.
+/// @param     code_unit (int)                Index of code unit.
+///                                             Either 0 or 1.
+/// @param     byte      (int)                Index of byte.
+///                                             Least-to-most
+///                                             significant byte-order.
 /// @return Byte.
 #define cb_cp16_read_byte( ptr_cp16, code_unit, byte ) \
     (((uint8_t*)((ptr_cp16)->code_units + code_unit))[(byte)])
@@ -1691,7 +1753,8 @@ const char* cb_utf8_index(
 /// @brief Access byte from UTF-32 code point.
 /// @param[in] ptr_cp32  (CB_UTFCodePoint32*) Pointer to code point to access.
 /// @param     byte      (int)             Index of byte.
-///                                          Least-to-most significant byte-order.
+///                                          Least-to-most
+///                                          significant byte-order.
 /// @return Byte.
 #define cb_cp32_read_byte( ptr_cp32, byte ) \
     ((ptr_cp32)->bytes[(byte)])
@@ -1756,30 +1819,42 @@ int cb_cp32_code_unit_count( CB_UTFCodePoint32 cp32 );
 
 /// @brief Validate next UTF-8 code point.
 /// @param      len             Length of string in code units. (bytes)
-/// @param[in]  utf8            UTF-8 String. This function will read 4 code units at most.
-/// @param[out] opt_out_rune    (optional) Pointer to write decoded rune if no error was encountered.
-/// @param[out] opt_out_error   (optional) Pointer to write start of error if error encountered.
-/// @param[out] opt_out_advance (optional) Pointer to write number of bytes to advance string by.
+/// @param[in]  utf8            UTF-8 String.
+///                               This function will read 4 code units at most.
+/// @param[out] opt_out_rune    (optional) Pointer to write decoded
+///                                          rune if no error was encountered.
+/// @param[out] opt_out_error   (optional) Pointer to write start
+///                                          of error if error encountered.
+/// @param[out] opt_out_advance (optional) Pointer to write number
+///                                          of bytes to advance string by.
 /// @return Result.
 CB_UnicodeValidationResult cb_utf8_validate(
     int len, const uint8_t* utf8, uint32_t* opt_out_rune,
     const uint8_t** opt_out_error, int* opt_out_advance );
 /// @brief Validate next UTF-16 code point.
 /// @param      len             Length of string in code units. (shorts)
-/// @param[in]  utf16           UTF-16 String. This function will read 2 code units at most.
-/// @param[out] opt_out_rune    (optional) Pointer to write decoded rune if no error was encountered.
-/// @param[out] opt_out_error   (optional) Pointer to write start of error if error encountered.
-/// @param[out] opt_out_advance (optional) Pointer to write number of bytes to advance string by.
+/// @param[in]  utf16           UTF-16 String.
+///                               This function will read 2 code units at most.
+/// @param[out] opt_out_rune    (optional) Pointer to write decoded
+///                                          rune if no error was encountered.
+/// @param[out] opt_out_error   (optional) Pointer to write start
+///                                          of error if error encountered.
+/// @param[out] opt_out_advance (optional) Pointer to write number
+///                                          of bytes to advance string by.
 /// @return Result.
 CB_UnicodeValidationResult cb_utf16_validate(
     int len, const uint16_t* utf16, uint32_t* opt_out_rune,
     const uint16_t** opt_out_error, int* opt_out_advance );
 /// @brief Validate next UTF-32 code point.
 /// @param      len             Length of string in code units. (shorts)
-/// @param[in]  utf32           UTF-32 String. This function will read 1 code unit at most.
-/// @param[out] opt_out_rune    (optional) Pointer to write decoded rune if no error was encountered.
-/// @param[out] opt_out_error   (optional) Pointer to write start of error if error encountered.
-/// @param[out] opt_out_advance (optional) Pointer to write number of bytes to advance string by.
+/// @param[in]  utf32           UTF-32 String.
+///                               This function will read 1 code unit at most.
+/// @param[out] opt_out_rune    (optional) Pointer to write decoded
+///                                          rune if no error was encountered.
+/// @param[out] opt_out_error   (optional) Pointer to write start
+///                                          of error if error encountered.
+/// @param[out] opt_out_advance (optional) Pointer to write number
+///                                          of bytes to advance string by.
 /// @return Result.
 CB_UnicodeValidationResult cb_utf32_validate(
     int len, const uint32_t* utf32, uint32_t* opt_out_rune,
@@ -1788,39 +1863,48 @@ CB_UnicodeValidationResult cb_utf32_validate(
 /// @brief Get next UTF-8 code point from UTF-8 string.
 ///
 /// @details
-/// If @c len is zero, function returns zero otherwise function will always return
-/// a minimum of 1, even if the next code point in string is invalid.
-/// CB_UNICODE_CP8_REPLACEMENT_CHARACTER is written to @c out_cp8 if code point is invalid.
+/// If @c len is zero, function returns zero
+/// otherwise function will always return a minimum of 1,
+/// even if the next code point in string is invalid.
+/// CB_UNICODE_CP8_REPLACEMENT_CHARACTER is written to
+/// @c out_cp8 if code point is invalid.
 ///
 /// @param      len     Length of UTF-8 string in code units. (bytes)
 /// @param[in]  utf8    UTF-8 String.
 /// @param[out] out_cp8 Pointer to write UTF-8 code point to.
 /// @return Number of code units (bytes) to advance string by.
-int cb_cp8_from_string( int len, const uint8_t* utf8, CB_UTFCodePoint8* out_cp8 );
+int cb_cp8_from_string(
+    int len, const uint8_t* utf8, CB_UTFCodePoint8* out_cp8 );
 /// @brief Get next UTF-16 code point from UTF-16 string.
 ///
 /// @details
-/// If @c len is zero, function returns zero otherwise function will always return
-/// a minimum of 1, even if the next code point in string is invalid.
-/// CB_UNICODE_CP16_REPLACEMENT_CHARACTER is written to @c out_cp16 if code point is invalid.
+/// If @c len is zero, function returns zero
+/// otherwise function will always return a minimum of 1,
+/// even if the next code point in string is invalid.
+/// CB_UNICODE_CP16_REPLACEMENT_CHARACTER is written to 
+/// @c out_cp16 if code point is invalid.
 ///
 /// @param      len      Length of UTF-16 string in code units. (shorts)
 /// @param[in]  utf16    UTF-16 String.
 /// @param[out] out_cp16 Pointer to write UTF-16 code point to.
 /// @return Number of code units (shorts) to advance string by.
-int cb_cp16_from_string( int len, const uint16_t* utf16, CB_UTFCodePoint16* out_cp16 );
+int cb_cp16_from_string(
+    int len, const uint16_t* utf16, CB_UTFCodePoint16* out_cp16 );
 /// @brief Get next UTF-32 code point from UTF-32 string.
 ///
 /// @details
-/// If @c len is zero, function returns zero otherwise function will always return
-/// a minimum of 1, even if the next code point in string is invalid.
-/// CB_UNICODE_CP32_REPLACEMENT_CHARACTER is written to @c out_cp32 if code point is invalid.
+/// If @c len is zero, function returns zero
+/// otherwise function will always return a minimum of 1,
+/// even if the next code point in string is invalid.
+/// CB_UNICODE_CP32_REPLACEMENT_CHARACTER is written to
+/// @c out_cp32 if code point is invalid.
 ///
 /// @param      len      Length of UTF-32 string in code units. (ints)
 /// @param[in]  utf32    UTF-32 String.
 /// @param[out] out_cp32 Pointer to write UTF-32 code point to.
 /// @return Number of code units (ints) to advance string by.
-int cb_cp32_from_string( int len, const uint32_t* utf32, CB_UTFCodePoint32* out_cp32 );
+int cb_cp32_from_string(
+    int len, const uint32_t* utf32, CB_UTFCodePoint32* out_cp32 );
 
 
 /// @brief Convert UTF-16 code point to UTF-8 code point.
@@ -1855,20 +1939,23 @@ CB_UTFCodePoint32 cb_cp32_from_cp16( CB_UTFCodePoint16 cp16 );
 /// @param[in] path_utf8 Path to file.
 /// @return
 ///     - @c true  : File exists at given path.
-///     - @c false : File does not exist or something else (directory) exists at that path.
+///     - @c false : File does not exist or something else
+///                    (directory) exists at that path.
 bool cb_file_exists( const char* path_utf8 );
 
 /// @brief Check if directory exists at given path.
 /// @param[in] path_utf8 Path to directory.
 /// @return
 ///     - @c true  : Directory exists at given path.
-///     - @c false : Directory does not exist or something else (file) exists at that path.
+///     - @c false : Directory does not exist or something else
+///                    (file) exists at that path.
 bool cb_directory_exists( const char* path_utf8 );
 
 /// @brief Copy contents of one directory to another, recursively.
 /// @param[in] dst                      Path to destination directory.
 /// @param[in] src                      Path to source directory.
-/// @param     overwrite_existing_names If function should overwrite existing file/directories.
+/// @param     overwrite_existing_names If function should overwrite
+///                                       existing file/directories.
 /// @param     fail_if_dst_exists       If function should fail if dst exists.
 ///                                       Otherwise, overwrites dst.
 /// @return
@@ -1881,7 +1968,8 @@ bool cb_directory_copy(
 /// @brief Move contents of one directory to another, recursively.
 /// @param[in] dst                      Path to destination directory.
 /// @param[in] src                      Path to source directory.
-/// @param     overwrite_existing_names If function should overwrite existing file/directories.
+/// @param     overwrite_existing_names If function should overwrite
+///                                       existing file/directories.
 /// @param     fail_if_dst_exists       If function should fail if dst exists.
 ///                                       Otherwise, overwrites dst.
 /// @return
@@ -1903,7 +1991,8 @@ bool cb_directory_move(
 /// @brief Read entire file.
 /// @param[in]  path_utf8       Path to file.
 /// @param[out] out_buffer_size Pointer to write size of buffer.
-/// @param[out] out_buffer      Pointer to write buffer pointer to. Free with CB_FREE()
+/// @param[out] out_buffer      Pointer to write buffer pointer to.
+///                               Free with CB_FREE()
 /// @return
 ///     - @c true  : Opened and read from file successfully.
 ///     - @c false : Failed to open/read from file.
@@ -1927,7 +2016,8 @@ uintptr_t cb_file_size( CB_File* file );
 /// @return
 ///     - @c true  : Read from file successfully.
 ///     - @c false : Failed to read from file.
-bool cb_file_read_buffer( CB_File* file, int amount, CB_StringBuilder* buffer );
+bool cb_file_read_buffer(
+    CB_File* file, int amount, CB_StringBuilder* buffer );
 
 /// @brief Check which file was created more recently.
 /// @param[in] file_a Path to first file.
@@ -1980,14 +2070,16 @@ void cb_command_flatten( CB_Command command, CB_StringBuilder* string );
 /// @brief Create command builder from existing command.
 /// @param[out] builder Pointer to command builder.
 /// @param      cmd     Command to create builder from.
-void cb_command_builder_from_cmd( CB_CommandBuilder* builder, CB_Command cmd );
+void cb_command_builder_from_cmd(
+    CB_CommandBuilder* builder, CB_Command cmd );
 /// @brief Remove argument by name.
 /// @param[in] builder Pointer to command builder to remove command from.
 /// @param[in] name    Name of argument to remove.
 /// @return
 ///     - @c true  : @c name found and removed.
 ///     - @c false : Failed to find @c name.
-bool cb_command_builder_remove_by_name( CB_CommandBuilder* builder, const char* name );
+bool cb_command_builder_remove_by_name(
+    CB_CommandBuilder* builder, const char* name );
 /// @brief Remove command from builder.
 /// @param[in] builder Pointer to command builder to remove command from.
 /// @param     index   Index of command to remove.
@@ -2005,7 +2097,8 @@ bool cb_command_builder_replace_by_name(
 /// @param[in] builder   Pointer to command builder to replace command in.
 /// @param     index     Index of argument to replace.
 /// @param[in] new_value Value to replace argument with.
-void cb_command_builder_replace( CB_CommandBuilder* builder, int index, const char* new_value );
+void cb_command_builder_replace(
+    CB_CommandBuilder* builder, int index, const char* new_value );
 /// @brief Reset builder in order to reuse memory.
 /// @param[in] builder Pointer to command builder.
 void cb_command_builder_reset( CB_CommandBuilder* builder );
@@ -2047,7 +2140,8 @@ void cb_environment_builder_remove(
 ///     - @c true  : Environment variable found and replaced.
 ///     - @c false : Failed to find environment variable.
 bool cb_environment_builder_replace_by_name(
-    CB_EnvironmentBuilder* environment, const char* name, const char* new_value );
+    CB_EnvironmentBuilder* environment,
+    const char* name, const char* new_value );
 /// @brief Replace environment variable in environment builder.
 /// @param[in] environment Pointer to environment builder.
 /// @param[in] index       Index of variable whose value should be replaced.
@@ -2060,25 +2154,37 @@ void cb_environment_builder_replace(
 /// Process ID must be used with one of the following functions:
 ///     - cb_process_discard()    to free process id.
 ///     - cb_process_wait_timed() to wait on process.
-///                                 If times out, process id must still be freed.
-///     - cb_process_wait()       to wait on process. Automatically frees process id.
-///     - cb_process_kill()       to kill process prematurely. Automatically frees process id.
-/// @param      cmd                   (CB_Command)           Command to execute.
-/// @param[out] out_pid               (CB_ProcessID*)        Pointer to write process ID to.
-/// @param[in]  opt_working_directory (optional,const char*) Working directory path.
+///                                 If times out,
+///                                 process id must still be freed.
+///     - cb_process_wait()       to wait on process.
+///                                 Automatically frees process id.
+///     - cb_process_kill()       to kill process prematurely.
+///                                 Automatically frees process id.
+/// @param      cmd                   (CB_Command)
+///                                     Command to execute.
+/// @param[out] out_pid               (CB_ProcessID*)
+///                                     Pointer to write process ID to.
+/// @param[in]  opt_working_directory (optional,const char*)
+///                                     Working directory path.
 /// @param[in]  opt_environment       (optional,CB_EnvironmentBuilder*)
 ///                                     Environment to execute process in.
-/// @param[in]  opt_stdin             (optional,CB_PipeRead*) Pointer to stdin pipe.
-/// @param[in]  opt_stdout            (optional,CB_PipeWrite*) Pointer to stdout pipe.
-/// @param[in]  opt_stderr            (optional,CB_PipeWrite*) Pointer to stderr pipe.
+/// @param[in]  opt_stdin             (optional,CB_PipeRead*)
+///                                     Pointer to stdin pipe.
+/// @param[in]  opt_stdout            (optional,CB_PipeWrite*)
+///                                     Pointer to stdout pipe.
+/// @param[in]  opt_stderr            (optional,CB_PipeWrite*)
+///                                     Pointer to stderr pipe.
 /// @return
 ///     - @c true  : Executed command successfully.
 ///     - @c false : Failed to execute command.
 #define cb_process_exec_async( ... ) \
-    _cb_internal_process_exec_async( __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
+    _cb_internal_process_exec_async( \
+        __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
 /// @brief Execute command synchronously.
-/// @param     cmd                   (CB_Command)           Command to execute.
-/// @param[in] opt_working_directory (optional,const char*) Working directory path.
+/// @param     cmd                   (CB_Command)
+///                                    Command to execute.
+/// @param[in] opt_working_directory (optional,const char*)
+///                                    Working directory path.
 /// @param[in] opt_environment       (optional,CB_EnvironmentBuilder*)
 ///                                    Environment variables for process.
 /// @param[in] opt_stdin  (optional,CB_PipeRead*)  Pointer to stdin pipe.
@@ -2095,14 +2201,17 @@ void cb_environment_builder_replace(
 /// @brief Wait for series of processes.
 /// @param      count              Number of process IDs to wait for.
 /// @param[in]  pids               Pointer to array of process IDs.
-///                                  Must contain @c count number of process IDs.
+///                                  Must contain @c count number
+///                                  of process IDs.
 /// @param[out] opt_out_exit_codes Pointer to array of exit codes.
 ///                                  If pointer is valid,
-///                                  it must contain @c count number of integers.
+///                                  it must contain @c count number
+///                                  of integers.
 /// @return
 ///     - @c true  : All processes exited successfully.
 ///     - @c false : One or more processes failed.
-bool cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes );
+bool cb_process_wait_many(
+    int count, CB_ProcessID* pids, int* opt_out_exit_codes );
 
 /// @brief Set logging level.
 /// @param level Logging level.
@@ -2186,7 +2295,8 @@ char* cb_path_canonicalize( const char* path_utf8 );
 /// @return
 ///     - @c true  : Opened file successfully.
 ///     - @c false : Failed to open file.
-bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file );
+bool cb_file_open(
+    const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file );
 /// @brief Close file.
 /// @param[in] file Pointer to file handle.
 void cb_file_close( CB_File* file );
@@ -2208,17 +2318,20 @@ void cb_file_truncate( CB_File* file );
 ///     - @c true  : Read from file successfully.
 ///     - @c false : Failed to read from file.
 bool cb_file_read(
-    CB_File* file, uintptr_t buffer_size, void* buffer, uintptr_t* opt_out_read );
+    CB_File* file, uintptr_t buffer_size,
+    void* buffer, uintptr_t* opt_out_read );
 /// @brief Write to file.
 /// @param[in]  file          Pointer to file handle.
 /// @param      buffer_size   Size of buffer read from.
 /// @param[in]  buffer        Pointer to buffer to read from.
-/// @param[out] opt_out_write (optional) Pointer to write number of bytes written.
+/// @param[out] opt_out_write (optional)
+///                             Pointer to write number of bytes written.
 /// @return
 ///     - @c true  : Written to file successfully.
 ///     - @c false : Failed to write to file.
 bool cb_file_write(
-    CB_File* file, uintptr_t buffer_size, const void* buffer, uintptr_t* opt_out_write );
+    CB_File* file, uintptr_t buffer_size,
+    const void* buffer, uintptr_t* opt_out_write );
 /// @brief Write formatted string to file.
 /// @param[in] file Pointer to file handle.
 /// @param[in] fmt  Format string.
@@ -2242,7 +2355,8 @@ bool cb_file_remove( const char* path_utf8 );
 /// @return
 ///     - @c true  : Successfully copied file.
 ///     - @c false : Failed to copy file.
-bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists );
+bool cb_file_copy(
+    const char* dst, const char* src, bool fail_if_dst_exists );
 /// @brief Move entire file from src to dst.
 /// @param[in] dst                Path to destination file.
 /// @param[in] src                Path to source file.
@@ -2250,7 +2364,8 @@ bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists );
 /// @return
 ///     - @c true  : Successfully copied file and remove src.
 ///     - @c false : Failed to copy file.
-bool cb_file_move( const char* dst, const char* src, bool fail_if_dst_exists );
+bool cb_file_move(
+    const char* dst, const char* src, bool fail_if_dst_exists );
 
 
 /// @brief Create a directory.
@@ -2263,8 +2378,8 @@ bool cb_directory_create( const char* path_utf8 );
 /// @param[in] path_utf8 Path to delete directory at.
 /// @param     recursive If true, deletes directory contents.
 /// @return
-///     - @c true  : If @c recursive,
-///               deleted directory contents and directory, otherwise deleted directory.
+///     - @c true  : If @c recursive, deleted directory contents and
+///                    directory, otherwise deleted directory.
 ///     - @c false : If @c recursive,
 ///               failed to delete item in directory or directory itself,
 ///               otherwise directory was not empty or could not be found.
@@ -2276,7 +2391,8 @@ bool cb_directory_remove( const char* path_utf8, bool recursive );
 /// @return
 ///     - @c true  : Successfully walked directory.
 ///     - @c false : Failed to walk directory.
-bool cb_directory_walk( const char* path_utf8, CB_DirectoryWalkFN* callback, void* params );
+bool cb_directory_walk(
+    const char* path_utf8, CB_DirectoryWalkFN* callback, void* params );
 
 /// @brief Change directory.
 /// @param[in] new_cwd Path to change to.
@@ -2341,7 +2457,8 @@ bool cb_environment_set( const char* name, const char* new_value );
 /// @param[in] pid Process ID to discard.
 void cb_process_discard( CB_ProcessID* pid );
 /// @brief Wait for process.
-/// @param[in] pid ID of process to wait for. It's automatically discarded when process exits.
+/// @param[in] pid ID of process to wait for.
+///                  It's automatically discarded when process exits.
 /// @return
 ///     - 0-255 : Process exited normally and this is the exit code.
 ///     - -1    : Process exited abnormally.
@@ -2350,11 +2467,14 @@ int cb_process_wait( CB_ProcessID* pid );
 /// @brief Wait for process.
 /// @param[in]  pid               ID of process to wait for.
 /// @param      msec              Milliseconds to wait for.
-/// @param[out] opt_out_exit_code (optional) Pointer to write process exit code to.
+/// @param[out] opt_out_exit_code (optional)
+///                                 Pointer to write process exit code to.
 /// @return
-///     - @c true  : Process finished before @c msec. @c pid has automatically been discarded.
+///     - @c true  : Process finished before @c msec.
+///                    @c pid has automatically been discarded.
 ///     - @c false : Process timed out.
-bool cb_process_wait_timed( CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_code );
+bool cb_process_wait_timed(
+    CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_code );
 /// @brief Kill process prematurely.
 /// @param[in] pid ID of process to kill.
 void cb_process_kill( CB_ProcessID* pid );
@@ -2423,150 +2543,150 @@ typedef CB_UTFCodePoint16          UTFCodePoint16;
 typedef CB_UTFCodePoint32          UTFCodePoint32;
 typedef CB_UnicodeValidationResult UnicodeValidationResult;
 
-#define initialize(...)                               cb_initialize(__VA_ARGS__)
-#define rebuild(...)                                  cb_rebuild(__VA_ARGS__)
-#define context_get()                                 cb_context_get()
-#define context_set(...)                              cb_context_set(__VA_ARGS__)
-#define local()                                       cb_local()
-#define local_fmt_va(...)                             cb_local_fmt_va(__VA_ARGS__)
-#define local_fmt(...)                                cb_local_fmt(__VA_ARGS__)
-#define stamp(...)                                    cb_stamp(__VA_ARGS__)
-#define alloc_fmt_va(...)                             cb_alloc_fmt_va(__VA_ARGS__)
-#define alloc_fmt(...)                                cb_alloc_fmt(__VA_ARGS__)
-#define string_cmp(...)                               cb_string_cmp(__VA_ARGS__)
-#define string_find(...)                              cb_string_find(__VA_ARGS__)
-#define string_find_unicode(...)                      cb_string_find_unicode(__VA_ARGS__)
-#define string_find_rev(...)                          cb_string_find_rev(__VA_ARGS__)
-#define string_find_unicode_rev(...)                  cb_string_find_unicode_rev(__VA_ARGS__)
-#define string_find_unicode_rev(...)                  cb_string_find_unicode_rev(__VA_ARGS__)
-#define string_find_set(...)                          cb_string_find_set(__VA_ARGS__)
-#define string_find_set_rev(...)                      cb_string_find_set_rev(__VA_ARGS__)
-#define string_find_set_unicode(...)                  cb_string_find_set_unicode(__VA_ARGS__)
-#define string_find_set_unicode_rev(...)              cb_string_find_set_unicode_rev(__VA_ARGS__)
-#define string_find_phrase(...)                       cb_string_find_phrase(__VA_ARGS__)
-#define string_find_phrase_rev(...)                   cb_string_find_phrase_rev(__VA_ARGS__)
-#define string_advance(...)                           cb_string_advance(__VA_ARGS__)
-#define string_truncate(...)                          cb_string_truncate(__VA_ARGS__)
-#define string_trim(...)                              cb_string_trim(__VA_ARGS__)
-#define string_clip(...)                              cb_string_clip(__VA_ARGS__)
-#define string_trim_leading_whitespace(...)           cb_string_trim_leading_whitespace(__VA_ARGS__)
-#define string_trim_trailing_whitespace(...)          cb_string_trim_trailing_whitespace(__VA_ARGS__)
-#define string_trim_surrounding_whitespace(...)       cb_string_trim_surrounding_whitespace(__VA_ARGS__)
-#define string_split(...)                             cb_string_split(__VA_ARGS__)
-#define string_split_by_char(...)                     cb_string_split_by_char(__VA_ARGS__)
-#define string_split_by_char_unicode(...)             cb_string_split_by_char_unicode(__VA_ARGS__)
-#define string_split_by_set(...)                      cb_string_split_by_set(__VA_ARGS__)
-#define string_split_by_set_unicode(...)              cb_string_split_by_set_unicode(__VA_ARGS__)
-#define string_split_by_phrase(...)                   cb_string_split_by_phrase(__VA_ARGS__)
-#define string_split_by_char_list(...)                cb_string_split_by_char_list(__VA_ARGS__)
-#define string_split_by_char_unicode_list(...)        cb_string_split_by_char_unicode_list(__VA_ARGS__)
-#define string_split_by_set_list(...)                 cb_string_split_by_set_list(__VA_ARGS__)
-#define string_split_by_set_unicode_list(...)         cb_string_split_by_set_unicode_list(__VA_ARGS__)
-#define string_split_by_phrase_list(...)              cb_string_split_by_phrase_list(__VA_ARGS__)
-#define cstr_from_string(...)                         cb_cstr_from_string(__VA_ARGS__)
-#define string_builder_from_string(...)               cb_string_builder_from_string(__VA_ARGS__)
-#define string_builder_fmt_va(...)                    cb_string_builder_fmt_va(__VA_ARGS__)
-#define string_builder_fmt(...)                       cb_string_builder_fmt(__VA_ARGS__)
-#define string_unicode_next(...)                      cb_string_unicode_next(__VA_ARGS__)
-#define utf8_len(...)                                 cb_utf8_len(__VA_ARGS__)
-#define utf8_next(...)                                cb_utf8_next(__VA_ARGS__)
-#define utf8_index(...)                               cb_utf8_index(__VA_ARGS__)
-#define cp8_from_code_units(...)                      cb_cp8_from_code_units(__VA_ARGS__)
-#define cp16_from_code_units(...)                     cb_cp16_from_code_units(__VA_ARGS__)
-#define cp32_from_code_units(...)                     cb_cp32_from_code_units(__VA_ARGS__)
-#define cp16_from_bytes(...)                          cb_cp16_from_bytes(__VA_ARGS__)
-#define cp32_from_bytes(...)                          cb_cp32_from_bytes(__VA_ARGS__)
-#define cp16_read_byte(...)                           cb_cp16_read_byte(__VA_ARGS__)
-#define cp32_read_byte(...)                           cb_cp32_read_byte(__VA_ARGS__)
-#define unicode_from_cp8(...)                         cb_unicode_from_cp8(__VA_ARGS__)
-#define unicode_from_cp16(...)                        cb_unicode_from_cp16(__VA_ARGS__)
-#define unicode_from_cp32(...)                        cb_unicode_from_cp32(__VA_ARGS__)
-#define cp8_code_unit_count(...)                      cb_cp8_code_unit_count(__VA_ARGS__)
-#define cp16_code_unit_count(...)                     cb_cp16_code_unit_count(__VA_ARGS__)
-#define cp32_code_unit_count(...)                     cb_cp32_code_unit_count(__VA_ARGS__)
-#define utf8_validate(...)                            cb_utf8_validate(__VA_ARGS__)
-#define utf16_validate(...)                           cb_utf16_validate(__VA_ARGS__)
-#define utf32_validate(...)                           cb_utf32_validate(__VA_ARGS__)
-#define cp8_from_string(...)                          cb_cp8_from_string(__VA_ARGS__)
-#define cp16_from_string(...)                         cb_cp16_from_string(__VA_ARGS__)
-#define cp32_from_string(...)                         cb_cp32_from_string(__VA_ARGS__)
-#define cp8_from_cp16(...)                            cb_cp8_from_cp16(__VA_ARGS__)
-#define cp8_from_cp32(...)                            cb_cp8_from_cp32(__VA_ARGS__)
-#define cp16_from_cp8(...)                            cb_cp16_from_cp8(__VA_ARGS__)
-#define cp16_from_cp32(...)                           cb_cp16_from_cp32(__VA_ARGS__)
-#define cp32_from_cp8(...)                            cb_cp32_from_cp8(__VA_ARGS__)
-#define cp32_from_cp16(...)                           cb_cp32_from_cp16(__VA_ARGS__)
-#define file_exists(...)                              cb_file_exists(__VA_ARGS__)
-#define directory_exists(...)                         cb_directory_exists(__VA_ARGS__)
-#define directory_copy(...)                           cb_directory_copy(__VA_ARGS__)
-#define directory_move(...)                           cb_directory_move(__VA_ARGS__)
-#define make_directories(...)                         cb_make_directories(__VA_ARGS__)
-#define path_read_buffer(...)                         cb_path_read_buffer(__VA_ARGS__)
-#define file_size(...)                                cb_file_size(__VA_ARGS__)
-#define file_read_buffer(...)                         cb_file_read_buffer(__VA_ARGS__)
-#define which_file_is_newer(...)                      cb_which_file_is_newer(__VA_ARGS__)
-#define which_file_is_newer_many_array(...)           cb_which_file_is_newer_many_array(__VA_ARGS__)
-#define which_file_is_newer_many(...)                 cb_which_file_is_newer_many(__VA_ARGS__)
-#define command_flatten(...)                          cb_command_flatten(__VA_ARGS__)
-#define command_builder_append(...)                   cb_command_builder_append(__VA_ARGS__)
-#define command_builder_from_cmd(...)                 cb_command_builder_from_cmd(__VA_ARGS__)
-#define command_builder_remove_by_name(...)           cb_command_builder_remove_by_name(__VA_ARGS__)
-#define command_builder_remove(...)                   cb_command_builder_remove(__VA_ARGS__)
-#define command_builder_remove(...)                   cb_command_builder_remove(__VA_ARGS__)
-#define command_builder_replace_by_name(...)          cb_command_builder_replace_by_name(__VA_ARGS__)
-#define command_builder_reset(...)                    cb_command_builder_reset (__VA_ARGS__)
-#define command_builder_free(...)                     cb_command_builder_free(__VA_ARGS__)
-#define environment_builder_append(...)               cb_environment_builder_append(__VA_ARGS__)
-#define environment_builder_reset(...)                cb_environment_builder_reset(__VA_ARGS__)
-#define environment_builder_free(...)                 cb_environment_builder_free(__VA_ARGS__)
-#define environment_builder_remove_by_name(...)       cb_environment_builder_remove_by_name(__VA_ARGS__)
-#define environment_builder_remove(...)               cb_environment_builder_remove(__VA_ARGS__)
-#define environment_builder_replace_by_name(...)      cb_environment_builder_replace_by_name(__VA_ARGS__)
-#define environment_builder_replace(...)              cb_environment_builder_replace(__VA_ARGS__)
-#define process_exec(...)                             cb_process_exec(__VA_ARGS__)
-#define process_wait_many(...)                        cb_process_wait_many(__VA_ARGS__)
-#define log_level_set(...)                            cb_log_level_set(__VA_ARGS__)
-#define log_level_query()                             cb_log_level_query()
-#define log_level_is_valid(...)                       cb_log_level_is_valid(__VA_ARGS__)
-#define write_log_va(...)                             cb_write_log_va(__VA_ARGS__)
-#define write_log(...)                                cb_write_log(__VA_ARGS__)
-#define time_query()                                  cb_time_query()
-#define time_msec()                                   cb_time_msec()
-#define time_sec()                                    cb_time_sec()
-#define path_query_type(...)                          cb_path_query_type(__VA_ARGS__)
-#define path_query_time_modify(...)                   cb_path_query_time_modify(__VA_ARGS__)
-#define path_query_time_create(...)                   cb_path_query_time_create(__VA_ARGS__)
-#define path_query_info(...)                          cb_path_query_info(__VA_ARGS__)
-#define path_canonicalize(...)                        cb_path_canonicalize(__VA_ARGS__)
-#define file_open(...)                                cb_file_open(__VA_ARGS__)
-#define file_close(...)                               cb_file_close(__VA_ARGS__)
-#define file_seek(...)                                cb_file_seek(__VA_ARGS__)
-#define file_truncate(...)                            cb_file_truncate(__VA_ARGS__)
-#define file_read(...)                                cb_file_read(__VA_ARGS__)
-#define file_write(...)                               cb_file_write(__VA_ARGS__)
-#define file_write_fmt_va(...)                        cb_file_write_fmt_va(__VA_ARGS__)
-#define file_write_fmt(...)                           cb_file_write_fmt(__VA_ARGS__)
-#define file_remove(...)                              cb_file_remove(__VA_ARGS__)
-#define file_copy(...)                                cb_file_copy(__VA_ARGS__)
-#define file_move(...)                                cb_file_move(__VA_ARGS__)
-#define directory_create(...)                         cb_directory_create(__VA_ARGS__)
-#define directory_remove(...)                         cb_directory_remove(__VA_ARGS__)
-#define directory_walk(...)                           cb_directory_walk(__VA_ARGS__)
-#define working_directory_set(...)                    cb_working_directory_set(__VA_ARGS__)
-#define working_directory_query()                     cb_working_directory_query()
-#define pipe_open(...)                                cb_pipe_open(__VA_ARGS__)
-#define pipe_close(...)                               cb_pipe_close(__VA_ARGS__)
-#define pipe_stdin()                                  cb_pipe_stdin()
-#define pipe_stdout()                                 cb_pipe_stdout()
-#define pipe_stderr()                                 cb_pipe_stderr()
-#define environment_query(...)                        cb_environment_query(__VA_ARGS__)
-#define environment_set(...)                          cb_environment_set(__VA_ARGS__)
-#define process_exec_async(...)                       cb_process_exec_async(__VA_ARGS__)
-#define process_discard(...)                          cb_process_discard(__VA_ARGS__)
-#define process_wait(...)                             cb_process_wait(__VA_ARGS__)
-#define process_wait_timed(...)                       cb_process_wait_timed(__VA_ARGS__)
-#define process_kill(...)                             cb_process_kill(__VA_ARGS__)
-#define process_is_in_path(...)                       cb_process_is_in_path(__VA_ARGS__)
+#define initialize(...)                          cb_initialize(__VA_ARGS__)
+#define rebuild(...)                             cb_rebuild(__VA_ARGS__)
+#define context_get()                            cb_context_get()
+#define context_set(...)                         cb_context_set(__VA_ARGS__)
+#define local()                                  cb_local()
+#define local_fmt_va(...)                        cb_local_fmt_va(__VA_ARGS__)
+#define local_fmt(...)                           cb_local_fmt(__VA_ARGS__)
+#define stamp(...)                               cb_stamp(__VA_ARGS__)
+#define alloc_fmt_va(...)                        cb_alloc_fmt_va(__VA_ARGS__)
+#define alloc_fmt(...)                           cb_alloc_fmt(__VA_ARGS__)
+#define string_cmp(...)                          cb_string_cmp(__VA_ARGS__)
+#define string_find(...)                         cb_string_find(__VA_ARGS__)
+#define string_find_unicode(...)                 cb_string_find_unicode(__VA_ARGS__)
+#define string_find_rev(...)                     cb_string_find_rev(__VA_ARGS__)
+#define string_find_unicode_rev(...)             cb_string_find_unicode_rev(__VA_ARGS__)
+#define string_find_unicode_rev(...)             cb_string_find_unicode_rev(__VA_ARGS__)
+#define string_find_set(...)                     cb_string_find_set(__VA_ARGS__)
+#define string_find_set_rev(...)                 cb_string_find_set_rev(__VA_ARGS__)
+#define string_find_set_unicode(...)             cb_string_find_set_unicode(__VA_ARGS__)
+#define string_find_set_unicode_rev(...)         cb_string_find_set_unicode_rev(__VA_ARGS__)
+#define string_find_phrase(...)                  cb_string_find_phrase(__VA_ARGS__)
+#define string_find_phrase_rev(...)              cb_string_find_phrase_rev(__VA_ARGS__)
+#define string_advance(...)                      cb_string_advance(__VA_ARGS__)
+#define string_truncate(...)                     cb_string_truncate(__VA_ARGS__)
+#define string_trim(...)                         cb_string_trim(__VA_ARGS__)
+#define string_clip(...)                         cb_string_clip(__VA_ARGS__)
+#define string_trim_leading_whitespace(...)      cb_string_trim_leading_whitespace(__VA_ARGS__)
+#define string_trim_trailing_whitespace(...)     cb_string_trim_trailing_whitespace(__VA_ARGS__)
+#define string_trim_surrounding_whitespace(...)  cb_string_trim_surrounding_whitespace(__VA_ARGS__)
+#define string_split(...)                        cb_string_split(__VA_ARGS__)
+#define string_split_by_char(...)                cb_string_split_by_char(__VA_ARGS__)
+#define string_split_by_char_unicode(...)        cb_string_split_by_char_unicode(__VA_ARGS__)
+#define string_split_by_set(...)                 cb_string_split_by_set(__VA_ARGS__)
+#define string_split_by_set_unicode(...)         cb_string_split_by_set_unicode(__VA_ARGS__)
+#define string_split_by_phrase(...)              cb_string_split_by_phrase(__VA_ARGS__)
+#define string_split_by_char_list(...)           cb_string_split_by_char_list(__VA_ARGS__)
+#define string_split_by_char_unicode_list(...)   cb_string_split_by_char_unicode_list(__VA_ARGS__)
+#define string_split_by_set_list(...)            cb_string_split_by_set_list(__VA_ARGS__)
+#define string_split_by_set_unicode_list(...)    cb_string_split_by_set_unicode_list(__VA_ARGS__)
+#define string_split_by_phrase_list(...)         cb_string_split_by_phrase_list(__VA_ARGS__)
+#define cstr_from_string(...)                    cb_cstr_from_string(__VA_ARGS__)
+#define string_builder_from_string(...)          cb_string_builder_from_string(__VA_ARGS__)
+#define string_builder_fmt_va(...)               cb_string_builder_fmt_va(__VA_ARGS__)
+#define string_builder_fmt(...)                  cb_string_builder_fmt(__VA_ARGS__)
+#define string_unicode_next(...)                 cb_string_unicode_next(__VA_ARGS__)
+#define utf8_len(...)                            cb_utf8_len(__VA_ARGS__)
+#define utf8_next(...)                           cb_utf8_next(__VA_ARGS__)
+#define utf8_index(...)                          cb_utf8_index(__VA_ARGS__)
+#define cp8_from_code_units(...)                 cb_cp8_from_code_units(__VA_ARGS__)
+#define cp16_from_code_units(...)                cb_cp16_from_code_units(__VA_ARGS__)
+#define cp32_from_code_units(...)                cb_cp32_from_code_units(__VA_ARGS__)
+#define cp16_from_bytes(...)                     cb_cp16_from_bytes(__VA_ARGS__)
+#define cp32_from_bytes(...)                     cb_cp32_from_bytes(__VA_ARGS__)
+#define cp16_read_byte(...)                      cb_cp16_read_byte(__VA_ARGS__)
+#define cp32_read_byte(...)                      cb_cp32_read_byte(__VA_ARGS__)
+#define unicode_from_cp8(...)                    cb_unicode_from_cp8(__VA_ARGS__)
+#define unicode_from_cp16(...)                   cb_unicode_from_cp16(__VA_ARGS__)
+#define unicode_from_cp32(...)                   cb_unicode_from_cp32(__VA_ARGS__)
+#define cp8_code_unit_count(...)                 cb_cp8_code_unit_count(__VA_ARGS__)
+#define cp16_code_unit_count(...)                cb_cp16_code_unit_count(__VA_ARGS__)
+#define cp32_code_unit_count(...)                cb_cp32_code_unit_count(__VA_ARGS__)
+#define utf8_validate(...)                       cb_utf8_validate(__VA_ARGS__)
+#define utf16_validate(...)                      cb_utf16_validate(__VA_ARGS__)
+#define utf32_validate(...)                      cb_utf32_validate(__VA_ARGS__)
+#define cp8_from_string(...)                     cb_cp8_from_string(__VA_ARGS__)
+#define cp16_from_string(...)                    cb_cp16_from_string(__VA_ARGS__)
+#define cp32_from_string(...)                    cb_cp32_from_string(__VA_ARGS__)
+#define cp8_from_cp16(...)                       cb_cp8_from_cp16(__VA_ARGS__)
+#define cp8_from_cp32(...)                       cb_cp8_from_cp32(__VA_ARGS__)
+#define cp16_from_cp8(...)                       cb_cp16_from_cp8(__VA_ARGS__)
+#define cp16_from_cp32(...)                      cb_cp16_from_cp32(__VA_ARGS__)
+#define cp32_from_cp8(...)                       cb_cp32_from_cp8(__VA_ARGS__)
+#define cp32_from_cp16(...)                      cb_cp32_from_cp16(__VA_ARGS__)
+#define file_exists(...)                         cb_file_exists(__VA_ARGS__)
+#define directory_exists(...)                    cb_directory_exists(__VA_ARGS__)
+#define directory_copy(...)                      cb_directory_copy(__VA_ARGS__)
+#define directory_move(...)                      cb_directory_move(__VA_ARGS__)
+#define make_directories(...)                    cb_make_directories(__VA_ARGS__)
+#define path_read_buffer(...)                    cb_path_read_buffer(__VA_ARGS__)
+#define file_size(...)                           cb_file_size(__VA_ARGS__)
+#define file_read_buffer(...)                    cb_file_read_buffer(__VA_ARGS__)
+#define which_file_is_newer(...)                 cb_which_file_is_newer(__VA_ARGS__)
+#define which_file_is_newer_many_array(...)      cb_which_file_is_newer_many_array(__VA_ARGS__)
+#define which_file_is_newer_many(...)            cb_which_file_is_newer_many(__VA_ARGS__)
+#define command_flatten(...)                     cb_command_flatten(__VA_ARGS__)
+#define command_builder_append(...)              cb_command_builder_append(__VA_ARGS__)
+#define command_builder_from_cmd(...)            cb_command_builder_from_cmd(__VA_ARGS__)
+#define command_builder_remove_by_name(...)      cb_command_builder_remove_by_name(__VA_ARGS__)
+#define command_builder_remove(...)              cb_command_builder_remove(__VA_ARGS__)
+#define command_builder_remove(...)              cb_command_builder_remove(__VA_ARGS__)
+#define command_builder_replace_by_name(...)     cb_command_builder_replace_by_name(__VA_ARGS__)
+#define command_builder_reset(...)               cb_command_builder_reset (__VA_ARGS__)
+#define command_builder_free(...)                cb_command_builder_free(__VA_ARGS__)
+#define environment_builder_append(...)          cb_environment_builder_append(__VA_ARGS__)
+#define environment_builder_reset(...)           cb_environment_builder_reset(__VA_ARGS__)
+#define environment_builder_free(...)            cb_environment_builder_free(__VA_ARGS__)
+#define environment_builder_remove_by_name(...)  cb_environment_builder_remove_by_name(__VA_ARGS__)
+#define environment_builder_remove(...)          cb_environment_builder_remove(__VA_ARGS__)
+#define environment_builder_replace_by_name(...) cb_environment_builder_replace_by_name(__VA_ARGS__)
+#define environment_builder_replace(...)         cb_environment_builder_replace(__VA_ARGS__)
+#define process_exec(...)                        cb_process_exec(__VA_ARGS__)
+#define process_wait_many(...)                   cb_process_wait_many(__VA_ARGS__)
+#define log_level_set(...)                       cb_log_level_set(__VA_ARGS__)
+#define log_level_query()                        cb_log_level_query()
+#define log_level_is_valid(...)                  cb_log_level_is_valid(__VA_ARGS__)
+#define write_log_va(...)                        cb_write_log_va(__VA_ARGS__)
+#define write_log(...)                           cb_write_log(__VA_ARGS__)
+#define time_query()                             cb_time_query()
+#define time_msec()                              cb_time_msec()
+#define time_sec()                               cb_time_sec()
+#define path_query_type(...)                     cb_path_query_type(__VA_ARGS__)
+#define path_query_time_modify(...)              cb_path_query_time_modify(__VA_ARGS__)
+#define path_query_time_create(...)              cb_path_query_time_create(__VA_ARGS__)
+#define path_query_info(...)                     cb_path_query_info(__VA_ARGS__)
+#define path_canonicalize(...)                   cb_path_canonicalize(__VA_ARGS__)
+#define file_open(...)                           cb_file_open(__VA_ARGS__)
+#define file_close(...)                          cb_file_close(__VA_ARGS__)
+#define file_seek(...)                           cb_file_seek(__VA_ARGS__)
+#define file_truncate(...)                       cb_file_truncate(__VA_ARGS__)
+#define file_read(...)                           cb_file_read(__VA_ARGS__)
+#define file_write(...)                          cb_file_write(__VA_ARGS__)
+#define file_write_fmt_va(...)                   cb_file_write_fmt_va(__VA_ARGS__)
+#define file_write_fmt(...)                      cb_file_write_fmt(__VA_ARGS__)
+#define file_remove(...)                         cb_file_remove(__VA_ARGS__)
+#define file_copy(...)                           cb_file_copy(__VA_ARGS__)
+#define file_move(...)                           cb_file_move(__VA_ARGS__)
+#define directory_create(...)                    cb_directory_create(__VA_ARGS__)
+#define directory_remove(...)                    cb_directory_remove(__VA_ARGS__)
+#define directory_walk(...)                      cb_directory_walk(__VA_ARGS__)
+#define working_directory_set(...)               cb_working_directory_set(__VA_ARGS__)
+#define working_directory_query()                cb_working_directory_query()
+#define pipe_open(...)                           cb_pipe_open(__VA_ARGS__)
+#define pipe_close(...)                          cb_pipe_close(__VA_ARGS__)
+#define pipe_stdin()                             cb_pipe_stdin()
+#define pipe_stdout()                            cb_pipe_stdout()
+#define pipe_stderr()                            cb_pipe_stderr()
+#define environment_query(...)                   cb_environment_query(__VA_ARGS__)
+#define environment_set(...)                     cb_environment_set(__VA_ARGS__)
+#define process_exec_async(...)                  cb_process_exec_async(__VA_ARGS__)
+#define process_discard(...)                     cb_process_discard(__VA_ARGS__)
+#define process_wait(...)                        cb_process_wait(__VA_ARGS__)
+#define process_wait_timed(...)                  cb_process_wait_timed(__VA_ARGS__)
+#define process_kill(...)                        cb_process_kill(__VA_ARGS__)
+#define process_is_in_path(...)                  cb_process_is_in_path(__VA_ARGS__)
 
 #endif /* Strip prefixes */
 
@@ -2643,7 +2763,8 @@ void cb_initialize(
     }
 
     bool should_rebuild =
-        cb_which_file_is_newer_many( path_executable, path_source, __FILE__ ) != 0;
+        cb_which_file_is_newer_many(
+            path_executable, path_source, __FILE__ ) != 0;
 
     if( !should_rebuild ) {
         const char* old_name = cb_local_fmt( "%s.old", path_executable );
@@ -2677,7 +2798,8 @@ void cb_rebuild(
             cb_command_builder_append( &builder, opt_cmd_override->buf[i] );
         }
     } else {
-        cb_command_builder_append( &builder, CB_RECOMPILE_COMPILER, path_source );
+        cb_command_builder_append(
+            &builder, CB_RECOMPILE_COMPILER, path_source );
 
         if( strcmp( CB_RECOMPILE_COMPILER, "cl" ) == 0 ) {
             CB_STRING_APPEND( &string, "/Fe" );
@@ -2737,7 +2859,8 @@ void cb_rebuild(
     int result = cb_process_wait( &pid );
     if( result != 0 ) {
         if( !cb_file_move( path_executable, string.buf, false ) ) {
-            CB_ERROR( "failed to move %s to %s!", string.buf, path_executable );
+            CB_ERROR(
+                "failed to move %s to %s!", string.buf, path_executable );
         }
         CB_PANIC( "failed to rebuild!" );
     }
@@ -2789,7 +2912,9 @@ void cb_rebuild(
 #if __cplusplus
 extern "C" {
 #endif
-void* _cb_internal_alloc( void* opt_buf, uintptr_t opt_old_size, uintptr_t new_size ) {
+void* _cb_internal_alloc(
+    void* opt_buf, uintptr_t opt_old_size, uintptr_t new_size
+) {
     if( opt_buf ) {
         CB_ASSERT(
             new_size >= opt_old_size,
@@ -2797,7 +2922,8 @@ void* _cb_internal_alloc( void* opt_buf, uintptr_t opt_old_size, uintptr_t new_s
             opt_old_size, new_size );
         void* new_buf = realloc( opt_buf, new_size );
         if( new_size > opt_old_size ) {
-            memset( (char*)new_buf + opt_old_size, 0, new_size - opt_old_size );
+            memset(
+                (char*)new_buf + opt_old_size, 0, new_size - opt_old_size );
         }
         return new_buf;
     } else {
@@ -2846,7 +2972,8 @@ char* cb_local(void) {
     }
 
     char* result =
-        global_state.buffers[global_state.buffer_counter % CB_LOCAL_BUFFER_COUNT].buffer;
+        global_state.buffers[global_state.buffer_counter %
+        CB_LOCAL_BUFFER_COUNT].buffer;
     global_state.buffer_counter++;
     return memset( result, 0, CB_LOCAL_BUFFER_CAPACITY );
 }
@@ -2914,8 +3041,10 @@ int cb_string_find_unicode( CB_StringSlice string, uint32_t c ) {
     int string_unicode_len = cb_utf8_len( string.len, string.cbuf );
 
     for( int i = 0; i < string_unicode_len; ++i ) {
-        uint32_t    current = 0;
-        const char* at      = cb_utf8_index( string.len, string.cbuf, i, &current );
+        uint32_t current = 0;
+
+        const char* at = cb_utf8_index(
+            string.len, string.cbuf, i, &current );
 
         if( current == c ) {
             return (int)(at - string.cbuf);
@@ -2936,8 +3065,10 @@ int cb_string_find_unicode_rev( CB_StringSlice string, uint32_t c ) {
     int string_unicode_len = cb_utf8_len( string.len, string.cbuf );
 
     for( int i = string_unicode_len; i-- > 0; ) {
-        uint32_t    current = 0;
-        const char* at      = cb_utf8_index( string.len, string.cbuf, i, &current );
+        uint32_t current = 0;
+
+        const char* at = cb_utf8_index(
+            string.len, string.cbuf, i, &current );
 
         if( current == c ) {
             return (int)(at - string.cbuf);
@@ -2966,11 +3097,15 @@ int cb_string_find_set_rev( CB_StringSlice string, CB_StringSlice set ) {
     }
     return -1;
 }
-int cb_string_find_set_unicode( CB_StringSlice string, int set_len, uint32_t* set ) {
+int cb_string_find_set_unicode(
+    CB_StringSlice string, int set_len, uint32_t* set
+) {
     CB_StringSlice remaining = string;
     while( remaining.len ) {
         uint32_t character = 0;
-        CB_StringSlice next_remaining = cb_string_unicode_next( remaining, &character );
+
+        CB_StringSlice next_remaining =
+            cb_string_unicode_next( remaining, &character );
 
         for( int i = 0; i < set_len; ++i ) {
             if( character == set[i] ) {
@@ -2982,11 +3117,16 @@ int cb_string_find_set_unicode( CB_StringSlice string, int set_len, uint32_t* se
     }
     return -1;
 }
-int cb_string_find_set_unicode_rev( CB_StringSlice string, int set_len, uint32_t* set ) {
+int cb_string_find_set_unicode_rev(
+    CB_StringSlice string, int set_len, uint32_t* set
+) {
     int string_unicode_len = cb_utf8_len( string.len, string.cbuf );
     for( int i = string_unicode_len; i-- > 0; ) {
         uint32_t character = 0;
-        const char* ptr = cb_utf8_index( string.len, string.cbuf, i, &character );
+
+        const char* ptr = cb_utf8_index(
+            string.len, string.cbuf, i, &character );
+
         for( int j = 0; j < set_len; ++j ) {
             if( character == set[j] ) {
                 return (int)(ptr - string.cbuf);
@@ -3011,7 +3151,9 @@ int cb_string_find_phrase( CB_StringSlice string, CB_StringSlice phrase ) {
     }
     return -1;
 }
-int cb_string_find_phrase_rev( CB_StringSlice string, CB_StringSlice phrase ) {
+int cb_string_find_phrase_rev(
+    CB_StringSlice string, CB_StringSlice phrase
+) {
     for( int i = string.len; i-- > 0; ) {
         if( string.len - i < phrase.len ) {
             continue;
@@ -3044,7 +3186,9 @@ CB_StringSlice cb_string_trim( CB_StringSlice string, int amount ) {
         return CB_STRING_SLICE( string.len - amount, string.cbuf );
     }
 }
-CB_StringSlice cb_string_clip( CB_StringSlice string, int from_inc, int to_exc ) {
+CB_StringSlice cb_string_clip(
+    CB_StringSlice string, int from_inc, int to_exc
+) {
     return CB_STRING_SLICE( (to_exc - from_inc), string.cbuf + from_inc );
 }
 CB_StringSlice cb_string_trim_leading_whitespace( CB_StringSlice string ) {
@@ -3063,8 +3207,11 @@ CB_StringSlice cb_string_trim_trailing_whitespace( CB_StringSlice string ) {
     }
     return string;
 }
-CB_StringSlice cb_string_trim_surrounding_whitespace( CB_StringSlice string ) {
-    return cb_string_trim_leading_whitespace( cb_string_trim_trailing_whitespace( string ) );
+CB_StringSlice cb_string_trim_surrounding_whitespace(
+    CB_StringSlice string
+) {
+    return cb_string_trim_leading_whitespace(
+        cb_string_trim_trailing_whitespace( string ) );
 }
 void cb_string_split(
     CB_StringSlice string, int index, bool should_include,
@@ -3150,7 +3297,9 @@ int cb_string_split_by_char_list(
     int count = 0;
     while( remaining.len ) {
         CB_StringSlice item = {};
-        if( cb_string_split_by_char( remaining, c, should_include, &item, &remaining ) ) {
+        if( cb_string_split_by_char(
+            remaining, c, should_include, &item, &remaining 
+        ) ) {
             CB_PUSH( out_list, item );
             count++;
         } else {
@@ -3254,7 +3403,8 @@ char* cb_cstr_from_string(
 
     if( replace_null ) {
         CB_UTFCodePoint8 replacement_cp8 =
-            cb_cp8_from_cp32( cb_cp32_from_code_units( replacement_character ) );
+            cb_cp8_from_cp32(
+                cb_cp32_from_code_units( replacement_character ) );
         int replacement_cp8_count = cb_cp8_code_unit_count( replacement_cp8 );
 
         int null_characters_found = 0;
@@ -3300,7 +3450,9 @@ void cb_string_builder_from_string(
 ) {
     CB_APPEND( builder, string.len, string.cbuf );
 }
-void cb_string_builder_fmt_va( CB_StringBuilder* builder, const char* fmt, va_list va ) {
+void cb_string_builder_fmt_va(
+    CB_StringBuilder* builder, const char* fmt, va_list va
+) {
     va_list copy;
     va_copy( copy, va );
     int len = vsnprintf( NULL, 0, fmt, copy );
@@ -3308,17 +3460,22 @@ void cb_string_builder_fmt_va( CB_StringBuilder* builder, const char* fmt, va_li
 
     CB_RESERVE( builder, builder->len + len + 1 );
 
-    vsnprintf( builder->buf + builder->len, builder->cap - builder->len, fmt, va );
+    vsnprintf(
+        builder->buf + builder->len, builder->cap - builder->len, fmt, va );
     // NOTE(alicia): do not add null terminator to length.
     builder->len += len;
 }
-void cb_string_builder_fmt( CB_StringBuilder* builder, const char* fmt, ... ) {
+void cb_string_builder_fmt(
+    CB_StringBuilder* builder, const char* fmt, ...
+) {
     va_list va;
     va_start( va, fmt );
     cb_string_builder_fmt_va( builder, fmt, va );
     va_end(va);
 }
-CB_StringSlice cb_string_unicode_next( CB_StringSlice string, uint32_t* out_character ) {
+CB_StringSlice cb_string_unicode_next(
+    CB_StringSlice string, uint32_t* out_character
+) {
     CB_UTFCodePoint8 cp8 = {};
     int adv = cb_cp8_from_string( string.len, string.bytes, &cp8 );
     *out_character = cb_unicode_from_cp8( cp8 );
@@ -3350,19 +3507,23 @@ int cb_utf8_len( int opt_len, const char* str_utf8 ) {
     }
 
     if( opt_len ) {
-        return _cb_internal_string_utf8_len( opt_len, (const uint8_t*)str_utf8 );
+        return _cb_internal_string_utf8_len(
+            opt_len, (const uint8_t*)str_utf8 );
     } else {
         return _cb_internal_cstr_utf8_len( (const uint8_t*)str_utf8 );
     }
 }
-const char* _cb_internal_cstr_utf8_next( const uint8_t* str, uint32_t* out_character ) {
+const char* _cb_internal_cstr_utf8_next(
+    const uint8_t* str, uint32_t* out_character
+) {
     if( !(str[0] & ~0x7F) ) {
         CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], 0, 0, 0 );
         *out_character = cb_unicode_from_cp8( cp8 );
         return (const char*)( str + 1 );
     } else if( (str[0] & 0xE0) == 0xC0 ) {
         if( str[1] ) {
-            CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], str[1], 0, 0 );
+            CB_UTFCodePoint8 cp8 =
+                cb_cp8_from_code_units( str[0], str[1], 0, 0 );
             *out_character = cb_unicode_from_cp8( cp8 );
             return (const char*)( str + 2 );
         } else {
@@ -3370,7 +3531,8 @@ const char* _cb_internal_cstr_utf8_next( const uint8_t* str, uint32_t* out_chara
         }
     } else if( (str[0] & 0xF0) == 0xE0 ) {
         if( str[1] && str[2] ) {
-            CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], str[1], str[2], 0 );
+            CB_UTFCodePoint8 cp8 =
+                cb_cp8_from_code_units( str[0], str[1], str[2], 0 );
             *out_character = cb_unicode_from_cp8( cp8 );
             return (const char*)( str + 3 );
         } else {
@@ -3378,7 +3540,8 @@ const char* _cb_internal_cstr_utf8_next( const uint8_t* str, uint32_t* out_chara
         }
     } else if( (str[0] & 0xF8) == 0xF0 ) {
         if( str[1] && str[2] && str[3] ) {
-            CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], str[1], str[2], str[3] );
+            CB_UTFCodePoint8 cp8 =
+                cb_cp8_from_code_units( str[0], str[1], str[2], str[3] );
             *out_character = cb_unicode_from_cp8( cp8 );
             return (const char*)( str + 4 );
         } else {
@@ -3399,7 +3562,8 @@ const char* _cb_internal_string_utf8_next(
         return (const char*)( str + 1 );
     } else if( (str[0] & 0xE0) == 0xC0 ) {
         if( len >= 2 ) {
-            CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], str[1], 0, 0 );
+            CB_UTFCodePoint8 cp8 =
+                cb_cp8_from_code_units( str[0], str[1], 0, 0 );
             *out_character = cb_unicode_from_cp8( cp8 );
             return (const char*)( str + 2 );
         } else {
@@ -3407,7 +3571,8 @@ const char* _cb_internal_string_utf8_next(
         }
     } else if( (str[0] & 0xF0) == 0xE0 ) {
         if( len >= 3 ) {
-            CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], str[1], str[2], 0 );
+            CB_UTFCodePoint8 cp8 =
+                cb_cp8_from_code_units( str[0], str[1], str[2], 0 );
             *out_character = cb_unicode_from_cp8( cp8 );
             return (const char*)( str + 3 );
         } else {
@@ -3415,7 +3580,8 @@ const char* _cb_internal_string_utf8_next(
         }
     } else if( (str[0] & 0xF8) == 0xF0 ) {
         if( len >= 4 ) {
-            CB_UTFCodePoint8 cp8 = cb_cp8_from_code_units( str[0], str[1], str[2], str[3] );
+            CB_UTFCodePoint8 cp8 =
+                cb_cp8_from_code_units( str[0], str[1], str[2], str[3] );
             *out_character = cb_unicode_from_cp8( cp8 );
             return (const char*)( str + 4 );
         } else {
@@ -3746,7 +3912,9 @@ CB_UnicodeValidationResult cb_utf32_validate(
     }
     return CB_UNICODE_RESULT_OK;
 }
-int cb_cp8_from_string( int len, const uint8_t* utf8, CB_UTFCodePoint8* out_cp8 ) {
+int cb_cp8_from_string(
+    int len, const uint8_t* utf8, CB_UTFCodePoint8* out_cp8
+) {
     if( !(utf8[0] & ~0x7F) ) {
         *out_cp8 = cb_cp8_from_code_units( utf8[0], 0, 0, 0 );
         return 1;
@@ -3766,7 +3934,8 @@ int cb_cp8_from_string( int len, const uint8_t* utf8, CB_UTFCodePoint8* out_cp8 
         }
     } else if( (utf8[0] & 0xF8) == 0xF0 ) {
         if( len >= 4 ) {
-            *out_cp8 = cb_cp8_from_code_units( utf8[0], utf8[1], utf8[2], utf8[3] );
+            *out_cp8 =
+                cb_cp8_from_code_units( utf8[0], utf8[1], utf8[2], utf8[3] );
             return 4;
         } else {
             goto cb_cp8_from_string_error;
@@ -3777,7 +3946,9 @@ cb_cp8_from_string_error:
     *out_cp8 = CB_UNICODE_CP8_REPLACEMENT_CHARACTER;
     return 1;
 }
-int cb_cp16_from_string( int len, const uint16_t* utf16, CB_UTFCodePoint16* out_cp16 ) {
+int cb_cp16_from_string(
+    int len, const uint16_t* utf16, CB_UTFCodePoint16* out_cp16
+) {
     if( !len ) {
         return 0;
     }
@@ -3798,7 +3969,9 @@ cb_cp16_from_string_error:
     *out_cp16 = CB_UNICODE_CP16_REPLACEMENT_CHARACTER;
     return 1;
 }
-int cb_cp32_from_string( int len, const uint32_t* utf32, CB_UTFCodePoint32* out_cp32 ) {
+int cb_cp32_from_string(
+    int len, const uint32_t* utf32, CB_UTFCodePoint32* out_cp32
+) {
     if( !len ) {
         return 0;
     }
@@ -3934,8 +4107,9 @@ struct InternalCB_DirectoryCopyWalkParams {
     CB_StringBuilder dst_builder;
 };
 
-CB_DirectoryWalkControl
-_cb_internal_directory_copy_walk( const CB_DirectoryWalkInfo* info, void* in_params ) {
+CB_DirectoryWalkControl _cb_internal_directory_copy_walk(
+    const CB_DirectoryWalkInfo* info, void* in_params
+) {
     struct InternalCB_DirectoryCopyWalkParams* params =
         (struct InternalCB_DirectoryCopyWalkParams*)in_params;
 
@@ -3962,8 +4136,11 @@ _cb_internal_directory_copy_walk( const CB_DirectoryWalkInfo* info, void* in_par
         case CB_FTYPE_NULL:
             break;
         case CB_FTYPE_FILE: {
-            CB_INFO( "copying '%s' to '%s'", params->src_builder.buf, params->dst_builder.buf );
-            cb_file_copy( params->dst_builder.buf, params->src_builder.buf, false );
+            CB_INFO(
+                "copying '%s' to '%s'",
+                params->src_builder.buf, params->dst_builder.buf );
+            cb_file_copy(
+                params->dst_builder.buf, params->src_builder.buf, false );
         } break;
         case CB_FTYPE_DIRECTORY: {
             CB_INFO( "creating directory '%s'", params->dst_builder.buf );
@@ -3987,11 +4164,15 @@ bool cb_directory_copy(
             break;
         case CB_FTYPE_FILE: {
             CB_ERROR( 
-                "cb_directory_copy(): destination '%s' points to a file, not a directory!" );
+                "cb_directory_copy(): "
+                "destination '%s' points to a file, not a directory!",
+                dst );
         } return false;
         case CB_FTYPE_DIRECTORY: {
             if( fail_if_dst_exists ) {
-                CB_ERROR( "cb_directory_copy(): destination '%s' already exists!" );
+                CB_ERROR(
+                    "cb_directory_copy(): "
+                    "destination '%s' already exists!", dst );
                 return false;
             }
         } break;
@@ -4013,7 +4194,9 @@ bool cb_directory_copy(
 
     CB_APPEND( &params.dst_builder, params.dst_len, dst );
 
-    if( !cb_directory_walk( src, _cb_internal_directory_copy_walk, &params ) ) {
+    if( !cb_directory_walk(
+        src, _cb_internal_directory_copy_walk, &params
+    ) ) {
         CB_FREE( params.src_builder.buf, params.src_builder.cap );
         CB_FREE( params.dst_builder.buf, params.dst_builder.cap );
         return false;
@@ -4056,7 +4239,8 @@ bool cb_path_read_buffer( const char* path_utf8, CB_StringBuilder* buffer ) {
     CB_RESERVE( buffer, buffer->len + file_size );
 
     uintptr_t read_size = 0;
-    bool result = cb_file_read( &file, file_size, buffer->buf + buffer->len, &read_size );
+    bool result = cb_file_read(
+        &file, file_size, buffer->buf + buffer->len, &read_size );
     cb_file_close( &file );
 
     if( result ) {
@@ -4071,7 +4255,9 @@ uintptr_t cb_file_size( CB_File* file ) {
     cb_file_seek( file, offset, CB_FSEEK_SET );
     return size;
 }
-bool cb_file_read_buffer( CB_File* file, int amount, CB_StringBuilder* buffer ) {
+bool cb_file_read_buffer(
+    CB_File* file, int amount, CB_StringBuilder* buffer
+) {
     CB_RESERVE( buffer, buffer->len + amount );
 
     uintptr_t read = 0;
@@ -4102,17 +4288,22 @@ int cb_which_file_is_newer_many_array(
     CB_FileInfo file_info_a, file_info_b; 
 
     if( !cb_path_query_info( file_a, &file_info_a ) ) {
-        CB_ERROR( "cb_which_file_is_newer_many_array(): failed to stat file_a!" );
+        CB_ERROR(
+            "cb_which_file_is_newer_many_array(): "
+            "failed to stat %s!", file_a );
         return -1;
     }
 
     for( int i = 0; i < file_b_count; ++i ) {
         if( !cb_path_query_info( file_b[i], &file_info_b ) ) {
-            CB_ERROR( "cb_which_file_is_newer_many_array(): failed to stat file_b[%i]!", i );
+            CB_ERROR(
+                "cb_which_file_is_newer_many_array(): "
+                "failed to stat %s (%i)!", file_b[i], i );
             return -2;
         }
 
-        bool b_is_newer = difftime( file_info_a.time.create, file_info_b.time.create ) < 0.0;
+        bool b_is_newer = difftime(
+            file_info_a.time.create, file_info_b.time.create ) < 0.0;
 
         if( b_is_newer ) {
             return 1;
@@ -4135,8 +4326,12 @@ void cb_command_flatten( CB_Command command, CB_StringBuilder* string ) {
             continue;
         }
 
-        if( argument.buf[0] == '"' && argument.buf[argument.len - 1] == '"' ) {
-            argument = cb_string_trim( CB_ADVANCE( CB_StringSlice, &argument, 1 ), 1 );
+        if(
+            argument.buf[0] == '"' &&
+            argument.buf[argument.len - 1] == '"'
+        ) {
+            argument = cb_string_trim(
+                CB_ADVANCE( CB_StringSlice, &argument, 1 ), 1 );
         }
 
         if( !argument.len ) {
@@ -4149,12 +4344,16 @@ void cb_command_flatten( CB_Command command, CB_StringBuilder* string ) {
         }
     }
 }
-void cb_command_builder_from_cmd( CB_CommandBuilder* builder, CB_Command cmd ) {
+void cb_command_builder_from_cmd(
+    CB_CommandBuilder* builder, CB_Command cmd
+) {
     for( int i = 0; i < cmd.len; ++i ) {
         cb_command_builder_append( builder, cmd.buf[i] );
     }
 }
-bool cb_command_builder_remove_by_name( CB_CommandBuilder* builder, const char* name ) {
+bool cb_command_builder_remove_by_name(
+    CB_CommandBuilder* builder, const char* name
+) {
     for( int i = 0; i < builder->len; ++i ) {
         if( !builder->buf[i] ) {
             continue;
@@ -4170,8 +4369,10 @@ void cb_command_builder_remove( CB_CommandBuilder* builder, int index ) {
     CB_ASSERT(
         index < builder->len,
         "%s(): index is out of range! index: %i length: %i",
-        index, builder->len );
-    CB_ASSERT( builder->len, "%s(): command builder is already empty!", __func__ );
+        __func__, index, builder->len );
+    CB_ASSERT(
+        builder->len,
+        "%s(): command builder is already empty!", __func__ );
     memmove(
         builder->buf + index,
         builder->buf + index + 1,
@@ -4199,7 +4400,8 @@ void cb_command_builder_replace(
 
     // NOTE(alicia): convert all strings to offsets into string builder.
     for( int i = 0; i < builder->len; ++i ) {
-        builder->buf[i] = (char*)((char*)builder->buf[i] - builder->string.buf);
+        builder->buf[i] =
+            (char*)((char*)builder->buf[i] - builder->string.buf);
     }
 
     builder->buf[index] = (const char*)(uintptr_t)builder->string.len;
@@ -4234,8 +4436,10 @@ void cb_environment_builder_append(
 
     // NOTE(alicia): convert all strings to offsets into string builder.
     for( int i = 0; i < builder->len; ++i ) {
-        builder->name[i]  = (char*)((char*)builder->name[i] - builder->string.buf);
-        builder->value[i] = (char*)((char*)builder->value[i] - builder->string.buf);
+        builder->name[i] =
+            (char*)((char*)builder->name[i] - builder->string.buf);
+        builder->value[i] =
+            (char*)((char*)builder->value[i] - builder->string.buf);
     }
 
     if( (builder->len + 1) >= builder->cap ) {
@@ -4257,8 +4461,10 @@ void cb_environment_builder_append(
     int name_len  = strlen(name);
     int value_len = strlen(value);
 
-    builder->name[builder->len]  = (const char*)(uintptr_t)builder->string.len;
-    builder->value[builder->len] = (const char*)(uintptr_t)(builder->string.len + name_len + 1);
+    builder->name[builder->len] =
+        (const char*)(uintptr_t)builder->string.len;
+    builder->value[builder->len] =
+        (const char*)(uintptr_t)(builder->string.len + name_len + 1);
     builder->len++;
 
     CB_APPEND( &builder->string, name_len + 1, name );
@@ -4266,8 +4472,10 @@ void cb_environment_builder_append(
 
     // NOTE(alicia): convert all strings back to pointers.
     for( int i = 0; i < builder->len; ++i ) {
-        builder->name[i]  = builder->string.buf + (uintptr_t)builder->name[i];
-        builder->value[i] = builder->string.buf + (uintptr_t)builder->value[i];
+        builder->name[i] =
+            builder->string.buf + (uintptr_t)builder->name[i];
+        builder->value[i] =
+            builder->string.buf + (uintptr_t)builder->value[i];
     }
 }
 void cb_environment_builder_reset( CB_EnvironmentBuilder* builder ) {
@@ -4302,8 +4510,11 @@ void cb_environment_builder_remove(
     CB_ASSERT(
         index < builder->len,
         "%s(): index is out of range! index: %i length: %i",
-        index, builder->len );
-    CB_ASSERT( builder->len, "%s(): environment builder is already empty!", __func__ );
+        __func__, index, builder->len );
+    CB_ASSERT(
+        builder->len,
+        "%s(): environment builder is already empty!",
+        __func__ );
     memmove(
         builder->name + index,
         builder->name + index + 1,
@@ -4336,8 +4547,10 @@ void cb_environment_builder_replace(
 
     // NOTE(alicia): convert all strings to offsets into string builder.
     for( int i = 0; i < builder->len; ++i ) {
-        builder->name[i]  = (char*)((char*)builder->name[i] - builder->string.buf);
-        builder->value[i] = (char*)((char*)builder->value[i] - builder->string.buf);
+        builder->name[i] =
+            (char*)((char*)builder->name[i] - builder->string.buf);
+        builder->value[i] =
+            (char*)((char*)builder->value[i] - builder->string.buf);
     }
 
     int value_len = strlen(new_value);
@@ -4348,12 +4561,16 @@ void cb_environment_builder_replace(
 
     // NOTE(alicia): convert all strings back to pointers.
     for( int i = 0; i < builder->len; ++i ) {
-        builder->name[i]  = builder->string.buf + (uintptr_t)builder->name[i];
-        builder->value[i] = builder->string.buf + (uintptr_t)builder->value[i];
+        builder->name[i] =
+            builder->string.buf + (uintptr_t)builder->name[i];
+        builder->value[i] =
+            builder->string.buf + (uintptr_t)builder->value[i];
     }
 }
 
-bool cb_process_wait_many( int count, CB_ProcessID* pids, int* opt_out_exit_codes ) {
+bool cb_process_wait_many(
+    int count, CB_ProcessID* pids, int* opt_out_exit_codes
+) {
     bool result = true;
     for( int i = 0; i < count; ++i ) {
         CB_ProcessID* pid = pids + i;
@@ -4462,7 +4679,8 @@ void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... ) {
 
     // NOTE(alicia): convert all strings to offsets into string builder.
     for( int i = 0; i < builder->len; ++i ) {
-        builder->buf[i] = (char*)((char*)builder->buf[i] - builder->string.buf);
+        builder->buf[i] =
+            (char*)((char*)builder->buf[i] - builder->string.buf);
     }
 
     va_list va;
@@ -4609,7 +4827,8 @@ bool cb_path_query_time_modify( const char* path_utf8, CB_Time* out_time ) {
     if( stat( path_utf8, &st ) ) {
         int errnum = errno;
         CB_ERROR(
-            "POSIX: cb_path_query_time_modify(): failed to stat '%s'! reason: %s",
+            "POSIX: cb_path_query_time_modify(): "
+            "failed to stat '%s'! reason: %s",
             path_utf8, strerror(errnum) );
         return false;
     }
@@ -4621,7 +4840,8 @@ bool cb_path_query_time_create( const char* path_utf8, CB_Time* out_time ) {
     if( stat( path_utf8, &st ) ) {
         int errnum = errno;
         CB_ERROR(
-            "POSIX: cb_path_query_time_create(): failed to stat '%s'! reason: %s",
+            "POSIX: cb_path_query_time_create(): "
+            "failed to stat '%s'! reason: %s",
             path_utf8, strerror(errnum) );
         return false;
     }
@@ -4650,7 +4870,9 @@ char* cb_path_canonicalize( const char* path_utf8 ) {
     return result;
 }
 
-bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file ) {
+bool cb_file_open(
+    const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file
+) {
     int    oflag = 0;
     mode_t mode  = S_IRUSR | S_IWUSR;
     if(
@@ -4670,7 +4892,10 @@ bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_f
 
     if( (( flags & ( CB_FOPEN_CREATE )) == ( CB_FOPEN_CREATE ) ) ) {
         oflag |= O_CREAT | O_EXCL;
-        if( (flags & CB_FOPEN_CREATE_EXECUTABLE) == CB_FOPEN_CREATE_EXECUTABLE ) {
+        if(
+            (flags & CB_FOPEN_CREATE_EXECUTABLE) ==
+            CB_FOPEN_CREATE_EXECUTABLE
+        ) {
             mode |= S_IXUSR;
         }
     }
@@ -4715,7 +4940,8 @@ void cb_file_truncate( CB_File* file ) {
         cb_file_seek( file, 0, CB_FSEEK_CUR ) );
 }
 bool cb_file_read(
-    CB_File* file, uintptr_t buffer_size, void* buffer, uintptr_t* opt_out_read
+    CB_File* file, uintptr_t buffer_size,
+    void* buffer, uintptr_t* opt_out_read
 ) {
     intptr_t result = read( file->_internal_handle, buffer, buffer_size );
     if( result < 0 ) {
@@ -4730,7 +4956,8 @@ bool cb_file_read(
     return true;
 }
 bool cb_file_write(
-    CB_File* file, uintptr_t buffer_size, const void* buffer, uintptr_t* opt_out_write
+    CB_File* file, uintptr_t buffer_size,
+    const void* buffer, uintptr_t* opt_out_write
 ) {
     intptr_t result = write( file->_internal_handle, buffer, buffer_size );
     if( result < 0 ) {
@@ -4758,7 +4985,9 @@ bool cb_file_remove( const char* path_utf8 ) {
     }
     return true;
 }
-bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists ) {
+bool cb_file_copy(
+    const char* dst, const char* src, bool fail_if_dst_exists
+) {
     CB_File fdst = {}, fsrc = {};
 
     CB_FileOpenFlags dst_flags = CB_FOPEN_WRITE;
@@ -4778,7 +5007,9 @@ bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists ) {
             dst_flags |= CB_FOPEN_TRUNCATE;
         } break;
         case CB_FTYPE_DIRECTORY: {
-            CB_ERROR( "cb_file_copy: '%s' already exists and it's a directory!", dst );
+            CB_ERROR(
+                "cb_file_copy: "
+                "'%s' already exists and it's a directory!", dst );
             return false;
         } break;
     }
@@ -4811,7 +5042,9 @@ bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists ) {
     cb_file_close( &fdst );
     return true;
 }
-bool cb_file_move( const char* dst, const char* src, bool fail_if_dst_exists ) {
+bool cb_file_move(
+    const char* dst, const char* src, bool fail_if_dst_exists
+) {
     if( !cb_file_copy( dst, src, fail_if_dst_exists ) ) {
         return false;
     }
@@ -4881,8 +5114,11 @@ int _cb_internal_nftw(
 
     return 1;
 }
-bool cb_directory_walk( const char* path_utf8, CB_DirectoryWalkFN* callback, void* params ) {
-    struct CB_FTWState* state = memset( &STATE->ftw_state, 0, sizeof(*state) );
+bool cb_directory_walk(
+    const char* path_utf8, CB_DirectoryWalkFN* callback, void* params
+) {
+    struct CB_FTWState* state =
+        memset( &STATE->ftw_state, 0, sizeof(*state) );
 
     state->callback        = callback;
     state->callback_params = params;
@@ -4901,7 +5137,8 @@ bool cb_working_directory_set( const char* new_cwd ) {
     if( chdir( new_cwd ) ) {
         int errnum = errno;
         CB_ERROR(
-            "POSIX: cb_working_directory_set(): failed to change to '%s'! reason: %s",
+            "POSIX: cb_working_directory_set(): "
+            "failed to change to '%s'! reason: %s",
             new_cwd, strerror(errnum) );
         return false;
     }
@@ -4920,7 +5157,9 @@ const char* cb_working_directory_query(void) {
         if( getcwd( builder->buf, builder->cap ) ) {
             break;
         }
-        builder->buf  = _cb_internal_alloc( builder->buf, builder->cap, builder->cap + 128 );
+        builder->buf =
+            _cb_internal_alloc(
+                builder->buf, builder->cap, builder->cap + 128 );
         builder->cap += 128;
     }
 
@@ -4935,7 +5174,8 @@ bool cb_pipe_open( CB_PipeRead* out_read, CB_PipeWrite* out_write ) {
     if( pipe( fd ) ) {
         int errnum = errno;
         CB_ERROR(
-            "POSIX: cb_pipe_open(): failed to open pipes! reason: %s", strerror(errnum) );
+            "POSIX: cb_pipe_open(): "
+            "failed to open pipes! reason: %s", strerror(errnum) );
         return false;
     }
 
@@ -4977,7 +5217,8 @@ bool cb_environment_set( const char* name, const char* new_value ) {
         int errnum = errno;
         CB_ERROR(
             "POSIX: cb_environment_set(): "
-            "failed to set variable '%s'! reason: %s", name, strerror(errnum) );
+            "failed to set variable '%s'! reason: %s",
+            name, strerror(errnum) );
         return false;
     }
     return true;
@@ -4998,13 +5239,18 @@ bool _cb_internal_process_exec_async(
         return false;
     }
     if( !((cmd.buf[cmd.len - 1] == NULL) || (cmd.buf[cmd.len] == NULL)) ) {
-        CB_ERROR( "cb_process_exec_sync(): command requires a NULL string at the end!" );
+        CB_ERROR(
+            "cb_process_exec_sync(): "
+            "command requires a NULL string at the end!" );
         return false;
     }
 
-    int _pipe_stdin  = opt_stdin  ? opt_stdin->_internal_handle  : STDIN_FILENO;
-    int _pipe_stdout = opt_stdout ? opt_stdout->_internal_handle : STDOUT_FILENO;
-    int _pipe_stderr = opt_stderr ? opt_stderr->_internal_handle : STDERR_FILENO;
+    int _pipe_stdin  =
+        opt_stdin  ? opt_stdin->_internal_handle  : STDIN_FILENO;
+    int _pipe_stdout =
+        opt_stdout ? opt_stdout->_internal_handle : STDOUT_FILENO;
+    int _pipe_stderr =
+        opt_stderr ? opt_stderr->_internal_handle : STDERR_FILENO;
 
     if( opt_working_directory ) {
         CB_INFO( "chdir: '%s'", opt_working_directory );
@@ -5057,7 +5303,8 @@ bool _cb_internal_process_exec_async(
 
     if( opt_environment ) {
         for( int i = 0; i < opt_environment->len; ++i ) {
-            setenv( opt_environment->name[i], opt_environment->value[i], true );
+            setenv(
+                opt_environment->name[i], opt_environment->value[i], true );
         }
     }
 
@@ -5087,7 +5334,9 @@ int cb_process_wait( CB_ProcessID* pid ) {
         return -1;
     }
 }
-bool cb_process_wait_timed( CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_code ) {
+bool cb_process_wait_timed(
+    CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_code
+) {
     if( msec == CB_WAIT_INFINITE ) {
         int res = cb_process_wait( pid );
         if( res < 0 ) {
@@ -5141,7 +5390,9 @@ void cb_process_kill( CB_ProcessID* pid ) {
 bool cb_process_is_in_path( const char* process_name ) {
     // TODO(alicia): replace use of 'which' and system!
     char mini_buf[255 + sizeof("which %s > /dev/null 2>&1")] = {};
-    snprintf( mini_buf, sizeof(mini_buf), "which %s > /dev/null 2>&1", process_name );
+    snprintf(
+        mini_buf, sizeof(mini_buf),
+        "which %s > /dev/null 2>&1", process_name );
     return system( mini_buf ) == 0;
 }
 
@@ -5177,8 +5428,9 @@ struct CB_WindowsState {
 static
 struct CB_WindowsState* _cb_internal_platform_get_state(void) {
     if( !global_state.platform_state ) {
-        global_state.platform_state = (struct CB_WindowsState*)_cb_internal_alloc(
-            NULL, 0, sizeof(struct CB_WindowsState) );
+        global_state.platform_state =
+            (struct CB_WindowsState*)_cb_internal_alloc(
+                NULL, 0, sizeof(struct CB_WindowsState) );
     }
     return (struct CB_WindowsState*)global_state.platform_state;
 }
@@ -5186,7 +5438,8 @@ struct CB_WindowsState* _cb_internal_platform_get_state(void) {
 
 static
 uint16_t* cb_windows_utf16_buf(void) {
-    return (uint16_t*)memset( STATE->buf_utf16, 0, sizeof(uint16_t) * UTF16_SIZE );
+    return (uint16_t*)memset(
+        STATE->buf_utf16, 0, sizeof(uint16_t) * UTF16_SIZE );
 }
 static
 uint8_t* cb_windows_utf8_buf(void) {
@@ -5258,7 +5511,9 @@ int cb_windows_cvt_utf16_from_utf8(
             max_append = remaining;
         }
 
-        memcpy( utf16_buf + utf16_len, cp16.bytes, sizeof(uint16_t) * max_append );
+        memcpy(
+            utf16_buf + utf16_len,
+            cp16.bytes, sizeof(uint16_t) * max_append );
         utf16_len += max_append;
     }
     if( utf16_len == utf16_cap ) {
@@ -5332,7 +5587,8 @@ int cb_windows_utf16_path_from_utf8(
 
     switch( path_type ) {
         case CB_WINDOWS_PATH_RELATIVE: {
-            utf16_len += GetCurrentDirectoryW( utf16_cap - utf16_len, utf16_buf + utf16_len );
+            utf16_len += GetCurrentDirectoryW(
+                utf16_cap - utf16_len, utf16_buf + utf16_len );
         } break;
         case CB_WINDOWS_PATH_HOME: {
             utf16_len += GetEnvironmentVariableW(
@@ -5365,7 +5621,10 @@ int cb_windows_utf16_path_from_utf8(
         }
 
         if( (chunk_len == 1) && (memcmp( ".", utf8_buf, chunk_len ) == 0) ) {
-        } else if( (chunk_len == 2) && (memcmp( "..", utf8_buf, chunk_len ) == 0) ) {
+        } else if(
+            (chunk_len == 2) &&
+            (memcmp( "..", utf8_buf, chunk_len ) == 0)
+        ) {
             for( int i = utf16_len; i-- > 0; ) {
                 if( utf16_buf[i] == '\\' ) {
                     utf16_len = i;
@@ -5381,7 +5640,9 @@ int cb_windows_utf16_path_from_utf8(
                 push( '\\' );
             }
             utf16_len += cb_windows_cvt_utf16_from_utf8(
-                utf16_cap - utf16_len, utf16_buf + utf16_len, chunk_len, utf8_buf );
+                utf16_cap - utf16_len,
+                utf16_buf + utf16_len,
+                chunk_len, utf8_buf );
         }
 
         if( chunk_len == utf8_len ) {
@@ -5410,7 +5671,8 @@ wchar_t* cb_windows_path( const char* path ) {
     int path_len = strlen( path );
     if( path_len < MAX_PATH ) {
         uint16_t* buf = cb_windows_utf16_buf();
-        cb_windows_cvt_utf16_from_utf8( UTF16_SIZE, buf, path_len, (const uint8_t*)path );
+        cb_windows_cvt_utf16_from_utf8(
+            UTF16_SIZE, buf, path_len, (const uint8_t*)path );
         return (wchar_t*)buf;
     } else {
         uint16_t* buf = cb_windows_utf16_buf();
@@ -5473,7 +5735,9 @@ CB_FileType cb_windows_file_type_from_attrib( DWORD attrib ) {
     }
 }
 static
-bool cb_windows_directory_remove( int* path_len, wchar_t* path, WIN32_FIND_DATAW* data ) {
+bool cb_windows_directory_remove(
+    int* path_len, wchar_t* path, WIN32_FIND_DATAW* data
+) {
     HANDLE handle = FindFirstFileExW(
         path, FindExInfoBasic, data, FindExSearchNameMatch, 0, 0 );
     if( handle == INVALID_HANDLE_VALUE ) {
@@ -5503,7 +5767,10 @@ bool cb_windows_directory_remove( int* path_len, wchar_t* path, WIN32_FIND_DATAW
         *path_len       += 1;
 
         usize file_name_len = wcslen( data->cFileName );
-        memcpy( path + *path_len, data->cFileName, sizeof(wchar_t) * file_name_len );
+        memcpy(
+            path + *path_len,
+            data->cFileName,
+            sizeof(wchar_t) * file_name_len );
 
         *path_len       += file_name_len;
         path[*path_len]  = 0;
@@ -5524,7 +5791,8 @@ bool cb_windows_directory_remove( int* path_len, wchar_t* path, WIN32_FIND_DATAW
 
         if( !DeleteFileW( path ) ) {
             CB_ERROR(
-                "Windows: cb_directory_remove(): failed to remove file %S! reason: %s",
+                "Windows: cb_directory_remove(): "
+                "failed to remove file %S! reason: %s",
                 path, cb_windows_error_string( GetLastError() ) );
             break;
         }
@@ -5536,7 +5804,8 @@ bool cb_windows_directory_remove( int* path_len, wchar_t* path, WIN32_FIND_DATAW
     }
 
     CB_ERROR(
-        "Windows: cb_directory_remove(): failed to remove directory %S! reason: %s",
+        "Windows: cb_directory_remove(): "
+        "failed to remove directory %S! reason: %s",
         path, cb_windows_error_string( GetLastError() ) );
     return false;
 }
@@ -5550,7 +5819,8 @@ cb_windows_directory_walk(
     HANDLE handle = FindFirstFileExW(
         utf16_buf, FindExInfoBasic, data, FindExSearchNameMatch, 0, 0 );
     if( handle == INVALID_HANDLE_VALUE ) {
-        CB_ERROR( "Windows: cb_directory_walk(): failed to open %S!", utf16_buf );
+        CB_ERROR(
+            "Windows: cb_directory_walk(): failed to open %S!", utf16_buf );
         return CB_WINDOWS_DIRECTORY_WALK_ERROR;
     }
 
@@ -5578,7 +5848,8 @@ cb_windows_directory_walk(
 
     // TODO(alicia): bounds check
     int directory_len = cb_windows_cvt_utf8_from_utf16(
-        utf8_cap, utf8_buf, original_len - sizeof("\\\\?"), utf16_buf + sizeof("\\\\?") );
+        utf8_cap, utf8_buf,
+        original_len - sizeof("\\\\?"), utf16_buf + sizeof("\\\\?") );
     utf8_buf[directory_len] = '\\';
 
     for( ;; ) {
@@ -5621,7 +5892,8 @@ cb_windows_directory_walk(
         info->file_size = data->nFileSizeLow;
 #endif
 
-        info->type = cb_windows_file_type_from_attrib( data->dwFileAttributes );
+        info->type =
+            cb_windows_file_type_from_attrib( data->dwFileAttributes );
         CB_DirectoryWalkControl control = callback( info, params );
 
         switch( control ) {
@@ -5633,7 +5905,8 @@ cb_windows_directory_walk(
                 enum CB_WindowsDirectoryWalkResult result =
                     cb_windows_directory_walk(
                         callback, params, utf8_cap,
-                        utf8_buf, utf16_cap, utf16_len, utf16_buf, data, info );
+                        utf8_buf, utf16_cap,
+                        utf16_len, utf16_buf, data, info );
 
                 switch( result ) {
                     case CB_WINDOWS_DIRECTORY_WALK_OK:
@@ -5700,7 +5973,8 @@ bool cb_path_query_time_modify( const char* path_utf8, CB_Time* out_time ) {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
     if( !GetFileAttributesExW( wpath, GetFileExInfoStandard, &data ) ) {
         CB_ERROR(
-            "Windows: cb_path_query_time_modify() failed to query %s info! reason: %s",
+            "Windows: cb_path_query_time_modify() "
+            "failed to query %s info! reason: %s",
             path_utf8, cb_windows_error_string( GetLastError() ) );
         return false;
     }
@@ -5713,7 +5987,8 @@ bool cb_path_query_time_create( const char* path_utf8, CB_Time* out_time ) {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
     if( !GetFileAttributesExW( wpath, GetFileExInfoStandard, &data ) ) {
         CB_ERROR(
-            "Windows: cb_path_query_time_create() failed to query %s info! reason: %s",
+            "Windows: cb_path_query_time_create() "
+            "failed to query %s info! reason: %s",
             path_utf8, cb_windows_error_string( GetLastError() ) );
         return false;
     }
@@ -5726,7 +6001,8 @@ bool cb_path_query_info( const char* path_utf8, CB_FileInfo* out_info ) {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
     if( !GetFileAttributesExW( wpath, GetFileExInfoStandard, &data ) ) {
         CB_ERROR(
-            "Windows: cb_path_query_info() failed to query %s info! reason: %s",
+            "Windows: cb_path_query_info() "
+            "failed to query %s info! reason: %s",
             path_utf8, cb_windows_error_string( GetLastError() ) );
         return false;
     }
@@ -5743,9 +6019,12 @@ bool cb_path_query_info( const char* path_utf8, CB_FileInfo* out_info ) {
     out_info->size = data.nFileSizeLow;
 #endif
     
-    out_info->type        = cb_windows_file_type_from_attrib( data.dwFileAttributes );
-    out_info->time.create = cb_windows_time_from_filetime( data.ftCreationTime );
-    out_info->time.modify = cb_windows_time_from_filetime( data.ftLastWriteTime );
+    out_info->type =
+        cb_windows_file_type_from_attrib( data.dwFileAttributes );
+    out_info->time.create =
+        cb_windows_time_from_filetime( data.ftCreationTime );
+    out_info->time.modify =
+        cb_windows_time_from_filetime( data.ftLastWriteTime );
 
     return true;
 }
@@ -5769,7 +6048,9 @@ char* cb_path_canonicalize( const char* path_utf8 ) {
     return result;
 }
 
-bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file ) {
+bool cb_file_open(
+    const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_file
+) {
     wchar_t* wpath = cb_windows_path( path_utf8 );
 
     DWORD dwDesiredAccess       = 0;
@@ -5786,7 +6067,10 @@ bool cb_file_open( const char* path_utf8, CB_FileOpenFlags flags, CB_File* out_f
 
     if( ( flags & ( CB_FOPEN_CREATE ) ) == ( CB_FOPEN_CREATE ) ) {
         dwCreationDisposition = OPEN_ALWAYS;
-        if( (flags & CB_FOPEN_CREATE_EXECUTABLE) == CB_FOPEN_CREATE_EXECUTABLE ) {
+        if(
+            (flags & CB_FOPEN_CREATE_EXECUTABLE) ==
+            CB_FOPEN_CREATE_EXECUTABLE
+        ) {
             dwDesiredAccess |= GENERIC_EXECUTE;
         }
     } else if( ( flags & ( CB_FOPEN_TRUNCATE ) ) == ( CB_FOPEN_TRUNCATE ) ) {
@@ -5833,27 +6117,34 @@ intptr_t cb_file_seek( CB_File* file, intptr_t offset, CB_FileSeek type ) {
     }
 #if CB_ARCH_IS_64BIT
     LARGE_INTEGER move = { .QuadPart = offset }, new_pointer = {};
-    SetFilePointerEx( file->_internal_handle, move, &new_pointer, dwMoveMethod );
+    SetFilePointerEx(
+        file->_internal_handle, move, &new_pointer, dwMoveMethod );
     return new_pointer.QuadPart;
 #else
-    return SetFilePointer( file->_internal_handle, offset, NULL, dwMoveMethod );
+    return SetFilePointer(
+        file->_internal_handle, offset, NULL, dwMoveMethod );
 #endif
 }
 void cb_file_truncate( CB_File* file ) {
     SetEndOfFile( file->_internal_handle );
 }
 bool cb_file_read(
-    CB_File* file, uintptr_t buffer_size, void* buffer, uintptr_t* opt_out_read
+    CB_File* file, uintptr_t buffer_size,
+    void* buffer, uintptr_t* opt_out_read
 ) {
 #if CB_ARCH_IS_64BIT
-    uint32_t part_a_size = buffer_size > 0xFFFFFFFF ? 0xFFFFFFFF : buffer_size;
+    uint32_t part_a_size =
+        buffer_size > 0xFFFFFFFF ? 0xFFFFFFFF : buffer_size;
     void*    part_a      = buffer;
-    uint32_t part_b_size = part_a_size == 0xFFFFFFFF ? buffer_size - part_a_size : 0;
+    uint32_t part_b_size =
+        part_a_size == 0xFFFFFFFF ? buffer_size - part_a_size : 0;
     void*    part_b      = (uint8_t*)buffer + part_a_size;
 
     uintptr_t total_read = 0;
     uint32_t  read       = 0;
-    if( !cb_windows_read32( file->_internal_handle, part_a_size, part_a, &read ) ) {
+    if( !cb_windows_read32(
+        file->_internal_handle, part_a_size, part_a, &read
+    ) ) {
         return false;
     }
     if( !part_b_size ) {
@@ -5865,7 +6156,9 @@ bool cb_file_read(
 
     total_read += read;
     read        = 0;
-    if( !cb_windows_read32( file->_internal_handle, part_b_size, part_b, &read ) ) {
+    if( !cb_windows_read32(
+        file->_internal_handle, part_b_size, part_b, &read
+    ) ) {
         return false;
     }
     total_read += read;
@@ -5875,21 +6168,27 @@ bool cb_file_read(
     }
     return true;
 #else
-    return cb_windows_read32( file->_internal_handle, buffer_size, buffer, opt_out_read );
+    return cb_windows_read32(
+        file->_internal_handle, buffer_size, buffer, opt_out_read );
 #endif
 }
 bool cb_file_write(
-    CB_File* file, uintptr_t buffer_size, const void* buffer, uintptr_t* opt_out_write
+    CB_File* file, uintptr_t buffer_size,
+    const void* buffer, uintptr_t* opt_out_write
 ) {
 #if CB_ARCH_IS_64BIT
-    uint32_t    part_a_size = buffer_size > 0xFFFFFFFF ? 0xFFFFFFFF : buffer_size;
+    uint32_t    part_a_size =
+        buffer_size > 0xFFFFFFFF ? 0xFFFFFFFF : buffer_size;
     const void* part_a      = buffer;
-    uint32_t    part_b_size = part_a_size == 0xFFFFFFFF ? buffer_size - part_a_size : 0;
+    uint32_t    part_b_size =
+        part_a_size == 0xFFFFFFFF ? buffer_size - part_a_size : 0;
     const void* part_b      = (const uint8_t*)buffer + part_a_size;
 
     uintptr_t total_write = 0;
     uint32_t  write       = 0;
-    if( !cb_windows_write32( file->_internal_handle, part_a_size, part_a, &write ) ) {
+    if( !cb_windows_write32(
+        file->_internal_handle, part_a_size, part_a, &write
+    ) ) {
         return false;
     }
     if( !part_b_size ) {
@@ -5901,7 +6200,9 @@ bool cb_file_write(
 
     total_write += write;
     write        = 0;
-    if( !cb_windows_write32( file->_internal_handle, part_b_size, part_b, &write ) ) {
+    if( !cb_windows_write32(
+        file->_internal_handle, part_b_size, part_b, &write
+    ) ) {
         return false;
     }
     total_write += write;
@@ -5911,7 +6212,8 @@ bool cb_file_write(
     }
     return true;
 #else
-    return cb_windows_write32( file->_internal_handle, buffer_size, buffer, opt_out_write );
+    return cb_windows_write32(
+        file->_internal_handle, buffer_size, buffer, opt_out_write );
 #endif
 }
 void cb_file_write_fmt_va( CB_File* file, const char* fmt, va_list va ) {
@@ -5941,7 +6243,9 @@ bool cb_file_remove( const char* path_utf8 ) {
         path_utf8, cb_windows_error_string( GetLastError() ) );
     return false;
 }
-bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists ) {
+bool cb_file_copy(
+    const char* dst, const char* src, bool fail_if_dst_exists
+) {
     int dst_utf8_len = strlen( dst );
     int src_utf8_len = strlen( src );
 
@@ -5949,15 +6253,19 @@ bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists ) {
     uint16_t* src_name = dst_name + (UTF16_SIZE / 2);
 
     if( dst_utf8_len < MAX_PATH ) {
-        cb_windows_cvt_utf16_from_utf8( UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
+        cb_windows_cvt_utf16_from_utf8(
+            UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
     } else {
-        cb_windows_utf16_path_from_utf8( UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
+        cb_windows_utf16_path_from_utf8(
+            UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
     }
 
     if( src_utf8_len < MAX_PATH ) {
-        cb_windows_cvt_utf16_from_utf8( UTF16_SIZE / 2, src_name, src_utf8_len, src );
+        cb_windows_cvt_utf16_from_utf8(
+            UTF16_SIZE / 2, src_name, src_utf8_len, src );
     } else {
-        cb_windows_utf16_path_from_utf8( UTF16_SIZE / 2, src_name, src_utf8_len, src );
+        cb_windows_utf16_path_from_utf8(
+            UTF16_SIZE / 2, src_name, src_utf8_len, src );
     }
 
     if( CopyFileW( src_name, dst_name, fail_if_dst_exists ) ) {
@@ -5968,7 +6276,9 @@ bool cb_file_copy( const char* dst, const char* src, bool fail_if_dst_exists ) {
         src, dst, cb_windows_error_string( GetLastError() ) );
     return false;
 }
-bool cb_file_move( const char* dst, const char* src, bool fail_if_dst_exists ) {
+bool cb_file_move(
+    const char* dst, const char* src, bool fail_if_dst_exists
+) {
     int dst_utf8_len = strlen( dst );
     int src_utf8_len = strlen( src );
 
@@ -5976,15 +6286,19 @@ bool cb_file_move( const char* dst, const char* src, bool fail_if_dst_exists ) {
     uint16_t* src_name = dst_name + (UTF16_SIZE / 2);
 
     if( dst_utf8_len < MAX_PATH ) {
-        cb_windows_cvt_utf16_from_utf8( UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
+        cb_windows_cvt_utf16_from_utf8(
+            UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
     } else {
-        cb_windows_utf16_path_from_utf8( UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
+        cb_windows_utf16_path_from_utf8(
+            UTF16_SIZE / 2, dst_name, dst_utf8_len, dst );
     }
 
     if( src_utf8_len < MAX_PATH ) {
-        cb_windows_cvt_utf16_from_utf8( UTF16_SIZE / 2, src_name, src_utf8_len, src );
+        cb_windows_cvt_utf16_from_utf8(
+            UTF16_SIZE / 2, src_name, src_utf8_len, src );
     } else {
-        cb_windows_utf16_path_from_utf8( UTF16_SIZE / 2, src_name, src_utf8_len, src );
+        cb_windows_utf16_path_from_utf8(
+            UTF16_SIZE / 2, src_name, src_utf8_len, src );
     }
 
     if( fail_if_dst_exists ) {
@@ -5992,7 +6306,8 @@ bool cb_file_move( const char* dst, const char* src, bool fail_if_dst_exists ) {
         
         if( attrib != INVALID_FILE_ATTRIBUTES ) {
             CB_ERROR(
-                "Windows: cb_file_move(): failed to move %s to %s! reason: %s",
+                "Windows: cb_file_move(): "
+                "failed to move %s to %s! reason: %s",
                 src, dst, "Destination file already exists!" );
             return false;
         }
@@ -6025,7 +6340,8 @@ bool cb_directory_remove( const char* path_utf8, bool recursive ) {
 
         if( (wpath_len + sizeof("\\*") ) >= UTF16_SIZE ) {
             CB_ERROR(
-                "Windows: cb_directory_remove(): failed to remove %s! path is too long!",
+                "Windows: cb_directory_remove(): "
+                "failed to remove %s! path is too long!",
                 path_utf8 );
             return false;
         }
@@ -6047,7 +6363,9 @@ bool cb_directory_remove( const char* path_utf8, bool recursive ) {
         return false;
     }
 }
-bool cb_directory_walk( const char* path_utf8, CB_DirectoryWalkFN* callback, void* params ) {
+bool cb_directory_walk(
+    const char* path_utf8, CB_DirectoryWalkFN* callback, void* params
+) {
     uint8_t*  utf8_buf  = cb_windows_utf8_buf();
     uint16_t* utf16_buf = cb_windows_utf16_buf();
 
@@ -6055,7 +6373,8 @@ bool cb_directory_walk( const char* path_utf8, CB_DirectoryWalkFN* callback, voi
         UTF16_SIZE, utf16_buf, strlen( path_utf8 ), utf8_buf );
     if( (utf16_len + sizeof("\\*")) > UTF16_SIZE ) {
         CB_ERROR(
-            "Windows: cb_directory_walk(): failed to remove %s! path is too long!",
+            "Windows: cb_directory_walk(): "
+            "failed to remove %s! path is too long!",
             path_utf8 );
         return false;
     }
@@ -6069,7 +6388,8 @@ bool cb_directory_walk( const char* path_utf8, CB_DirectoryWalkFN* callback, voi
 
     return cb_windows_directory_walk(
         callback, params, UTF8_SIZE, utf8_buf,
-        UTF16_SIZE, &utf16_len, utf16_buf, &data, &info ) != CB_WINDOWS_DIRECTORY_WALK_ERROR;
+        UTF16_SIZE, &utf16_len,
+        utf16_buf, &data, &info ) != CB_WINDOWS_DIRECTORY_WALK_ERROR;
 }
 
 bool cb_working_directory_set( const char* new_cwd ) {
@@ -6080,7 +6400,8 @@ bool cb_working_directory_set( const char* new_cwd ) {
     }
 
     CB_ERROR(
-        "Windows: cb_working_directory_set(): failed to set directory! reason: %s",
+        "Windows: cb_working_directory_set(): "
+        "failed to set directory! reason: %s",
         cb_windows_error_string( GetLastError() ) );
     return false;
 }
@@ -6151,14 +6472,18 @@ const char* cb_environment_query( const char* name ) {
         UTF16_SIZE, wname, strlen(name), (const uint8_t*)name );
 
     if( wname_len >= (UTF16_SIZE / 2) ) {
-        CB_ERROR( "Windows: cb_environment_query(): name exceeded %d in length!", (int)UTF16_SIZE );
+        CB_ERROR( 
+            "Windows: cb_environment_query(): "
+            "name exceeded %d in length!", (int)UTF16_SIZE );
         return NULL;
     }
 
-    int wvalue_len = GetEnvironmentVariableW( wname, wvalue, (UTF16_SIZE / 2) );
+    int wvalue_len =
+        GetEnvironmentVariableW( wname, wvalue, (UTF16_SIZE / 2) );
 
     uint8_t* utf8_buf = cb_windows_utf8_buf();
-    int utf8_len = cb_windows_cvt_utf8_from_utf16( UTF8_SIZE, utf8_buf, wvalue_len, wvalue );
+    int utf8_len = cb_windows_cvt_utf8_from_utf16(
+        UTF8_SIZE, utf8_buf, wvalue_len, wvalue );
 
     char* result = CB_ALLOC( NULL, 0, utf8_len + 1 );
 
@@ -6171,8 +6496,10 @@ bool cb_environment_set( const char* name, const char* new_value ) {
     uint16_t* wname  = cb_windows_utf16_buf();
     uint16_t* wvalue = wname + (UTF16_SIZE / 2);
 
-    cb_windows_cvt_utf16_from_utf8( UTF16_SIZE / 2, wname, strlen(name), name );
-    cb_windows_cvt_utf16_from_utf8( UTF16_SIZE / 2, wvalue, strlen(new_value), new_value );
+    cb_windows_cvt_utf16_from_utf8(
+        UTF16_SIZE / 2, wname, strlen(name), name );
+    cb_windows_cvt_utf16_from_utf8(
+        UTF16_SIZE / 2, wvalue, strlen(new_value), new_value );
 
     if( SetEnvironmentVariableW( wname, wvalue ) ) {
         return true;
@@ -6253,7 +6580,8 @@ bool _cb_internal_process_exec(
         LPWCH env_block = GetEnvironmentStringsW();
         if( !env_block ) {
             CB_ERROR(
-                "Windows: cb_process_exec(): failed to obtain environment block "
+                "Windows: cb_process_exec(): "
+                "failed to obtain environment block "
                 "of the calling process!" );
             CB_FREE( cmdline.buf, sizeof(uint16_t) * cmdline.cap );
             return false;
@@ -6331,7 +6659,8 @@ bool _cb_internal_process_exec(
     }
 
     CB_ERROR(
-        "Windows: cb_process_exec(): failed to execute process %s! reason: %s",
+        "Windows: cb_process_exec(): "
+        "failed to execute process %s! reason: %s",
         cmd.buf[0], cb_windows_error_string( error_code ) );
     return false;
 }
@@ -6347,7 +6676,9 @@ int cb_process_wait( CB_ProcessID* pid ) {
     }
     return -2;
 }
-bool cb_process_wait_timed( CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_code ) {
+bool cb_process_wait_timed(
+    CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_code
+) {
     DWORD result = WaitForSingleObject( pid->_internal_handle, msec );
     switch( result ) {
         case WAIT_OBJECT_0:
@@ -6359,7 +6690,8 @@ bool cb_process_wait_timed( CB_ProcessID* pid, uint32_t msec, int* opt_out_exit_
                 *opt_out_exit_code = -2;
             }
             CB_ERROR(
-                "Windows: cb_process_wait(): failed to wait for pid! reason: %s",
+                "Windows: cb_process_wait(): "
+                "failed to wait for pid! reason: %s",
                 cb_windows_error_string( GetLastError() ) );
         } return false;
     }

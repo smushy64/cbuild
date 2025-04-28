@@ -28,6 +28,8 @@ Indicates additions to API, minor bug fixes and other small changes.
 
 0.3.0
 -----
+- bug: cb_directory_copy: error messages had a %s but no corresponding string.
+- edited code to fit in 80 columns
 - cb_read_entire_file() removed, replaced with cb_path_read_buffer()
 - cb_file_size() and cb_file_read_buffer() implemented.
 - cb_process_exec() and cb_process_exec_async() have 
