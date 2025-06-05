@@ -866,6 +866,13 @@ extern void exit( int status );
 /// @param[in] argv (char**) Argument array.
 /// @return CB_CommandLine.
 #define CB_CL( argc, argv ) \
+    CB_COMMAND_LINE( argc, argv )
+
+/// @brief Create slice of command line arguments.
+/// @param     argc (int)    Argument count.
+/// @param[in] argv (char**) Argument array.
+/// @return CB_CommandLine.
+#define CB_COMMAND_LINE( argc, argv ) \
     CB_STRUCT( CB_CommandLine ) { \
         .len = argc,          \
         .buf = (char**)(argv) \
@@ -875,6 +882,12 @@ extern void exit( int status );
 /// @param[in] cmdline (CB_CommandLine*) Pointer to command line slice.
 /// @return CB_CommandLine.
 #define CB_CL_NEXT( cmdline ) \
+    CB_COMMAND_LINE_NEXT( cmdline )
+
+/// @brief Advance to next command line argument.
+/// @param[in] cmdline (CB_CommandLine*) Pointer to command line slice.
+/// @return CB_CommandLine.
+#define CB_COMMAND_LINE_NEXT( cmdline ) \
     CB_ADVANCE( CB_CommandLine, (cmdline), 1 )
 
 // NOTE(alicia): Types
@@ -890,6 +903,9 @@ extern void exit( int status );
     typedef uint64_t  u64;
     /// @brief Unsigned pointer sized integer.
     typedef uintptr_t usize;
+
+    /// @brief Unsigned integer.
+    typedef unsigned int uint;
 
     /// @brief 8-bit integer.
     typedef int8_t   i8;
@@ -945,7 +961,6 @@ typedef enum CB_FileOpenFlags {
     ///
     /// @details
     /// This flag is only checked if #CB_FOPEN_CREATE is used.
-    ///
     CB_FOPEN_CREATE_EXECUTABLE = (1 << 5),
 
     /// @brief Open file for reading and writing.
@@ -1235,6 +1250,16 @@ typedef struct CB_Context {
     /// @brief Pointer to user data.
     void* user_data;
 } CB_Context;
+
+/// @brief List of paths.
+typedef struct CB_CStringList {
+    /// @brief Number of paths list can hold.
+    int          cap;
+    /// @brief Number of paths in list.
+    int          len;
+    /// @brief Pointer to paths buffer.
+    const char** buf;
+} CB_CStringList;
 
 // NOTE(alicia): Cross-Platform Functions
 
@@ -2485,6 +2510,18 @@ void cb_process_kill( CB_ProcessID* pid );
 ///     - @c false : Process could not be found.
 bool cb_process_is_in_path( const char* process_name );
 
+/// @brief Parse Makefile dependencies file.
+/// @param[in]  dependencies_path Path to dependencies file.
+/// @param[in]  text_buffer       Text buffer.
+/// @param[in]  cstr_list         Path buffer.
+/// @param[out] out_target_path   Pointer to write path to target.
+/// @return Number of paths in dependencies file.
+uint32_t cb_parse_dependencies_file(
+    const char*              dependencies_path,
+    struct CB_StringBuilder* text_buffer,
+    struct CB_CStringList*   cstr_list,
+    const char**             out_target_path );
+
 // NOTE(alicia): Internal Functions
 
 int _cb_internal_process_exec(
@@ -2542,6 +2579,7 @@ typedef CB_UTFCodePoint8           UTFCodePoint8;
 typedef CB_UTFCodePoint16          UTFCodePoint16;
 typedef CB_UTFCodePoint32          UTFCodePoint32;
 typedef CB_UnicodeValidationResult UnicodeValidationResult;
+typedef CB_CStringList             CStringList;
 
 #define initialize(...)                          cb_initialize(__VA_ARGS__)
 #define rebuild(...)                             cb_rebuild(__VA_ARGS__)
@@ -2687,6 +2725,7 @@ typedef CB_UnicodeValidationResult UnicodeValidationResult;
 #define process_wait_timed(...)                  cb_process_wait_timed(__VA_ARGS__)
 #define process_kill(...)                        cb_process_kill(__VA_ARGS__)
 #define process_is_in_path(...)                  cb_process_is_in_path(__VA_ARGS__)
+#define parse_dependencies_file(...)             cb_parse_dependencies_file(__VA_ARGS__)
 
 #endif /* Strip prefixes */
 
@@ -4746,6 +4785,84 @@ void cb_file_write_fmt( CB_File* file, const char* fmt, ... ) {
     va_end( va );
 }
 
+uint32_t cb_parse_dependencies_file(
+    const char*              dependencies_path,
+    struct CB_StringBuilder* text_buffer,
+    struct CB_CStringList*   cstr_list,
+    const char**             out_target_path
+) {
+    CB_File file;
+    if( !cb_file_open( dependencies_path, CB_FOPEN_READ, &file ) ) {
+        CB_WARN( "Failed to open dependencies path '%s'!", dependencies_path );
+        return 0;
+    }
+
+    int fsz = cb_file_size( &file );
+
+    if( !fsz ) {
+        cb_file_close( &file );
+        return 0;
+    }
+
+    CB_RESERVE( text_buffer, text_buffer->cap + fsz + 1 );
+
+    bool read_result = cb_file_read(
+        &file, text_buffer->cap - text_buffer->len,
+        text_buffer->buf + text_buffer->len,
+        NULL );
+
+    cb_file_close( &file );
+    if( !read_result ) {
+        CB_WARN( "Failed to read dependencies file '%s'!", dependencies_path );
+        return 0;
+    }
+
+    CB_StringSlice contents;
+    contents.len = fsz;
+    contents.buf = text_buffer->buf + text_buffer->len;
+
+    text_buffer->len += fsz;
+    text_buffer->buf[text_buffer->len] = 0;
+
+    int cstr_list_start = cstr_list->len;
+
+    const char* start = contents.buf;
+    *out_target_path  = start;
+
+    for( int i = 0; i < contents.len; ++i ) {
+        switch( contents.buf[i] ) {
+            case '\\': {
+                if( (i + 1) >= contents.len ) {
+                    contents.len--;
+                    CB_PUSH( cstr_list, start );
+                    goto parse_dependencies_file_end;
+                } else {
+                    memmove( contents.buf + i, contents.buf + i + 1, contents.len - (i + 1) );
+                    contents.len--;
+                }
+            } break;
+            case ':': {
+                contents.buf[i] = 0;
+                start = contents.buf + i + 1;
+            } break;
+            case '\n':
+            case ' ': {
+                contents.buf[i] = 0;
+                if( start[0] != '\n' && strlen(start) ) {
+                    CB_PUSH( cstr_list, start );
+                }
+                start = contents.buf + i + 1;
+            } break;
+
+            default:
+                continue;
+        }
+    }
+
+parse_dependencies_file_end:
+    return cstr_list->len - cstr_list_start;
+}
+
 
 // NOTE(alicia): POSIX Implementation
 
@@ -5154,13 +5271,16 @@ const char* cb_working_directory_query(void) {
     #define GROW_RATE 128
 
     for( ;; ) {
-        if( getcwd( builder->buf, builder->cap ) ) {
-            break;
+        // NOTE(alicia): getcwd allocates using malloc if builder->buf is null!
+        if( builder->buf ) {
+            if( getcwd( builder->buf, builder->cap ) ) {
+                break;
+            }
         }
         builder->buf =
             _cb_internal_alloc(
-                builder->buf, builder->cap, builder->cap + 128 );
-        builder->cap += 128;
+                builder->buf, builder->cap, builder->cap + GROW_RATE );
+        builder->cap += GROW_RATE;
     }
 
     STATE->cwd_obtained = true;
