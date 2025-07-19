@@ -2659,6 +2659,7 @@ typedef CB_CStringList             CStringList;
 #define directory_copy(...)                      cb_directory_copy(__VA_ARGS__)
 #define directory_move(...)                      cb_directory_move(__VA_ARGS__)
 #define make_directories(...)                    cb_make_directories(__VA_ARGS__)
+#define read_entire_file(...)                    cb_read_entire_file(__VA_ARGS__)
 #define path_read_buffer(...)                    cb_path_read_buffer(__VA_ARGS__)
 #define file_size(...)                           cb_file_size(__VA_ARGS__)
 #define file_read_buffer(...)                    cb_file_read_buffer(__VA_ARGS__)
