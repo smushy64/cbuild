@@ -2022,7 +2022,7 @@ bool cb_directory_move(
 ///     - @c true  : Opened and read from file successfully.
 ///     - @c false : Failed to open/read from file.
 bool cb_read_entire_file(
-    const char* path_utf8, uintptr_t* out_buffer_size, void** out_buffer );
+    const char* path_utf8, int* out_buffer_size, void** out_buffer );
 /// @brief Read entire file.
 /// @param[in]     path_utf8 Path to file.
 /// @param[in,out] buffer    Pointer to buffer to write into.
@@ -4777,6 +4777,32 @@ bool _cb_internal_make_directories( const char* first, ... ) {
 
     va_end( va );
     return result;
+}
+bool cb_read_entire_file(
+    const char* path_utf8, int* out_buffer_size, void** out_buffer
+) {
+    CB_File f;
+    if( !cb_file_open( path_utf8, CB_FOPEN_READ, &f ) ) {
+        return false;
+    }
+
+    *out_buffer_size = cb_file_size( &f );
+    *out_buffer      = CB_ALLOC( NULL, 0, *out_buffer_size );
+    if( !*out_buffer ) {
+        *out_buffer_size = 0;
+        cb_file_close( &f );
+        return false;
+    }
+
+    if( !cb_file_read( &f, *out_buffer_size, *out_buffer, NULL ) ) {
+        CB_FREE( *out_buffer, *out_buffer_size );
+        *out_buffer_size = 0;
+        *out_buffer      = NULL;
+        cb_file_close( &f );
+        return false;
+    }
+
+    return true;
 }
 
 void cb_file_write_fmt( CB_File* file, const char* fmt, ... ) {
