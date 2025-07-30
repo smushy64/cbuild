@@ -2174,6 +2174,10 @@ bool cb_environment_builder_replace_by_name(
 void cb_environment_builder_replace(
     CB_EnvironmentBuilder* environment, int index, const char* new_value );
 
+/// @brief Sleep the current thread for given seconds.
+/// @param sec Seconds.
+void cb_thread_sleep( uint32_t sec );
+
 /// @brief Execute command asynchronously.
 /// @note
 /// Process ID must be used with one of the following functions:
@@ -2682,6 +2686,7 @@ typedef CB_CStringList             CStringList;
 #define environment_builder_remove(...)          cb_environment_builder_remove(__VA_ARGS__)
 #define environment_builder_replace_by_name(...) cb_environment_builder_replace_by_name(__VA_ARGS__)
 #define environment_builder_replace(...)         cb_environment_builder_replace(__VA_ARGS__)
+#define thread_sleep(...)                        cb_thread_sleep(__VA_ARGS__)
 #define process_exec(...)                        cb_process_exec(__VA_ARGS__)
 #define process_wait_many(...)                   cb_process_wait_many(__VA_ARGS__)
 #define log_level_set(...)                       cb_log_level_set(__VA_ARGS__)
@@ -4927,6 +4932,10 @@ struct CB_PosixState* _cb_internal_platform_get_state(void) {
 }
 #define STATE _cb_internal_platform_get_state()
 
+void thread_sleep( uint32_t sec ) {
+    sleep(sec);
+}
+
 static
 double _cb_internal_ts_to_ms( struct timespec* ts ) {
     double result = 0.0;
@@ -5582,6 +5591,10 @@ struct CB_WindowsState* _cb_internal_platform_get_state(void) {
     return (struct CB_WindowsState*)global_state.platform_state;
 }
 #define STATE _cb_internal_platform_get_state()
+
+void thread_sleep( uint32_t sec ) {
+    Sleep(sec * 1000);
+}
 
 static
 uint16_t* cb_windows_utf16_buf(void) {
