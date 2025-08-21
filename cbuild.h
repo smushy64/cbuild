@@ -66,7 +66,7 @@ extern void exit( int status );
 
 /// @brief C-Build combined version.
 #define CB_VERSION \
-    (CB_VERSION_MAKE( CB_VERSION_MAJOR, CB_VERSION_MINOR, CB_VERSION_PATCH ))
+    (CB_VERSION_CREATE( CB_VERSION_MAJOR, CB_VERSION_MINOR, CB_VERSION_PATCH ))
 
 /// @brief C-Build version string.
 #define CB_VERSION_STRING \
