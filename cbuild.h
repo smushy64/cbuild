@@ -2125,6 +2125,16 @@ void cb_command_builder_reset( CB_CommandBuilder* builder );
 /// @param[in] builder Pointer to command builder to free.
 void cb_command_builder_free( CB_CommandBuilder* builder );
 
+#define cb_cmd_flatten(...)           cb_command_flatten(__VA_ARGS__)
+#define cb_cmd_append(...)            cb_command_builder_append(__VA_ARGS__)
+#define cb_cmd_from_cmd(...)          cb_command_builder_from_cmd(__VA_ARGS__)
+#define cb_cmd_remove_by_name(...)    cb_command_builder_remove_by_name(__VA_ARGS__)
+#define cb_cmd_remove(...)            cb_command_builder_remove(__VA_ARGS__)
+#define cb_cmd_replace_by_name(...)   cb_command_builder_replace_by_name(__VA_ARGS__)
+#define cb_cmd_replace(...)           cb_command_builder_replace(__VA_ARGS__)
+#define cb_cmd_reset(...)             cb_command_builder_reset(__VA_ARGS__)
+#define cb_cmd_free(...)              cb_command_builder_free(__VA_ARGS__)
+
 /// @brief Append new environment variable to end of environment builder.
 /// @param[in] builder Pointer to environment builder.
 /// @param[in] name    Name of variable.
@@ -2167,6 +2177,14 @@ bool cb_environment_builder_replace_by_name(
 /// @param[in] new_value   New value of variable.
 void cb_environment_builder_replace(
     CB_EnvironmentBuilder* environment, int index, const char* new_value );
+
+#define cb_env_append(...)          cb_environment_builder_append(__VA_ARGS__)
+#define cb_env_reset(...)           cb_environment_builder_reset(__VA_ARGS__)
+#define cb_env_free(...)            cb_environment_builder_free(__VA_ARGS__)
+#define cb_env_remove_by_name(...)  cb_environment_builder_remove_by_name(__VA_ARGS__)
+#define cb_env_remove(...)          cb_environment_builder_remove(__VA_ARGS__)
+#define cb_env_replace_by_name(...) cb_environment_builder_replace_by_name(__VA_ARGS__)
+#define cb_env_replace(...)         cb_environment_builder_replace(__VA_ARGS__)
 
 /// @brief Sleep the current thread for given seconds.
 /// @param sec Seconds.
@@ -2726,6 +2744,24 @@ typedef CB_CStringList             CStringList;
 #define process_kill(...)                        cb_process_kill(__VA_ARGS__)
 #define process_is_in_path(...)                  cb_process_is_in_path(__VA_ARGS__)
 #define parse_dependencies_file(...)             cb_parse_dependencies_file(__VA_ARGS__)
+
+#define cmd_flatten(...)         cb_command_flatten(__VA_ARGS__) 
+#define cmd_append(...)          cb_command_builder_append(__VA_ARGS__) 
+#define cmd_from_cmd(...)        cb_command_builder_from_cmd(__VA_ARGS__) 
+#define cmd_remove_by_name(...)  cb_command_builder_remove_by_name(__VA_ARGS__) 
+#define cmd_remove(...)          cb_command_builder_remove(__VA_ARGS__) 
+#define cmd_replace_by_name(...) cb_command_builder_replace_by_name(__VA_ARGS__) 
+#define cmd_replace(...)         cb_command_builder_replace(__VA_ARGS__) 
+#define cmd_reset(...)           cb_command_builder_reset(__VA_ARGS__) 
+#define cmd_free(...)            cb_command_builder_free(__VA_ARGS__) 
+
+#define env_append(...)          cb_env_append(__VA_ARGS__)
+#define env_reset(...)           cb_env_reset(__VA_ARGS__)
+#define env_free(...)            cb_env_free(__VA_ARGS__)
+#define env_remove_by_name(...)  cb_env_remove_by_name(__VA_ARGS__)
+#define env_remove(...)          cb_env_remove(__VA_ARGS__)
+#define env_replace_by_name(...) cb_env_replace_by_name(__VA_ARGS__)
+#define env_replace(...)         cb_env_replace(__VA_ARGS__)
 
 #endif /* Strip prefixes */
 
