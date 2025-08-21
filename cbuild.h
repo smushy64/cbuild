@@ -2190,6 +2190,31 @@ void cb_environment_builder_replace(
 /// @param sec Seconds.
 void cb_thread_sleep( uint32_t sec );
 
+struct CB_ProcessExecOpt {
+    const char*            wd;
+    CB_EnvironmentBuilder* env;
+    CB_PipeRead*           in;
+    CB_PipeWrite*          out;
+    CB_PipeWrite*          err;
+};
+
+/// @brief Execute command synchronously.
+/// @param     cmd                   (CB_Command)
+///                                    Command to execute.
+/// @param[in] opt_working_directory (optional,const char*)
+///                                    Working directory path.
+/// @param[in] opt_environment       (optional,CB_EnvironmentBuilder*)
+///                                    Environment variables for process.
+/// @param[in] opt_stdin  (optional,CB_PipeRead*)  Pointer to stdin pipe.
+/// @param[in] opt_stdout (optional,CB_PipeWrite*) Pointer to stdout pipe.
+/// @param[in] opt_stderr (optional,CB_PipeWrite*) Pointer to stderr pipe.
+/// @return
+///     - `0`     : Process exited normally and successfully.
+///     - `1-255` : Process exited normally, was not successful.
+///     - `-1`    : Process exited abnormally.
+///     - `-2`    : Error occurred when executing process.
+#define cb_process_exec( cmd, ... ) \
+    _cb_internal_process_exec( cmd, (struct CB_ProcessExecOpt){ __VA_ARGS__ } )
 /// @brief Execute command asynchronously.
 /// @note
 /// Process ID must be used with one of the following functions:
@@ -2218,26 +2243,8 @@ void cb_thread_sleep( uint32_t sec );
 /// @return
 ///     - @c true  : Executed command successfully.
 ///     - @c false : Failed to execute command.
-#define cb_process_exec_async( ... ) \
-    _cb_internal_process_exec_async( \
-        __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
-/// @brief Execute command synchronously.
-/// @param     cmd                   (CB_Command)
-///                                    Command to execute.
-/// @param[in] opt_working_directory (optional,const char*)
-///                                    Working directory path.
-/// @param[in] opt_environment       (optional,CB_EnvironmentBuilder*)
-///                                    Environment variables for process.
-/// @param[in] opt_stdin  (optional,CB_PipeRead*)  Pointer to stdin pipe.
-/// @param[in] opt_stdout (optional,CB_PipeWrite*) Pointer to stdout pipe.
-/// @param[in] opt_stderr (optional,CB_PipeWrite*) Pointer to stderr pipe.
-/// @return
-///     - `0`     : Process exited normally and successfully.
-///     - `1-255` : Process exited normally, was not successful.
-///     - `-1`    : Process exited abnormally.
-///     - `-2`    : Error occurred when executing process.
-#define cb_process_exec( ... ) \
-    _cb_internal_process_exec( __VA_ARGS__, NULL, NULL, NULL, NULL, NULL )
+#define cb_process_exec_async( cmd, out_pid, ... ) \
+    _cb_internal_process_exec_async( cmd, out_pid, (struct CB_ProcessExecOpt){ __VA_ARGS__ } )
 
 /// @brief Wait for series of processes.
 /// @param      count              Number of process IDs to wait for.
@@ -2540,24 +2547,19 @@ uint32_t cb_parse_dependencies_file(
 
 // NOTE(alicia): Internal Functions
 
-int _cb_internal_process_exec(
-    CB_Command             cmd,
-    const char*            opt_working_directory,
-    CB_EnvironmentBuilder* opt_environment,
-    CB_PipeRead*           opt_stdin,
-    CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr,
-    ... );
+int _cb_internal_process_exec( CB_Command cmd, struct CB_ProcessExecOpt opt );
 bool _cb_internal_process_exec_async(
+    CB_Command cmd, CB_ProcessID* out_pid, struct CB_ProcessExecOpt opt );
+
+bool _cb_internal_process_run(
     CB_Command             cmd,
     CB_ProcessID*          out_pid,
-    const char*            opt_working_directory,
-    CB_EnvironmentBuilder* opt_environment,
-    CB_PipeRead*           opt_stdin,
-    CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr,
-    ... );
-
+    const char*            opt_wd,
+    CB_EnvironmentBuilder* opt_env,
+    CB_PipeRead*           opt_in,
+    CB_PipeWrite*          opt_out,
+    CB_PipeWrite*          opt_err
+);
 
 void _cb_internal_command_builder_new( CB_CommandBuilder* builder, ... );
 void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... );
@@ -2920,7 +2922,7 @@ void cb_rebuild(
     CB_ProcessID pid;
     CB_PID_NULL( 1, &pid );
 
-    if( !_cb_internal_process_exec_async(
+    if( !_cb_internal_process_run(
         builder.cmd,
         &pid,
         NULL,
@@ -4720,31 +4722,34 @@ void cb_write_log( CB_LogLevel level, const char* fmt, ... ) {
     va_end( va );
 }
 
-int _cb_internal_process_exec(
-    CB_Command             cmd,
-    const char*            opt_working_directory,
-    CB_EnvironmentBuilder* opt_environment,
-    CB_PipeRead*           opt_stdin,
-    CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr,
-    ...
-) {
+int _cb_internal_process_exec( CB_Command cmd, struct CB_ProcessExecOpt opt ) {
     CB_ProcessID pid;
-    bool success = _cb_internal_process_exec_async(
-        cmd, &pid,
-        opt_working_directory,
-        opt_environment,
-        opt_stdin,
-        opt_stdout,
-        opt_stderr );
+    bool success = _cb_internal_process_run(
+        cmd,
+        &pid,
+        opt.wd,
+        opt.env,
+        opt.in,
+        opt.out,
+        opt.err );
 
     if( !success ) {
         return -2;
     }
 
-    int exit_code = cb_process_wait( &pid );
-
-    return exit_code;
+    return cb_process_wait( &pid );
+}
+bool _cb_internal_process_exec_async(
+    CB_Command cmd, CB_ProcessID* out_pid, struct CB_ProcessExecOpt opt
+) {
+    return _cb_internal_process_run(
+        cmd,
+        out_pid,
+        opt.wd,
+        opt.env,
+        opt.in,
+        opt.out,
+        opt.err );
 }
 
 void _cb_internal_command_builder_append( CB_CommandBuilder* builder, ... ) {
@@ -5410,23 +5415,22 @@ bool cb_environment_set( const char* name, const char* new_value ) {
     return true;
 }
 
-bool _cb_internal_process_exec_async(
+bool _cb_internal_process_run(
     CB_Command             cmd,
     CB_ProcessID*          out_pid,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
     CB_PipeRead*           opt_stdin,
     CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr,
-    ...
+    CB_PipeWrite*          opt_stderr
 ) {
     if( !cmd.len ) {
-        CB_ERROR( "cb_process_exec_async(): command is empty!" );
+        CB_ERROR( "cb_process_exec(): command is empty!" );
         return false;
     }
     if( !((cmd.buf[cmd.len - 1] == NULL) || (cmd.buf[cmd.len] == NULL)) ) {
         CB_ERROR(
-            "cb_process_exec_sync(): "
+            "cb_process_exec(): "
             "command requires a NULL string at the end!" );
         return false;
     }
@@ -5463,7 +5467,7 @@ bool _cb_internal_process_exec_async(
 
     pid_t pid = fork();
     if( pid < 0 ) {
-        CB_ERROR( "POSIX: cb_process_exec_async(): failed to fork!" );
+        CB_ERROR( "POSIX: cb_process_exec(): failed to fork!" );
         return false;
     }
 
@@ -6702,15 +6706,14 @@ bool cb_environment_set( const char* name, const char* new_value ) {
     return false;
 }
 
-bool _cb_internal_process_exec_async(
+bool _cb_internal_process_run(
     CB_Command             cmd,
     CB_ProcessID*          out_pid,
     const char*            opt_working_directory,
     CB_EnvironmentBuilder* opt_environment,
     CB_PipeRead*           opt_stdin,
     CB_PipeWrite*          opt_stdout,
-    CB_PipeWrite*          opt_stderr,
-    ...
+    CB_PipeWrite*          opt_stderr
 ) {
     STARTUPINFOW        startup = {};
     PROCESS_INFORMATION info    = {};

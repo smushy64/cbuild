@@ -220,7 +220,7 @@ int mode_build( struct Args* args ) {
     }
 
     CB_ProcessID pid = {};
-    bool success = cb_process_exec_async( builder.cmd, &pid, NULL, NULL, NULL, NULL, NULL );
+    bool success = cb_process_exec_async( builder.cmd, &pid );
     cb_command_builder_free( &builder );
 
     if( !success ) {
@@ -270,7 +270,7 @@ int mode_run( struct Args* args ) {
     }
 
     CB_ProcessID pid = {};
-    if( !cb_process_exec_async( builder.cmd, &pid, NULL, NULL, NULL, NULL, NULL ) ) {
+    if( !cb_process_exec_async( builder.cmd, &pid ) ) {
         return 1;
     }
 
