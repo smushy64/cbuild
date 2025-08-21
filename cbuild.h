@@ -6702,7 +6702,7 @@ bool cb_environment_set( const char* name, const char* new_value ) {
     return false;
 }
 
-bool _cb_internal_process_exec(
+bool _cb_internal_process_exec_async(
     CB_Command             cmd,
     CB_ProcessID*          out_pid,
     const char*            opt_working_directory,
