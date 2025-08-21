@@ -555,12 +555,6 @@ extern void exit( int status );
 #define CB_UNUSED( ... ) \
     _cb_internal_unused( 0, __VA_ARGS__ )
 
-/// @brief Create a new dynamic string from string literal.
-/// @param literal (string literal) Literal to make string from.
-/// @return New dynamic string.
-#define CB_DSTRING( literal ) \
-    dstring_new( sizeof(literal) - 1, literal )
-
 /// @brief Insert an abnormal exit.
 #define CB_INSERT_ABNORMAL_EXIT() exit(-1)
 
